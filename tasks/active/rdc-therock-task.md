@@ -18,7 +18,7 @@ I would like a . Then I would like a next step to be to prototype build scripts 
 
 ## Goals
 
-- [ ] comprehensive analysis of the codebase and a design doc with a recommendation and alternatives considered for creating a portable build of it
+- [x] comprehensive analysis of the codebase and a design doc with a recommendation and alternatives considered for creating a portable build of it
 - [ ] a next step to be to prototype build scripts that produce this portable build
 - [ ] setup.py / pyproject.toml that can build a standalone, portable wheel for rdc
 
@@ -26,8 +26,16 @@ I would like a . Then I would like a next step to be to prototype build scripts 
 
 ### Files Created/Modified
 
+- `/develop/therock/docs/rfcs/RFC0006-rdc-manylinux-integration.md` - Comprehensive RFC for RDC integration
 
 ### Key Details
+
+- Performed deep analysis of RDC build artifacts and dependencies
+- Documented that embedded mode needs ~2.2MB, standalone adds ~45MB of gRPC
+- Identified gRPC v1.67.1 requirement due to Clang 18+ ABI compatibility
+- Recommended phased approach: embedded-only first, defer gRPC decision
+- Proposed using new `dctools/` directory in TheRock for datacenter tools
+- Clarified that Python wheel can be version-agnostic due to ctypes
 
 
 ### Verification
