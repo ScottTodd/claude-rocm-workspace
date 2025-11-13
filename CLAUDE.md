@@ -79,6 +79,20 @@ ninja clr+expunge && ninja clr+dist
 
 ## Conventions & Gotchas
 
+### Python Coding Standards
+
+**When writing Python code, follow the [Python Style Guide](PYTHON-STYLE-GUIDE.md).**
+
+Key principles:
+- **Fail-fast**: Never silently continue on errors - raise exceptions immediately
+- **No tuples for structured data**: Use `@dataclass` for multi-field return values
+- **Specific type hints**: Never use `Any` - import and use concrete types
+- **No timeouts on binutils**: Never add timeouts to readelf, objcopy, etc.
+- **Validate output**: Check that files exist and are non-empty after creation
+- **No magic numbers**: Especially not for size estimates or fake calculations
+
+See [PYTHON-STYLE-GUIDE.md](PYTHON-STYLE-GUIDE.md) for detailed guidelines, examples, and code review checklist.
+
 ### Build System
 - [Document your team's CMake conventions]
 - [Note any non-standard build flags or requirements]
