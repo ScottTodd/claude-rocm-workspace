@@ -34,6 +34,10 @@ Document key submodules if they're frequently edited:
 * JAX: `/develop/jax`
 * XLA: `/develop/xla`
 
+### Others:
+
+* rocm-kpack: `/develop/rocm-kpack`
+
 ## Build Trees
 
 ### Active Builds
