@@ -95,6 +95,60 @@ def process(handlers: List[DatabaseHandler]) -> Dict[str, KpackInfo]:
 - Use specific return types (not `tuple`, use `Tuple[Path, int]`)
 - For dict values with structure, define a dataclass
 
+#### Extract Complex Type Signatures
+
+**If a type signature is complex or repeated, extract it into a named type.**
+
+❌ **Bad:**
+```python
+def parallel_prepare_kernels(
+    archive: PackedKernelArchive,
+    kernels: list[tuple[str, str, bytes, dict[str, object] | None]],
+    executor: Executor | None = None,
+) -> list[PreparedKernel]:
+    """What is this tuple again? Have to read the docstring..."""
+    for relative_path, gfx_arch, hsaco_data, metadata in kernels:
+        ...
+```
+
+✅ **Good:**
+```python
+class KernelInput(NamedTuple):
+    """Input data for preparing a kernel for packing.
+
+    Attributes:
+        relative_path: Path relative to archive root (e.g., "kernels/my_kernel")
+        gfx_arch: GPU architecture (e.g., "gfx1100")
+        hsaco_data: Raw HSACO binary data
+        metadata: Optional metadata dict to store in TOC
+    """
+    relative_path: str
+    gfx_arch: str
+    hsaco_data: bytes
+    metadata: dict[str, object] | None
+
+def parallel_prepare_kernels(
+    archive: PackedKernelArchive,
+    kernels: list[KernelInput],  # Self-documenting!
+    executor: Executor | None = None,
+) -> list[PreparedKernel]:
+    """Prepare multiple kernels in parallel..."""
+    for k in kernels:
+        # k.relative_path, k.gfx_arch, etc. - clear and IDE-friendly
+        ...
+```
+
+**When to extract:**
+- Type appears in multiple signatures → Use NamedTuple or TypeAlias
+- Tuple has 3+ fields → Use NamedTuple or dataclass
+- Type signature is hard to read at a glance → Extract it
+- You find yourself documenting what tuple fields mean → Use NamedTuple
+
+**What to use:**
+- **NamedTuple**: Immutable, lightweight, for simple data containers
+- **dataclass**: When you need methods, mutability, or inheritance
+- **TypeAlias**: For complex generic types that are reused
+
 ### 4. Error Handling and Distinction
 
 **Distinguish between different error conditions. Don't treat all errors the same.**
@@ -231,7 +285,54 @@ def detect(self, path: Path) -> Optional[str]:
 - Cache expensive computations when called repeatedly
 - Use generators for large datasets
 
-### 9. Code Organization
+### 9. Import Organization
+
+**Put all imports at the top of the file. Avoid inline imports except for rare special cases.**
+
+❌ **Bad:**
+```python
+def process_binary(input_path: Path, output_path: Path) -> None:
+    """Process a binary file."""
+    # ... some code ...
+
+    if needs_special_processing:
+        import shutil  # Inline import
+        shutil.copy2(input_path, temp_file)
+```
+
+✅ **Good:**
+```python
+import shutil
+from pathlib import Path
+
+def process_binary(input_path: Path, output_path: Path) -> None:
+    """Process a binary file."""
+    # ... some code ...
+
+    if needs_special_processing:
+        shutil.copy2(input_path, temp_file)
+```
+
+**When inline imports ARE acceptable:**
+- **Circular dependency workaround**: If module A imports module B and B imports A, one can use an inline import
+- **Optional heavy dependency**: Importing a very heavy module that's rarely used (but document why)
+
+**Example of acceptable inline import for circular dependency:**
+```python
+def create_host_only(self, output_path: Path) -> None:
+    """Create host-only binary."""
+    # Import here to avoid circular dependency:
+    # binutils.py → elf_offload_kpacker.py → binutils.py
+    from rocm_kpack.elf_offload_kpacker import kpack_offload_binary
+    kpack_offload_binary(self.file_path, output_path, toolchain=self.toolchain)
+```
+
+**Key points:**
+- Inline imports should be the exception, not the rule
+- Always add a comment explaining WHY the import is inline
+- Consider refactoring to eliminate circular dependencies instead
+
+### 10. Code Organization
 
 **Keep functions focused and modules cohesive.**
 
@@ -245,7 +346,7 @@ def detect(self, path: Path) -> Optional[str]:
 - 100+ line methods → extract helper methods
 - Duplicate code → extract to shared function
 
-### 10. No Duplicate Code
+### 11. No Duplicate Code
 
 **Extract common code to shared functions.**
 
@@ -285,8 +386,10 @@ Before submitting code, verify:
 
 - [ ] No silent error handling (fail-fast on all errors)
 - [ ] No `Any` type hints (use specific types)
+- [ ] Complex type signatures extracted to NamedTuple/dataclass
 - [ ] No magic numbers or fake estimates
 - [ ] Tuples only for simple pairs, dataclasses for structured data
+- [ ] All imports at top of file (except documented circular dependencies)
 - [ ] No timeouts on binutils operations
 - [ ] Output validation after critical operations
 - [ ] No duplicate code
