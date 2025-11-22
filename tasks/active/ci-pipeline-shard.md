@@ -607,10 +607,17 @@ Performed comprehensive testing of the unified feature system with the following
 - Fixed during testing: Added `feature_group` overrides for COMPILER→ALL, ROCPROFV3→PROFILER
 - Result: Features now properly respect group enables
 
+**9. Windows Platform Dependency Filtering** ✅
+- Test: Simulated Windows platform with HIP_RUNTIME enabled
+- Result: Platform-aware dependency filtering correctly excludes CORE_RUNTIME on Windows
+- Verified: HIP_RUNTIME enabled without pulling in CORE_RUNTIME (which is disabled on Windows)
+- Implementation: therock_add_feature() sets THEROCK_PLATFORM_DISABLED_* variables for filtering
+
 #### Final Cleanup Completed
 
 - Removed all `if(FALSE)` blocks containing old manual feature definitions (~200 lines)
 - Removed transitional comments and notes
+- Fixed Windows-specific HIP runtime handling with platform-aware dependency filtering
 - Cleaned up include ordering to ensure features are available when needed
 - All temporary test artifacts removed
 
