@@ -613,6 +613,29 @@ Performed comprehensive testing of the unified feature system with the following
 - Verified: HIP_RUNTIME enabled without pulling in CORE_RUNTIME (which is disabled on Windows)
 - Implementation: therock_add_feature() sets THEROCK_PLATFORM_DISABLED_* variables for filtering
 
+**10. CI Build Failures and Fixes** ✅
+- Issue: Missing `therock-host-blas` target causing CMake errors
+- Root cause: Skip list preventing feature generation for host-blas, host-suite-sparse
+- Fix: Removed skip list - all artifacts now get features uniformly
+- Additional fixes:
+  - Added miopen→rand dependency (MIOpen has hard dependency on rocRAND)
+  - Added blas→host-suite-sparse dependency (hipSOLVER needs SuiteSparse)
+  - Made composable-kernel→rocRAND dependency conditional
+
+**11. Feature Group Default Behavior** ✅
+- Issue: HIP_RUNTIME, BASE, SYSDEPS, etc. were OFF by default
+- Root cause: Incorrect feature group assignments in BUILD_TOPOLOGY.toml
+- Fix: Corrected feature groups:
+  - CORE group (enabled by default): SYSDEPS, BASE, HIP_RUNTIME, CORE_HIPINFO, OCL_RUNTIME, CORE_RUNTIME
+  - HOST_MATH group (OFF by default): HOST_BLAS, HOST_SUITE_SPARSE, FFTW3
+  - DC_TOOLS group (enabled by default): RDC
+- Verified: Default build now enables core features, HOST_MATH stays OFF until needed
+
+**12. Diamond Dependency Pattern Optimization** ✅
+- Issue: Redundant node visits in diamond dependency patterns (A→B→D, A→C→D)
+- Fix: Add nodes to collected set BEFORE recursing in `_collect_transitive_artifact_deps`
+- Added comprehensive unit test for diamond pattern verification
+
 #### Final Cleanup Completed
 
 - Removed all `if(FALSE)` blocks containing old manual feature definitions (~200 lines)
@@ -620,6 +643,8 @@ Performed comprehensive testing of the unified feature system with the following
 - Fixed Windows-specific HIP runtime handling with platform-aware dependency filtering
 - Cleaned up include ordering to ensure features are available when needed
 - All temporary test artifacts removed
+- Optimized dependency collection for diamond patterns
+- Uniform feature generation for all artifacts
 
 #### System Validation
 
@@ -630,5 +655,36 @@ The unified feature system is production-ready with:
 - **Fail-fast**: Invalid artifacts caught at configure time
 - **Auto-validation**: Dependencies automatically enforced
 - **Clean code**: ~200 lines removed from CMakeLists.txt
+
+### Current Implementation Status (2025-11-22)
+
+**Completed Components:**
+- ✅ BUILD_TOPOLOGY.toml with 25 artifacts, 12 groups, 5 stages
+- ✅ build_tools/_therock_utils/build_topology.py - Core library with transitive dependency resolution
+- ✅ build_tools/topology_to_cmake.py - CMake generation from topology
+- ✅ cmake/therock_topology_generated.cmake - Auto-generated features and targets
+- ✅ 14 comprehensive unit tests including diamond dependency patterns
+- ✅ Platform-aware dependency filtering in therock_features.cmake
+- ✅ Fail-fast validation for undefined artifacts
+- ✅ Correct feature group assignments for default behavior
+
+**Key Implementation Details:**
+- Features generated in dependency order (topological sort)
+- THEROCK_PLATFORM_DISABLED_* variables for cross-platform filtering
+- All artifacts get features (no skip list)
+- HOST_MATH features OFF by default, enabled implicitly when needed
+- Diamond dependency patterns handled efficiently with early set addition
+- Conditional dependencies (e.g., composable-kernel→rocRAND based on THEROCK_ENABLE_RAND)
+
+**Testing Status:**
+- Local default build: ✅ Passing
+- CI-like configuration (BUILD_TESTING=ON): ✅ Passing
+- Feature group controls: ✅ Working correctly
+- THEROCK_ENABLE_ALL=OFF: ✅ Disables all features
+- THEROCK_ENABLE_CORE=ON: ✅ Enables core features only
+- THEROCK_ENABLE_HIP_RUNTIME=ON: ✅ Pulls in correct dependencies
+- Platform-specific builds: ✅ Tested (Windows simulation)
+
+**CI Status:** 🔄 Currently running validation
 
 Keep progress and design notes updated here so that we can keep working on the task across multiple sessions.
