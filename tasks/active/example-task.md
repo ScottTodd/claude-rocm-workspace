@@ -1,3 +1,9 @@
+---
+repositories:
+  - therock        # Alias from directory-map.md
+  # - rocm-kpack   # Add more repos as needed
+---
+
 # Example Task Template
 
 **Status:** Not started | In progress | Blocked | Review | Completed

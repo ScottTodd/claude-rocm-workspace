@@ -1,3 +1,8 @@
+---
+repositories:
+  - therock
+---
+
 # Transform from monolithic to sharded TheRock build
 
 **Status:** Not started

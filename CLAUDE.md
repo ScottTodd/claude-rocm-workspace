@@ -151,6 +151,86 @@ git log -1 --stat
 - Git submodules are used extensively
 - When editing build configs, check both source tree and build tree caches
 
+### Review Workflow
+
+We work in commit stacks. Claude commits incrementally with WIP commits, user reviews, we iterate, then squash to PR at milestones.
+
+#### Two Review Modes
+
+| Mode | When | Diff |
+|------|------|------|
+| **Incremental** | After each Claude batch | HEAD~1..HEAD (or HEAD~N) |
+| **Milestone** | Before PR/squash | main..HEAD |
+
+Incremental is the hot path—zero friction for "what did Claude just do."
+
+#### Commands
+
+```bash
+# Stage changes and open in VSCode
+/stage-review [repo]
+
+# Just open diffs in VSCode (no commit)
+/vscode-diff [repo] [N]
+
+# Find and fix RVW comments
+/process-review [repo]
+
+# Full milestone review before PR
+/prep-pr [repo]
+```
+
+#### Review Comment Format
+
+Add comments inline using `RVW:` or `RVWY:` prefix:
+
+| Marker | Meaning |
+|--------|---------|
+| `RVW:` | Discuss - Claude proposes fix, waits for confirmation |
+| `RVWY:` | YOLO - Claude makes the fix without asking |
+
+```python
+# RVW: This logic seems backwards - let's discuss
+# RVWY: Add error handling here
+```
+```cpp
+// RVW: Should this handle the null case?
+// RVWY: Rename this variable to be clearer
+```
+
+Then run `/process-review` to address them.
+
+#### Typical Flow
+
+```
+Claude: [makes changes]
+Claude: "Ready for review?"
+
+You: /stage-review
+[Diff views open in new VSCode window, you add RVW: comments]
+
+You: /process-review
+Claude: [shows each comment, proposes fix, waits for confirmation]
+Claude: [fixes, removes RVW marker, commits]
+
+You: /prep-pr
+[Full diff review since main in new window]
+```
+
+#### VSCode Integration
+
+Uses the `stella-ide-mcp` VSCode extension for direct diff view control.
+
+**Setup:**
+1. Symlink extension: `ln -s /path/to/vscode-plugins/stella-ide-mcp ~/.vscode-server/extensions/stella-ide-mcp`
+2. Reload VSCode
+3. Add MCP server: `claude mcp add --transport sse vscode http://127.0.0.1:3742/sse`
+
+**MCP Tools:**
+- `mcp__vscode__openFile` - Open file at line
+- `mcp__vscode__openDiff` - Open diff view vs git ref
+- `mcp__vscode__openChangedFiles` - Open all changed files as diffs (with `newWindow` option)
+
 ### Tools
 - [List common tools: compilers, rocm-cmake, etc.]
 

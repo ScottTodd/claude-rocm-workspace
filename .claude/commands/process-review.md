@@ -1,25 +1,59 @@
 ---
 description: Find and address RVW review comments
-allowed-tools: Read, Grep, Glob, Edit, Bash(git:*)
+allowed-tools: Bash(python:*), Read, Edit, Bash(git:*), mcp__vscode__openFile
 ---
 
-Find and process all review comments in the working tree.
+Find and process all RVW review comments. Argument: `{{arg1}}` (optional repo alias)
 
-1. Search for RVW patterns:
+## Comment Types
+
+- `// RVW: comment` - Discuss with user, propose fix, wait for confirmation
+- `// RVWY: comment` - YOLO mode: make the fix without asking
+
+## 1. Discover comments
+
+```bash
+python scripts/review.py comments {{arg1}}
+```
+
+Parse the JSON output to get list of `{file, line, comment, yolo}`.
+
+## 2. If no comments found
+
+Say "No RVW comments found." and stop.
+
+## 3. For each comment
+
+### If `yolo: true` (RVWY)
+
+1. Read the context around the comment
+2. Make the fix you think is best
+3. Remove the RVWY comment marker
+4. Briefly report what you did (one line)
+
+### If `yolo: false` (RVW)
+
+1. Open the file at the comment line in VSCode:
    ```
-   grep -rn "RVW:" --include="*.py" --include="*.cmake" --include="*.cpp" \
-     --include="*.c" --include="*.h" --include="*.hpp" --include="*.toml" \
-     --include="*.yaml" --include="*.yml" --include="*.sh" --include="*.md"
+   mcp__vscode__openFile(path=<file>, line=<line>)
    ```
 
-2. For each comment found:
-   - Show the context (5 lines before/after)
-   - Explain what the feedback is asking
-   - Propose a fix
-   - After user confirms, implement the fix AND remove the RVW comment
+2. Show:
+   - **File:line** and the comment text
+   - Read the surrounding context (5 lines before/after)
+   - Propose a specific fix
 
-3. After all comments addressed:
-   - Show summary of changes
-   - Ask: "Stage for another review round?" or "Ready to finalize?"
+3. Wait for user confirmation before proceeding.
 
-If staging again, amend the WIP commit. If finalizing, proceed to proper commit.
+4. After user confirms:
+   - Make the fix
+   - Remove the RVW comment marker
+
+## 4. After all comments addressed
+
+```bash
+git add -A
+git commit -m "Address review feedback"
+```
+
+Ask: "Stage for another review round (`/stage-review`) or ready to finalize?"

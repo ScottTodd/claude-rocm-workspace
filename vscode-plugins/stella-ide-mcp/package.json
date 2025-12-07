@@ -1,0 +1,31 @@
+{
+  "name": "stella-ide-mcp",
+  "displayName": "Stella IDE MCP Server",
+  "description": "MCP server for Claude Code integration with VSCode",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "stella-ide-mcp.status",
+        "title": "Stella IDE MCP: Show Status"
+      }
+    ],
+    "configuration": {
+      "title": "Stella IDE MCP",
+      "properties": {
+        "stella-ide-mcp.port": {
+          "type": "number",
+          "default": 3742,
+          "description": "Port for the MCP HTTP server"
+        }
+      }
+    }
+  }
+}

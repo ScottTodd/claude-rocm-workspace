@@ -10,28 +10,17 @@ This document maps out where all ROCm-related directories live on this system.
 - meson (for building simde, libdrm, and other meson-based dependencies)
 - Other Python dependencies from requirements.txt
 
-## Source Trees
+## Repository Aliases
 
-### Main Repositories
-- **TheRock main:** `/develop/therock`
-  - Primary ROCm repository
-  - Branch: main (or specify current branch)
+These aliases are used by `/stage-review` and other commands to resolve short names to paths.
 
-### Submodules
-Document key submodules if they're frequently edited:
-- **rocm-libraries:** `/develop/therock/rocm-libraries`
-- **rocm-systems:** `/develop/therock/rocm-systems`
-- **llvm-project:** `/develop/therock/compiler/amd-llvm`
-- **hipify:** `/develop/therock/compiler/hipify`
-
-### Frameworks:
-
-* JAX: `/develop/jax`
-* XLA: `/develop/xla`
-
-### Others:
-
-* rocm-kpack: `/develop/rocm-kpack`
+| Alias | Path | Notes |
+|-------|------|-------|
+| therock | /develop/therock | Main ROCm build repo |
+| rocm-kpack | /develop/rocm-kpack | Kernel packaging tools |
+| jax | /develop/jax | JAX framework |
+| xla | /develop/xla | XLA compiler |
+| workspace | /home/stella/claude-rocm-workspace | This meta-workspace |
 
 ## Build Trees
 

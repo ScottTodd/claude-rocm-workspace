@@ -2,6 +2,9 @@
 
 /rocm
 
+# Workspace state (vscode commands, active task, etc.)
+.state/
+
 # Temporary files
 *.tmp
 *.swp
