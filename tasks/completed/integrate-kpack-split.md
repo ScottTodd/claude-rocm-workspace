@@ -6,7 +6,7 @@ repositories:
 
 # Integrate ROCm KPACK Split into the Build System
 
-**Status:** In Progress - Design Complete
+**Status:** Complete - PR Ready
 **Priority:** P0 (Critical)
 **Started:** 2025-11-21
 **Target:** 2025-11-24
@@ -348,3 +348,82 @@ Documented final design with:
 - Bootstrapper change: merge instead of rm-then-extract for shared prefixes
 
 Ready for implementation pending approval.
+
+### Session 2: Implementation (2025-12-09)
+
+**PR Branch**: `users/stella/kpack_split_integration`
+**Commit**: `3d270c9e` - Add kpack split integration for multi-arch artifact sharding
+
+#### Implementation Summary
+
+**Files Modified (5 files, +150/-2 lines):**
+
+| File | Changes |
+|------|---------|
+| `BUILD_TOPOLOGY.toml` | Added `split_databases` to blas (`["rocblas", "hipblaslt"]`) and miopen (`["aotriton"]`) |
+| `CMakeLists.txt` | Added `THEROCK_KPACK_SPLIT_ARTIFACTS` and `THEROCK_KPACK_DIR` options |
+| `build_tools/_therock_utils/build_topology.py` | Added `split_databases` field to Artifact dataclass |
+| `build_tools/topology_to_cmake.py` | Exposed `THEROCK_ARTIFACT_TYPE_*` and `THEROCK_ARTIFACT_SPLIT_DATABASES_*` variables |
+| `cmake/therock_artifacts.cmake` | Implemented split logic in `therock_provide_artifact()` |
+
+#### Key Implementation Details
+
+**PYTHONPATH Setup**: rocm-kpack runs without pip install via:
+```cmake
+COMMAND "${CMAKE_COMMAND}" -E env "PYTHONPATH=${THEROCK_KPACK_DIR}/python"
+  "${Python3_EXECUTABLE}" "${_split_tool}" ${_split_command_args}
+```
+
+**Bundler Path**: Uses dist/ not stage/ (includes runtime deps like libz):
+```cmake
+${THEROCK_BINARY_DIR}/compiler/amd-llvm/dist/lib/llvm/bin/clang-offload-bundler
+```
+
+**Dependency Chain**:
+```
+stage.stamp → unsplit manifest → split manifest (generic)
+                                      ↓
+                              [arch-specific artifacts derived]
+```
+
+Only generic manifest tracked in ninja. Arch-specific artifacts are derived outputs.
+
+**Archive Generation**: Skipped for split artifacts (moves to upload phase in multi-arch CI).
+
+#### Testing Results
+
+Tested with RAND artifact on gfx1201. All 6 components split correctly:
+
+| Component | Generic Output | Arch-specific Output |
+|-----------|---------------|---------------------|
+| rand_lib | Host .so libs + .kpm manifest | .kpack with kernels |
+| rand_test | Test binaries + .kpm manifest | .kpack with kernels |
+| rand_dev | Headers + cmake files | (empty - no device code) |
+| rand_doc | Documentation | (empty - no device code) |
+| rand_run | Runtime files | (empty - no device code) |
+| rand_dbg | Debug files | (empty - no device code) |
+
+**Output Structure**:
+```
+artifacts-unsplit/          # Input (original fat artifacts)
+  rand_lib_gfx1201/
+  rand_test_gfx1201/
+
+artifacts/                  # Output (split artifacts)
+  rand_lib_generic/         # Host-only: .so libs + .kpm manifest
+  rand_lib_gfx1201/         # Arch-only: .kpack file
+  rand_test_generic/        # Host-only: test binaries + .kpm
+  rand_test_gfx1201/        # Arch-only: .kpack file
+```
+
+#### Fixes During Testing
+
+1. **Argument name**: `--clang-offload-bundler` not `--bundler`
+2. **Bundler path**: `dist/lib/llvm/bin/` not `stage/bin/` (dist has runtime deps)
+3. **PYTHONPATH**: Added to cmake command so rocm_kpack imports work without pip install
+
+#### Remaining Work (Out of Scope for This PR)
+
+- **rocm-kpack PR**: Changes to preserve original stage prefixes instead of synthesizing `kpack/stage`
+- **Bootstrap changes**: Update artifact_manager.py to handle shared stage/ prefixes (merge/overlay)
+- **CI integration**: Enable split in pre-submit workflows

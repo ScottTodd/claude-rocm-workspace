@@ -18,6 +18,9 @@ else
     exit 1
 fi
 
+# Activate ccache.
+eval "$(/develop/therock/build_tools/setup_ccache.py)"
+
 # Launch Claude in the workspace directory
 cd "$WORKSPACE_DIR"
 exec claude "$@"
