@@ -427,3 +427,150 @@ artifacts/                  # Output (split artifacts)
 - **rocm-kpack PR**: Changes to preserve original stage prefixes instead of synthesizing `kpack/stage`
 - **Bootstrap changes**: Update artifact_manager.py to handle shared stage/ prefixes (merge/overlay)
 - **CI integration**: Enable split in pre-submit workflows
+
+---
+
+## Detailed Debugging: rand_lib Artifact Split
+
+This section documents the exact artifact structure before and after splitting, tested on the `rand_lib` component with gfx1201 target.
+
+### 1. Input: Unsplit Artifact
+
+**Location**: `artifacts-unsplit/rand_lib_gfx1201/`
+
+**artifact_manifest.txt**:
+```
+math-libs/rocRAND/stage
+math-libs/hipRAND/stage
+```
+
+**Directory tree**:
+```
+rand_lib_gfx1201/
+├── artifact_manifest.txt
+└── math-libs
+    ├── hipRAND
+    │   └── stage
+    │       └── lib
+    │           ├── libhiprand.so -> libhiprand.so.1
+    │           ├── libhiprand.so.1 -> libhiprand.so.1.1
+    │           └── libhiprand.so.1.1          (18 KB, no device code)
+    └── rocRAND
+        └── stage
+            └── lib
+                ├── librocrand.so -> librocrand.so.1
+                ├── librocrand.so.1 -> librocrand.so.1.1
+                └── librocrand.so.1.1          (81 MB, FAT BINARY)
+```
+
+**Fat binary detection**: `librocrand.so.1.1` contains `.hip_fatbin` section (PROGBITS, 81 MB).
+
+### 2. Output: Generic Artifact
+
+**Location**: `artifacts/rand_lib_generic/`
+
+**artifact_manifest.txt**:
+```
+math-libs/rocRAND/stage
+math-libs/hipRAND/stage
+```
+
+**Directory tree**:
+```
+rand_lib_generic/
+├── artifact_manifest.txt
+└── math-libs
+    ├── hipRAND
+    │   └── stage
+    │       └── lib
+    │           ├── libhiprand.so -> libhiprand.so.1
+    │           ├── libhiprand.so.1 -> libhiprand.so.1.1
+    │           └── libhiprand.so.1.1          (18 KB, unchanged)
+    └── rocRAND
+        └── stage
+            ├── .kpack
+            │   └── rand_lib.kpm               (146 bytes, manifest)
+            └── lib
+                ├── librocrand.so -> librocrand.so.1
+                ├── librocrand.so.1 -> librocrand.so.1.1
+                └── librocrand.so.1.1          (52 MB, STRIPPED)
+```
+
+**Device code stripped**: `librocrand.so.1.1` reduced from 81 MB to 52 MB.
+- `.hip_fatbin` section changed from `PROGBITS` to `NOBITS` (zeroed out)
+- `.rocm_kpack_ref` marker injected pointing to `.kpack/rand_lib.kpm`
+
+### 3. Output: Arch-Specific Artifact
+
+**Location**: `artifacts/rand_lib_gfx1201/`
+
+**artifact_manifest.txt**:
+```
+math-libs/rocRAND/stage
+```
+
+**Directory tree**:
+```
+rand_lib_gfx1201/
+├── artifact_manifest.txt
+└── math-libs
+    └── rocRAND
+        └── stage
+            └── .kpack
+                └── rand_lib_gfx1201.kpack     (1.8 MB, device kernels)
+```
+
+**Key insight**: The arch-specific artifact uses the **same prefix** (`math-libs/rocRAND/stage`) as the generic artifact. This is critical for overlay to work.
+
+### 4. Overlay Simulation (Bootstrap)
+
+When both artifacts are extracted to the same location (simulating bootstrap):
+
+```bash
+cp -a artifacts/rand_lib_generic/* /overlay/
+cp -a artifacts/rand_lib_gfx1201/* /overlay/
+```
+
+**Result**:
+```
+/overlay/
+├── artifact_manifest.txt                      (from arch, overwrites generic)
+└── math-libs
+    ├── hipRAND
+    │   └── stage
+    │       └── lib
+    │           ├── libhiprand.so -> libhiprand.so.1
+    │           ├── libhiprand.so.1 -> libhiprand.so.1.1
+    │           └── libhiprand.so.1.1
+    └── rocRAND
+        └── stage
+            ├── .kpack
+            │   ├── rand_lib.kpm               ← from generic
+            │   └── rand_lib_gfx1201.kpack     ← from arch-specific (MERGED!)
+            └── lib
+                ├── librocrand.so -> librocrand.so.1
+                ├── librocrand.so.1 -> librocrand.so.1.1
+                └── librocrand.so.1.1          (stripped, from generic)
+```
+
+**The `.kpack/` directory now contains both**:
+- `rand_lib.kpm` - manifest listing available architectures
+- `rand_lib_gfx1201.kpack` - actual device kernels for gfx1201
+
+This merged structure is what the kpack runtime expects.
+
+### 5. rocm-kpack Fixes Required
+
+The original `artifact_splitter.py` had bugs that prevented correct overlay:
+
+1. **Synthetic prefix bug**: Created kpack files under `kpack/stage/` instead of preserving original prefix
+   - Before: `rand_lib_gfx1201/kpack/stage/.kpack/rand_lib_gfx1201.kpack`
+   - After: `rand_lib_gfx1201/math-libs/rocRAND/stage/.kpack/rand_lib_gfx1201.kpack`
+
+2. **Manifest overwrite bug**: Each prefix iteration overwrote the manifest instead of accumulating
+   - Before: Only last prefix in manifest
+   - After: All processed prefixes in manifest
+
+3. **Symlink bug**: Symlinks were not copied to generic artifact
+   - Before: Only `.so.1.1` files copied
+   - After: All symlinks preserved (`.so` → `.so.1` → `.so.1.1`)
