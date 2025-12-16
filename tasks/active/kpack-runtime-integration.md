@@ -6,7 +6,7 @@ repositories:
 
 # Kpack Runtime Integration
 
-**Status:** In progress - Design phase
+**Status:** In progress - Loader API complete, pending repo move and CLR integration
 
 ## Overview
 
@@ -542,37 +542,132 @@ if (GetModuleHandleExA(
 
 ---
 
+## Test Hardening Plan
+
+### Current Coverage (2025-12-15)
+
+| File | Line Coverage | Notes |
+|------|--------------|-------|
+| toc_parser.cpp | 91.86% | Excellent |
+| loader.cpp | 87.21% | Good, some error paths untested |
+| compression.cpp | 77.42% | Missing error path tests |
+| archive.cpp | 75.00% | I/O error handling untested |
+| kpack.cpp | 75.00% | **`kpack_get_binary()` is 0% tested** |
+| path_resolution.cpp | 70.31% | Parsing edge cases untested |
+
+### Priority 1: Critical Gaps
+
+#### 1.1 Untested API Functions
+- `kpack_get_binary()` - 0% coverage, completely untested
+
+#### 1.2 Thread Safety Tests
+API claims thread safety but has zero concurrent tests:
+- `kpack_get_kernel()` - "Thread-safe when called concurrently on SAME archive"
+- `kpack_load_code_object()` - "Thread-safe with same cache from multiple threads"
+
+Tests needed:
+- [ ] ConcurrentGetKernel - Multiple threads calling kpack_get_kernel()
+- [ ] ConcurrentLoadCodeObject - Multiple threads loading code objects
+- [ ] ConcurrentArchiveCaching - Race to cache same archive
+
+#### 1.3 Invalid Archive Format Tests
+- [ ] InvalidMagic - Wrong magic bytes ("XXXX" instead of "KPAK")
+- [ ] UnsupportedVersion - Valid magic but version=999
+- [ ] TruncatedHeader - File with only partial header
+- [ ] TruncatedTOC - Valid header but file shorter than TOC offset
+- [ ] EmptyFile - 0-byte file
+
+#### 1.4 Msgpack Parsing Edge Cases
+- [ ] HIPKMetadataMissingKernelName - Missing required field
+- [ ] HIPKMetadataMissingSearchPaths - Missing required field
+- [ ] HIPKMetadataEmptySearchPaths - Empty array
+- [ ] HIPKMetadataWrongTypes - Wrong types for fields
+
+### Priority 2: Important Gaps
+
+#### 2.1 Boundary Conditions
+- [ ] GetArchitectureBoundary - Index at N-1 (valid) and N (invalid)
+- [ ] GetBinaryBoundary - Same for binaries
+- [ ] EmptyArchive - Archive with zero kernels
+- [ ] ManyArchitectures - 20+ architectures in priority list
+
+#### 2.2 Environment Variable Edge Cases
+- [ ] EnvPathWithEmptyComponents - "path1::path2"
+- [ ] EnvPathWithTrailingColon - "path1:path2:"
+- [ ] DisableEnvWithZero - ROCM_KPACK_DISABLE="0"
+- [ ] PathOverrideSupersededPrefix - Both PATH and PATH_PREFIX set
+
+#### 2.3 Path Discovery Edge Cases
+- [ ] DiscoverBinaryPath_AnonymousMmap - Address in mmap'd region
+- [ ] DiscoverBinaryPath_PathWithSpaces - "/path with spaces/lib.so"
+
+### Implementation Status
+
+- [x] ASAN build passes (67/67 tests, no memory errors)
+- [x] Thread safety tests (3 tests: concurrent load, caching, get_kernel)
+- [x] Invalid format tests (5 tests: empty, wrong magic, bad version, truncated, bad offset)
+- [x] Msgpack edge case tests (6 tests: missing/wrong type fields)
+- [x] Boundary condition tests (kpack_get_binary/architecture index boundary)
+- [x] Environment variable edge case tests (5 tests: empty components, trailing colon, disable with 0/empty, prefix with override)
+
+---
+
 ## Code Changes
 
-### Files Modified
-(None yet - design phase)
+### Commit
+`ae4f1c2` Add kpack loader API with comprehensive test coverage
+
+### Files Modified (14 files, +2461/-35)
+- `runtime/src/loader.cpp` - NEW: Loader implementation (474 lines)
+- `runtime/src/path_resolution.cpp` - NEW: /proc/self/maps parsing (193 lines)
+- `runtime/tests/test_loader_api.cpp` - NEW: Comprehensive loader tests (1158 lines)
+- `runtime/include/rocm_kpack/kpack.h` - Added loader API declarations
+- `runtime/include/rocm_kpack/kpack_types.h` - Added new error codes
+- `runtime/src/kpack_internal.h` - Added kpack_cache struct
+- `runtime/src/toc_parser.cpp` - Added bounds check for toc_offset
+- `runtime/src/archive.cpp` - Minor refactoring
+- `runtime/src/compression.cpp` - Minor refactoring
+- `runtime/src/kpack.cpp` - Minor refactoring
+- `runtime/tests/test_archive_integration.cpp` - Added GetBinaryNames, thread safety tests
+- `runtime/tests/test_kpack_api.cpp` - Added invalid format tests, boundary tests
+- `runtime/tests/CMakeLists.txt` - Added test_loader_api.cpp
+- `runtime/CMakeLists.txt` - Added new source files
 
 ### Testing Done
-(None yet - design phase)
+- All 67 tests pass with ASAN enabled
+- Coverage analysis completed
+- Thread safety verified with 8 threads × 50 iterations
 
 ---
 
 ## Blockers & Issues
 
 ### Active Blockers
-None currently - design phase.
+None - loader API complete, ready for repo move and CLR integration.
 
 ### Resolved Issues
-None yet.
+- Fixed C API exception propagation (toc_parser.cpp bounds check)
+- Fixed TempFile race condition (mkstemp on POSIX, GetTempPath2W on Windows)
 
 ---
 
 ## Next Steps
 
+### Completed
 1. [x] Investigate binary path discovery mechanism in CLR
 2. [x] Research dladdr vs dl_iterate_phdr vs /proc/self/maps
 3. [x] Document high-level architecture (complexity in kpack, not CLR)
-4. [ ] **REVIEW**: Finalize design decisions with stakeholder input
-5. [ ] Implement high-level API in rocm-kpack runtime library
-6. [ ] Add unit tests for path resolution and msgpack parsing
-7. [ ] Minimal CLR integration (HIPK detection + kpack_load_code_object call)
-8. [ ] Build with RAND enabled and test end-to-end
-9. [ ] Windows support (documented approach, implement when needed)
+4. [x] Implement high-level API in rocm-kpack runtime library
+5. [x] Add unit tests for path resolution and msgpack parsing
+6. [x] Thread safety tests
+7. [x] Invalid archive format tests
+8. [x] HIPK metadata edge case tests
+
+### Next (manual steps)
+9. [ ] **Move rocm-kpack into rocm-systems** - Integrate as submodule or merge
+10. [ ] **CLR integration** - Add HIPK detection + kpack_load_code_object call in hip_fatbin.cpp
+11. [ ] Build with RAND enabled and test end-to-end
+12. [ ] Windows support (documented approach, implement when needed)
 
 ---
 
