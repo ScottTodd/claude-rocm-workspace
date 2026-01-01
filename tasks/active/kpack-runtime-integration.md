@@ -6,7 +6,7 @@ repositories:
 
 # Kpack Runtime Integration
 
-**Status:** In progress - Loader API complete, pending repo move and CLR integration
+**Status:** In progress - Multi-TU POC complete, ELF surgery refinements needed
 
 ## Overview
 
@@ -19,9 +19,91 @@ I can also help you in flipping components to debug builds, etc. Just ask as thi
 ## Goals
 
 - [x] Choose integration strategy (comgr, clr, etc).
-- [ ] Code initial implementation
-- [ ] Build the project with only RAND enabled (simplest of all ROCm libraries) and test.
-- [ ] Stage all necessary PRs in component repositories.
+- [x] Code initial implementation (kpack loader API complete in rocm-kpack)
+- [x] Build the project with only RAND enabled (simplest of all ROCm libraries) and test.
+  - Fixed two ELF surgery bugs in elf_modify_load.py:
+    1. NOBITS segment offset collision (duplicate file offsets in LOAD segments)
+    2. Off-by-one in min_content_offset check (program header overwrote .dynsym)
+  - Library loads correctly, 28+ tests pass before needing device code
+  - Device code tests fail as expected - CLR integration not yet implemented
+- [x] CLR integration (HIPK detection + kpack loading)
+  - HIPK detection in hip_code_object.cpp reads wrapper magic
+  - Kpack loading via kpack_load_code_object() API
+  - All 44 rocRAND tests pass with split artifacts
+- [x] Multi-TU (RDC) bundle support - POC complete
+  - rocRAND has 15 concatenated bundles in .hip_fatbin (one per TU)
+  - Each wrapper now stores bundle index in reserved1 field
+  - TOC uses indexed keys: `lib.so#0`, `lib.so#1`, etc.
+  - Library size: 109MB (split) vs 201MB (unsplit)
+- [ ] ELF surgery refinements (GDB warnings, stripping issues)
+- [ ] Stage all necessary PRs in component repositories
+
+## Current State Summary (2025-12-31)
+
+**POC Complete**: Multi-TU kpack split works end-to-end with rocRAND.
+
+**Branches**: Current state pushed to `users/stella/multi_arch_spike20251231` in:
+- TheRock
+- rocm-systems
+- rocm-kpack
+
+| Metric | Unsplit | Split | Notes |
+|--------|---------|-------|-------|
+| librocrand.so size | 201 MB | 109 MB | 46% reduction |
+| Individual code object | 48 MB | 2.5 MB | Correct single-bundle size |
+| Tests passing | 44/44 | 44/44 | All tests pass |
+
+**Key architecture**:
+- 15 `__hip_fatbin_wrapper` symbols, each with `reserved1 = bundle_index`
+- TOC keys are indexed: `math-libs/.../librocrand.so.1.1#0` through `#14`
+- Loader extracts `#N` from `binary_path` and appends to `kernel_name` for lookup
+
+**Files modified across repositories**:
+
+| Repository | File | Purpose |
+|------------|------|---------|
+| rocm-kpack | `python/rocm_kpack/elf_offload_kpacker.py` | Multi-TU detection, wrapper→bundle mapping, write bundle index to reserved1 |
+| rocm-kpack | `python/rocm_kpack/artifact_splitter.py` | Always use indexed TOC keys (`#0`, `#1`, ...) |
+| rocm-kpack | `runtime/src/loader.cpp` | Extract `#N` from binary_path, append to kernel_name for lookup |
+| clr | `hipamd/src/hip_code_object.cpp` | Read bundle_index from wrapper->dummy1 |
+| clr | `hipamd/src/hip_fatbin.hpp` | Add bundle_index constructor param and member |
+| clr | `hipamd/src/hip_fatbin.cpp` | Store bundle_index, pass indexed path to kpack_load_code_object |
+
+**Known issues** (ELF surgery refinements, not blocking):
+1. GDB warnings about `.dynstr` section strings
+2. `strip` corrupts the binary completely
+3. Both indicate we're writing something slightly wrong during ELF modification
+
+**Planned: ELF/COFF Surgery Rewrite**
+
+Current `elf_modify_load.py` and `elf_offload_kpacker.py` have grown organically with many fixes. Before Windows port, do a clean rewrite:
+
+1. **ElfSurgery class** - Dedicated abstraction that:
+   - Maintains ELF invariants automatically (segment alignment, header space, section ordering)
+   - Provides high-level operations: `add_mapped_section()`, `zero_region()`, `update_symbol()`
+   - Handles program header table relocation cleanly
+   - Tracks modifications and applies them atomically
+
+2. **ElfVerifier** - Post-surgery validation that checks:
+   - No overlapping segments with same file offset (caused our NOBITS bug)
+   - Section/segment alignment constraints satisfied
+   - String tables are valid (null-terminated, within bounds)
+   - Symbol table entries point to valid sections
+   - Relocations reference valid symbols
+   - `readelf -a` and `objdump -x` produce no warnings
+   - `strip` doesn't corrupt the binary
+   - Debug data is sound: `gdb -batch -ex "info files" <binary>` produces no warnings
+   - DWARF validation: `llvm-dwarfdump --verify` or `dwarfdump -V` if debug sections present
+
+3. **COFFSurgery class** - Same pattern for Windows PE/COFF
+   - Share interface where possible
+   - Different invariants (PE sections, import tables, etc.)
+
+4. **Test with real binaries** - Use rocRAND as torture test (15 wrappers, 200MB+)
+
+LIEF is fine for parsing, but we shouldn't rely on it for modification - it tries to be everything and handles none of our edge cases well. Write our own byte-level surgery with proper abstractions.
+
+---
 
 ## Context
 
@@ -645,6 +727,24 @@ Tests needed:
 ### Active Blockers
 None - loader API complete, ready for repo move and CLR integration.
 
+### Known Limitations / Workarounds
+
+**Split artifact flattening not wired up for local dev builds**
+
+When `THEROCK_KPACK_SPLIT_ARTIFACTS=ON`, the build produces split artifacts under `build/artifacts/` with both generic (`*_generic/`) and arch-specific (`*_gfx*/`) directories. However, the CMake flatten step runs on the unsplit artifacts BEFORE splitting occurs, so the split artifacts (containing `.kpm` and `.kpack` files) don't make it to `build/dist/rocm/`.
+
+**Workaround**: Manually flatten split artifacts after build:
+```bash
+# Flatten all split artifacts (generic + arch-specific) to dist
+for i in build/artifacts/*_generic build/artifacts/*_gfx*; do
+  [ -d "$i" ] && python ./build_tools/fileset_tool.py artifact-flatten -o build/dist/rocm "$i"
+done
+```
+
+**Root cause**: The original design assumed split artifacts would be handled by CI shards uploading/downloading, not local multi-arch builds. The flatten command in `therock_artifacts.cmake` uses `_component_dirs` which points to unsplit artifacts, and the split happens in a separate custom command afterward.
+
+**Future fix**: Either have split_artifacts.py do the flatten (it knows what dirs it creates), or add a post-split flatten step that globs for all `${artifact_prefix}_*` directories.
+
 ### Resolved Issues
 - Fixed C API exception propagation (toc_parser.cpp bounds check)
 - Fixed TempFile race condition (mkstemp on POSIX, GetTempPath2W on Windows)
@@ -663,11 +763,443 @@ None - loader API complete, ready for repo move and CLR integration.
 7. [x] Invalid archive format tests
 8. [x] HIPK metadata edge case tests
 
-### Next (manual steps)
-9. [ ] **Move rocm-kpack into rocm-systems** - Integrate as submodule or merge
-10. [ ] **CLR integration** - Add HIPK detection + kpack_load_code_object call in hip_fatbin.cpp
-11. [ ] Build with RAND enabled and test end-to-end
-12. [ ] Windows support (documented approach, implement when needed)
+### Completed
+9. [x] **CLR integration** - HIPK detection + kpack_load_code_object call
+10. [x] **Multi-TU bundle support** - Bundle index in wrapper reserved1, indexed TOC keys
+11. [x] **End-to-end test with RAND** - All 44 rocRAND tests pass with split binary
+
+### Next
+12. [ ] **ELF surgery refinements**:
+    - Fix `.dynstr` section warnings (GDB complains about strings)
+    - Fix strip corruption (stripped binary becomes completely invalid)
+    - Investigate if we're overwriting wrong sections during ELF modification
+13. [ ] **Move rocm-kpack into rocm-systems** - Integrate as submodule or merge
+14. [ ] **Stage PRs** - Clean up commits, organize for review
+15. [ ] Windows support (documented approach, implement when needed)
+
+---
+
+## Debugging Log
+
+### 2024-12-31 - Initial Runtime Test Segfault (FIXED)
+
+**Issue**: First test with kpack-enabled CLR resulted in segfault during library initialization.
+
+**Debug build configuration**:
+```bash
+cmake . -Dhip-clr_BUILD_TYPE=RelWithDebInfo \
+        -DrocRAND_BUILD_TYPE=RelWithDebInfo \
+        -Drocm-kpack_BUILD_TYPE=RelWithDebInfo
+```
+
+**Symptoms**:
+- GDB showed corrupt `.dynstr` section warnings
+- Crash in `_init` during library loading (static initializer)
+- Crash address was in zeroed `.hip_fatbin` region
+
+**Investigation**:
+1. Compared program headers between unsplit (9 segments) and split (13 segments) libraries
+2. Found that unsplit library worked fine (44 tests passed)
+3. Identified the bug: Two LOAD segments in split binary shared the same file offset (0x1db1000):
+   - NOBITS segment for zeroed .hip_fatbin: `offset=0x1db1000, FileSiz=0`
+   - Suffix segment (unaligned end): `offset=0x1db1000, FileSiz=0x9e0`
+
+**Root Cause**: In `elf_modify_load.py`'s `conservative_zero_page()` function, when splitting the PT_LOAD segment, both the NOBITS segment ("Piece 3") and the suffix segment ("Piece 4") were given the same `aligned_offset` value. The dynamic linker got confused by two segments sharing the same file offset.
+
+**Fix Applied**: Modified `conservative_zero_page()` to extend the NOBITS region to cover the full section including any unaligned suffix, rather than creating a separate suffix segment. This is safe because the suffix is part of the section being zeroed anyway.
+
+Code change in `/develop/therock/base/rocm-kpack/python/rocm_kpack/elf_modify_load.py`:
+```python
+# Before: Created separate NOBITS and suffix segments with same offset (BUG)
+# After: Extend NOBITS to cover suffix
+zero_page_vsize = section_end_vaddr - aligned_vaddr  # Was: aligned_size
+```
+
+**Commit**: 126e12b - Fix NOBITS segment offset collision in conservative_zero_page
+
+### 2024-12-31 - Symbol Table Corruption (FIXED)
+
+**Issue**: After first fix, still getting segfault with corrupt symbol table warnings.
+
+**Symptoms**:
+- readelf showed `Section '.dynstr' is corrupt` warning
+- .dynsym entries showed garbage values
+- Crash still in `_init` but different address
+
+**Investigation**:
+1. Disabled zero-page optimization to isolate bug - still crashed
+2. Tested Phase 1 (`map_section_to_new_load`) separately - symbols CORRUPTED
+3. Tested marker addition (`add_kpack_ref_marker`) separately - symbols OK
+4. Compared .dynsym offset (0x238) with program header end: `0x40 + 9*56 = 0x238`
+5. Found 10th program header was being written at exactly 0x238
+
+**Root Cause**: Off-by-one error in `map_section_to_new_load()` min_content_offset check.
+```python
+# Bug: used > instead of >=
+if shdr.sh_offset > ehdr.e_phoff + old_phdr_size:  # 0x238 > 0x238 = False
+    min_content_offset = min(min_content_offset, shdr.sh_offset)
+```
+When .dynsym starts at exactly `e_phoff + e_phnum * 56`, the `>` check returns false, so .dynsym isn't counted as content. Adding the 10th program header overwrites its first 56 bytes.
+
+**Fix Applied**: Changed `>` to `>=` in both section and program header offset checks in `elf_modify_load.py:914,920`.
+
+**Commit**: 27c1538 - Fix off-by-one error in program header relocation
+
+**Result**: Library loads correctly. 28+ tests pass. Device code tests fail as expected (CLR integration not yet implemented).
+
+### 2024-12-31 - Kpack Runtime Integration Testing
+
+**Context**: Testing end-to-end flow with CLR integration complete. HIPK detection and kpack loading work.
+
+**Hardlink Corruption Bug (FIXED)**:
+- **Issue**: `artifact_splitter.py` modified binaries in-place, but artifact dirs hardlink to stage, corrupting originals
+- **Fix**: Write to temp file, then unlink+rename to break hardlinks (artifact_splitter.py:574-587)
+- **Verification**: After fix, stage=HIPF, unsplit=HIPF, split=HIPK ✓
+
+**Current Investigation - Symbol Not Found**:
+
+Tests fail with split binary but pass with unsplit (210MB original from stage):
+```
+Cannot find Symbol: _ZN12rocrand_impl...init_engines_mrg...target_archE1201
+```
+
+kpack loading works correctly:
+```
+kpack: found kernel: 2491232 bytes
+kpack: loaded code object: 2491232 bytes
+```
+
+But the loaded code object doesn't contain the required symbol.
+
+**Key observations**:
+1. Original stage binary (210MB, HIPF magic) → 44/44 tests pass
+2. Split binary (113MB, HIPK magic) → 30/44 pass, 4 fail with symbol not found
+3. kpack archives contain code objects but missing some symbols
+4. `.hip_fatbin` section at offset 0x01db1000 contains ALL ZEROS in stage binary
+5. `clang-offload-bundler --list` returns EMPTY for stage binary
+
+**Hypothesis**: The fat binary content may be stored in a different location/format than expected. The extraction during split may not be finding all the device code, or rocRAND uses a different bundling mechanism.
+
+**Files changed in this session**:
+- `artifact_splitter.py`: Hardlink fix + kernel_name fix
+- `loader.cpp`: Target triple prefix stripping (`amdgcn-amd-amdhsa--gfx1100` → `gfx1100`)
+
+**Next steps** (completed in next session):
+1. ~~Investigate where rocRAND's device code actually lives (not in .hip_fatbin?)~~ - It IS in .hip_fatbin, but as 15 concatenated bundles
+2. ~~Check if rocRAND uses RDC (relocatable device code) which has different bundling~~ - Yes, confirmed RDC with 15 bundles
+3. ~~Verify the packing phase extracts all device code correctly~~ - Fixed, now extracts all 46MB per arch
+
+### 2024-12-31 - RDC Wrapper→Bundle Mapping Discovery
+
+**Critical Architecture Finding**: The 15 bundles are NOT arbitrarily concatenated. Each has a DEDICATED wrapper that points to it.
+
+**Evidence**:
+```
+# 15 __hip_fatbin_wrapper symbols, each at offset 0x18 apart
+nm librocrand.so | grep __hip_fatbin_wrapper
+0881c460 d __hip_fatbin_wrapper
+0881c478 d __hip_fatbin_wrapper
+...
+0881c5b0 d __hip_fatbin_wrapper
+
+# 15 __hip_module_ctor functions, each referencing a DIFFERENT wrapper
+ctor  0 at 0x7ae34a0 → wrapper at 0x881c460
+ctor  1 at 0x7b38850 → wrapper at 0x881c478
+...
+ctor 14 at 0x874c9d0 → wrapper at 0x881c5b0
+
+# Each wrapper's binary_ptr is RELOCATED at load time to different bundle offsets
+Wrapper  0: reloc target 0x1db1000 → fatbin+0x0        (Bundle 0)
+Wrapper  1: reloc target 0x2274000 → fatbin+0x4c3000   (Bundle 1)
+Wrapper  2: reloc target 0x274b000 → fatbin+0x99a000   (Bundle 2)
+...
+Wrapper 14: reloc target 0x70bd000 → fatbin+0x530c000  (Bundle 14)
+```
+
+**How it works at runtime (normal non-split path)**:
+1. 15 `__hip_module_ctor` functions run during library load (one per RDC compilation unit)
+2. Each ctor calls `__hipRegisterFatBinary(&its_specific_wrapper)`
+3. Each wrapper's `binary_ptr` points to ONE specific bundle in `.hip_fatbin`
+4. CLR/COMGR parses that ONE bundle and extracts ONE code object per arch
+5. Total: 15 registrations × ~400 kernels each = 5324 kernels registered
+
+**Why this matters for kpack split**:
+- Current split creates SHARED `.rocm_kpack_ref` metadata for ALL 15 wrappers
+- When `__hipRegisterFatBinary()` is called for wrapper N, it can't distinguish which bundle N is
+- We call `kpack_load_code_object()` with same `kernel_name` 15 times, getting ALL 15 concatenated each time
+- This is wrong - wrapper N should get exactly bundle N's code object
+
+**Architectural options**:
+1. **Per-wrapper metadata**: ELF surgery creates 15 separate `.rocm_kpack_ref` sections, each with indexed kernel_name (`lib.so#0`, `lib.so#1`, etc.). Each wrapper's `binary` pointer is updated to its specific section.
+
+2. **Wrapper address lookup**: Single metadata contains table mapping wrapper virtual addresses → bundle indices. At runtime, `kpack_load_code_object()` receives wrapper address and looks up correct bundle.
+
+3. **Pre-link at pack time**: Combine all 15 code objects into single relocatable ELF at pack time using device linker. Returns one mega-ELF containing all 5324 kernels. This changes program structure but may be cleanest.
+
+**Files involved**:
+- `elf_modify_load.py` - Would need to track wrapper→bundle correspondence during ELF surgery
+- `artifact_splitter.py` - Would need to generate per-wrapper metadata (option 1) or address table (option 2)
+- `kpack.cpp` / `loader.cpp` - Would need to accept wrapper context (address or index)
+
+---
+
+### 2024-12-31 - RDC Discovery and Fix Attempt
+
+**Key Discovery**: rocRAND uses RDC (Relocatable Device Code), resulting in **15 concatenated** `__CLANG_OFFLOAD_BUNDLE__` blocks in the `.hip_fatbin` section.
+
+**Evidence**:
+```
+$ grep -boa '__CLANG_OFFLOAD_BUNDLE__' librocrand.so.1.1 | wc -l
+15
+```
+
+Each bundle contains 3 entries (host + gfx1100 + gfx1201). Total device code:
+- gfx1100: 48,480,720 bytes (46.2 MB)
+- gfx1201: 48,228,696 bytes (46.0 MB)
+
+We were only extracting 2.4 MB (first bundle only).
+
+**Bug**: `clang-offload-bundler --list` only returns targets from the FIRST bundle. This is a known upstream bug.
+
+**Fixes applied**:
+1. `ccob_parser.py`: Added `find_bundle_offsets()`, `parse_concatenated_bundles()`, `extract_all_code_objects()`
+2. `binutils.py`: Added detection and extraction for concatenated bundles
+3. `artifact_splitter.py`: Track code object index per (binary, arch), use indexed keys (`lib.so#0`, etc.)
+4. `kpack.cpp`: Added `find_kernel_entries()` helper that searches for indexed keys when exact match fails
+
+**Test results after fix**:
+- Kpack archives: 47MB + 46MB (was 2.4MB + 2.4MB) ✓
+- TOC contains 15 indexed keys per arch ✓
+- Loader finds and returns 48MB code object ✓
+- **CLR segfaults** ✗
+
+**Segfault root cause**: CLR calls `kpack_load_code_object()` 15 times (once per HIPK wrapper), but all 15 wrappers point to the SAME metadata. Each call looks up the same `kernel_name` and we return ALL 15 concatenated. CLR tries to load this as a single ELF → crash.
+
+**Next steps** (for future session):
+1. Design proper RDC support - options documented in "Follow-up Items" section
+2. Consider simpler approach: Option 3 (pre-link at pack time) may be easiest
+
+### 2025-12-31 - Multi-TU Bundle Support Implementation (POC Complete)
+
+**Goal**: Make kpack split work with RDC binaries like rocRAND that have 15 wrappers/bundles.
+
+**Architecture**:
+```
+Before (single-TU):
+  1 wrapper → 1 bundle in .hip_fatbin → 1 code object per arch
+  CLR: lookUpCodeObject() parses bundle → returns 1 code object
+
+After (multi-TU with kpack):
+  15 wrappers → shared .rocm_kpack_ref metadata
+  Each wrapper: reserved1 = bundle_index (0-14)
+  CLR: kpack_load_code_object(..., "lib.so#N") → returns that bundle's code object
+```
+
+**Step-by-step implementation**:
+
+#### 1. ELF Surgery - Multi-TU Detection and Bundle Index Writing
+
+**File: `/develop/therock/base/rocm-kpack/python/rocm_kpack/elf_offload_kpacker.py`**
+
+Added functions to detect multi-TU binaries and write bundle indices:
+
+```python
+def _find_bundle_offsets(data: bytes, fatbin_offset: int) -> list[int]:
+    """Scan .hip_fatbin for all __CLANG_OFFLOAD_BUNDLE__ magic headers.
+    Returns list of section-relative offsets where bundles start."""
+    # Searches for 24-byte magic string, returns offsets
+
+def _read_wrapper_relocation_addends(
+    elf: lief.ELF.Binary, wrappers: list[lief.ELF.Symbol]
+) -> dict[int, int]:
+    """Read relocation addends for each wrapper's binary_ptr field.
+    Returns {wrapper_vaddr: relocation_addend}"""
+    # Each wrapper at offset +8 has R_X86_64_RELATIVE pointing to its bundle
+
+def _map_wrapper_bundle_indices(
+    reloc_addends: dict[int, int], bundle_offsets: list[int], fatbin_vaddr: int
+) -> dict[int, int]:
+    """Map wrapper vaddrs to bundle indices based on relocation targets.
+    Returns {wrapper_vaddr: bundle_index}"""
+    # reloc_addend == fatbin_vaddr + bundle_offset[i] → index = i
+
+def _rewrite_hipfatbin_magic(..., wrapper_bundle_indices: dict[int, int] | None = None):
+    # Now also writes bundle index to reserved1 (offset +16):
+    bundle_index = wrapper_bundle_indices.get(wrapper_vaddr, 0)
+    struct.pack_into("<Q", data, wrapper_offset + 16, bundle_index)
+```
+
+#### 2. Artifact Splitter - Always Use Indexed TOC Keys
+
+**File: `/develop/therock/base/rocm-kpack/python/rocm_kpack/artifact_splitter.py`**
+
+Changed to always emit indexed keys even for single-TU binaries (simpler, consistent):
+
+```python
+# Track code object index per (binary, arch)
+code_object_counts: dict[str, int] = {}  # {arch: count}
+
+for arch in sorted(code_objects_by_arch.keys()):
+    base_relpath = str(binary_path.relative_to(prefix_path))
+    index = code_object_counts.get(arch, 0)
+    code_object_counts[arch] = index + 1
+    source_relpath = f"{base_relpath}#{index}"  # e.g., "lib/librocrand.so.1.1#0"
+```
+
+#### 3. CLR - Read Bundle Index from Wrapper
+
+**File: `/develop/therock/rocm-systems/projects/clr/hipamd/src/hip_code_object.cpp`**
+
+In `addKpackBinary()`, read bundle index from wrapper->dummy1 (which is reserved1):
+
+```cpp
+// Get bundle index from wrapper->dummy1 (reserved1 field)
+uint64_t bundle_index = reinterpret_cast<uintptr_t>(wrapper->dummy1);
+
+FatBinaryInfo* fatBinaryInfo =
+    new FatBinaryInfo(std::string(binary_path), wrapper->binary, bundle_index);
+```
+
+#### 4. CLR - Pass Bundle Index Through to Kpack
+
+**File: `/develop/therock/rocm-systems/projects/clr/hipamd/src/hip_fatbin.hpp`**
+
+```cpp
+#if ROCM_KPACK_ENABLED
+  FatBinaryInfo(const std::string& binary_path, const void* hipk_metadata,
+                uint64_t bundle_index = 0);
+#endif
+// ...
+#if ROCM_KPACK_ENABLED
+  const void* hipk_metadata_ = nullptr;
+  bool is_kpack_ = false;
+  uint64_t bundle_index_ = 0;  // Bundle index for multi-TU binaries
+#endif
+```
+
+**File: `/develop/therock/rocm-systems/projects/clr/hipamd/src/hip_fatbin.cpp`**
+
+```cpp
+FatBinaryInfo::FatBinaryInfo(const std::string& binary_path, const void* hipk_metadata,
+                             uint64_t bundle_index)
+    : fname_(binary_path), /* ... */ bundle_index_(bundle_index) { }
+
+// In ExtractKpackBinary():
+std::string indexed_name = fname_ + "#" + std::to_string(bundle_index_);
+kpack_error_t err =
+    kpack_load_code_object(PlatformState::kpackGetCache(), hipk_metadata_, indexed_name.c_str(),
+                           arch_ptrs.data(), arch_ptrs.size(), &code_object, &code_object_size);
+```
+
+#### 5. Kpack Loader - Use Indexed Lookup Key
+
+**File: `/develop/therock/base/rocm-kpack/runtime/src/loader.cpp`**
+
+The key insight: CLR passes `binary_path` like `/path/lib.so#1`, but metadata has `kernel_name` like `math-libs/.../librocrand.so.1.1`. We need to extract `#N` from path and append to kernel_name:
+
+```cpp
+// For multi-TU binaries, the caller passes an indexed path (e.g., "/path/lib.so#1").
+// Extract the index and append it to the embedded kernel_name for TOC lookup.
+std::string lookup_key = kernel_name;
+const char* hash_pos = std::strchr(binary_path, '#');
+if (hash_pos != nullptr) {
+  lookup_key += hash_pos;  // Append "#N" suffix
+}
+KPACK_DEBUG(cache, "kernel lookup key: '%s'", lookup_key.c_str());
+```
+
+**Bug fixed**: Initially used `binary_path` directly as lookup key, but TOC keys use relative paths from metadata, not absolute runtime paths. The fix extracts just the `#N` suffix and appends to the embedded kernel_name.
+
+**Debugging session**:
+```
+# With bug (wrong lookup):
+kernel_name='math-libs/rocRAND/stage/lib/librocrand.so.1.1'  (from metadata)
+lookup_key='/develop/therock/build/dist/rocm/lib/librocrand.so.1.1#1'  (wrong!)
+# TOC has: 'math-libs/rocRAND/stage/lib/librocrand.so.1.1#0', '#1', etc.
+# Result: Not found, fallback returns 48MB concatenated blob, segfault
+
+# After fix:
+kernel_name='math-libs/rocRAND/stage/lib/librocrand.so.1.1'
+lookup_key='math-libs/rocRAND/stage/lib/librocrand.so.1.1#1'  (correct!)
+# Result: Returns 2.5MB code object for bundle #1
+```
+
+**Test results**:
+```bash
+# Flatten split artifacts
+python ./build_tools/fileset_tool.py artifact-flatten -o build/dist/rocm \
+  build/artifacts/rand_lib_generic build/artifacts/rand_lib_gfx1201
+
+# Verify sizes
+ls -la build/dist/rocm/lib/librocrand.so.1.1
+# 109MB (split) vs 201MB (unsplit)
+
+# Run tests
+LD_LIBRARY_PATH=build/dist/rocm/lib timeout 60 build/dist/rocm/bin/test_rocrand_basic
+# All 44 tests pass
+```
+
+**Known issues discovered** (for future refinement):
+1. **GDB warnings**: `Section '.dynstr' is corrupt` - strings not where GDB expects
+2. **Strip corruption**: `strip librocrand.so.1.1` produces completely corrupted binary
+3. These indicate ELF surgery needs refinement but don't affect runtime functionality
+
+---
+
+## Follow-up Items (WIP)
+
+Items discovered during integration that need follow-up before landing:
+
+### Critical - Must Fix
+
+1. **Hardlink corruption in artifact_splitter.py** ✅ FIXED
+   - **Issue**: Splitter modifies binary files in-place. But the artifact directory uses hardlinks from the stage directory, so modifying the split artifact also corrupts the original stage files.
+   - **Fix applied**: Write to temp_stripped file, then unlink+rename to break hardlinks
+   - **Location**: `/develop/therock/base/rocm-kpack/python/rocm_kpack/artifact_splitter.py:574-587`
+
+2. **kernel_name mismatch between metadata and TOC** ✅ FIXED
+   - **Issue**: Metadata embedded `kernel_name=artifact_prefix` (e.g., "rand_lib") but TOC used full relative path (e.g., "math-libs/rocRAND/stage/lib/librocrand.so.1.1")
+   - **Fix**: Changed artifact_splitter.py:565 to use the full relative path for kernel_name
+
+3. **Target triple prefix stripping** ✅ FIXED
+   - **Issue**: CLR passes full ISA name like `amdgcn-amd-amdhsa--gfx1100` but manifest/archive keys are just `gfx1100`
+   - **Fix**: Added `strip_target_prefix()` helper in loader.cpp to strip `amdgcn-amd-amdhsa--` prefix
+
+4. **RDC (Relocatable Device Code) / Multi-TU support** ✅ FIXED (POC)
+
+   **Discovery**: rocRAND uses RDC, resulting in 15 concatenated `__CLANG_OFFLOAD_BUNDLE__` blocks in `.hip_fatbin`. Each has a dedicated `__hip_fatbin_wrapper` with a R_X86_64_RELATIVE relocation pointing to its specific bundle offset.
+
+   **Solution implemented**:
+   - Store bundle index (0-14) in wrapper's `reserved1` field during ELF surgery
+   - At runtime, each wrapper reads its index and requests the correct code object
+   - TOC keys are indexed: `math-libs/rocRAND/stage/lib/librocrand.so.1.1#0` through `#14`
+   - Loader extracts `#N` suffix from binary_path and appends to kernel_name for TOC lookup
+
+   **Files changed (see detailed debugging log below for specifics)**:
+   - `rocm_kpack/elf_offload_kpacker.py` - Multi-TU detection, wrapper→bundle mapping, bundle index writing
+   - `rocm_kpack/artifact_splitter.py` - Always use indexed TOC keys
+   - `rocm_kpack/runtime/src/loader.cpp` - Extract index from path, append to lookup key
+   - `clr/hipamd/src/hip_fatbin.hpp` - Added bundle_index constructor param and member
+   - `clr/hipamd/src/hip_fatbin.cpp` - Pass bundle_index to kpack loader
+   - `clr/hipamd/src/hip_code_object.cpp` - Read bundle_index from wrapper->dummy1
+
+   **Test results**:
+   - All 44 rocRAND tests pass with split binary
+   - Library size: 109MB (split) vs 201MB (unsplit)
+   - Individual bundle size: ~2.5MB (correct) vs 48MB (all concatenated)
+
+   **Known remaining issues** (ELF surgery refinements, not blocking):
+   - GDB warnings about `.dynstr` strings not where expected
+   - Stripping the binary causes complete corruption
+   - These are mechanical fixes for a future session
+
+### Nice to Have
+
+4. **Add debug output for kernel_name lookup**
+   - Currently only shows arch matching debug. Would be helpful to also show what kernel_name is being looked up.
+
+5. **Test with multiple binaries in same artifact**
+   - rand_lib has both librocrand.so and libhiprand.so. Verify both work correctly.
 
 ---
 
