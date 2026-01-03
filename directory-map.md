@@ -17,7 +17,9 @@ These aliases are used by `/stage-review` and other commands to resolve short na
 | Alias | Path | Notes |
 |-------|------|-------|
 | therock | /develop/therock | Main ROCm build repo |
-| rocm-kpack | /develop/rocm-kpack | Kernel packaging tools |
+| rocm-kpack | /develop/therock/base/rocm-kpack | Kernel packaging tools (submodule)|
+| rocm-systems | /develop/therock/rocm-systems | ROCm Systems Superrepo (submodule)|
+| rocm-libraries | /develop/therock/rocm-libraries | ROCm Libraris Superrepo (submodule) |
 | jax | /develop/jax | JAX framework |
 | xla | /develop/xla | XLA compiler |
 | workspace | /home/stella/claude-rocm-workspace | This meta-workspace |

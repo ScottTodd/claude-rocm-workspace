@@ -6,7 +6,7 @@ repositories:
 
 # Kpack Runtime Integration
 
-**Status:** In progress - Multi-TU POC complete, ELF surgery refinements needed
+**Status:** In progress - ELF surgery rewrite complete, sent to CI
 
 ## Overview
 
@@ -35,12 +35,19 @@ I can also help you in flipping components to debug builds, etc. Just ask as thi
   - Each wrapper now stores bundle index in reserved1 field
   - TOC uses indexed keys: `lib.so#0`, `lib.so#1`, etc.
   - Library size: 109MB (split) vs 201MB (unsplit)
-- [ ] ELF surgery refinements (GDB warnings, stripping issues)
+- [x] ELF surgery refinements (GDB warnings, stripping issues) - Complete rewrite landed
 - [ ] Stage all necessary PRs in component repositories
 
-## Current State Summary (2025-12-31)
+## Current State Summary (2026-01-02)
 
-**POC Complete**: Multi-TU kpack split works end-to-end with rocRAND.
+**ELF Surgery Rewrite Complete**: New `rocm_kpack.elf` package replaces old organic code. Sent to CI.
+
+**Key changes in this session**:
+- Replaced `elf_modify_load.py` and `elf_offload_kpacker.py` with new `rocm_kpack.elf` package
+- Clean architecture: `ElfSurgery`, `ElfVerifier`, `ProgramHeaderManager` classes
+- Added `NotFatBinaryError` to properly reject non-fat binaries (was adding 9KB overhead)
+- All 211 tests pass, real binary verification successful
+- Commit: `18d2eef Migrate ELF surgery to new rocm_kpack.elf package`
 
 **Branches**: Current state pushed to `users/stella/multi_arch_spike20251231` in:
 - TheRock
@@ -768,14 +775,47 @@ done
 10. [x] **Multi-TU bundle support** - Bundle index in wrapper reserved1, indexed TOC keys
 11. [x] **End-to-end test with RAND** - All 44 rocRAND tests pass with split binary
 
+### Completed (2026-01-02)
+12. [x] **ELF surgery rewrite** - Complete refactor into maintainable architecture:
+
+    **Problem solved**: Old code (~2500 lines across `elf_modify_load.py` and `elf_offload_kpacker.py`) had:
+    - GDB warnings about `.dynstr` section strings
+    - `strip` corrupts the binary completely
+    - Duplicate struct definitions between modules
+    - Complex offset bookkeeping prone to off-by-one errors
+    - Non-fat binaries being modified (adding 9KB overhead)
+
+    **Solution implemented**: New `rocm_kpack.elf` package with clean abstractions:
+
+    | File | Purpose |
+    |------|---------|
+    | `elf/types.py` | Unified ELF struct definitions |
+    | `elf/surgery.py` | `ElfSurgery` class - high-level interface |
+    | `elf/verify.py` | `ElfVerifier` - structural validation |
+    | `elf/phdr_manager.py` | `ProgramHeaderManager` - PHDR table ops |
+    | `elf/zero_page.py` | Page-level optimization utilities |
+    | `elf/operations.py` | High-level ops (map_section_to_load, set_pointer) |
+    | `elf/kpack_transform.py` | Full kpack transformation pipeline |
+
+    **All phases complete**:
+    - [x] Phase 1: Core infrastructure (types, parsing, verification)
+    - [x] Phase 2: Basic transformation (map section, update pointers)
+    - [x] Phase 3: Full page-level optimization (PHDR management, zero-page)
+    - [x] Phase 4: Verification (readelf, strip, gdb, ldd checks)
+    - [x] Phase 5: Unit tests (211 tests, all pass)
+    - [x] Phase 6: Manual validation (librocrand.so, librccl.so, etc.)
+    - [x] Phase 7: NotFatBinaryError for non-fat binary rejection
+
+    **Results**:
+    - All 211 tests pass
+    - Fat binaries: librocrand (43% reduction), librccl (83%), librocsolver (58%)
+    - Non-fat binaries properly rejected (no modification)
+    - Commit: `18d2eef Migrate ELF surgery to new rocm_kpack.elf package`
+
 ### Next
-12. [ ] **ELF surgery refinements**:
-    - Fix `.dynstr` section warnings (GDB complains about strings)
-    - Fix strip corruption (stripped binary becomes completely invalid)
-    - Investigate if we're overwriting wrong sections during ELF modification
 13. [ ] **Move rocm-kpack into rocm-systems** - Integrate as submodule or merge
 14. [ ] **Stage PRs** - Clean up commits, organize for review
-15. [ ] Windows support (documented approach, implement when needed)
+15. [ ] Windows support (`rocm_kpack.coff` package, same pattern)
 
 ---
 

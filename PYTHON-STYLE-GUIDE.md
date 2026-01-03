@@ -73,11 +73,16 @@ def create_kpack_files(...) -> Dict[str, KpackInfo]:
 
 **Always use specific type hints. Never use `Any` except in rare generic code.**
 
+**Use modern type hint syntax (Python 3.10+). We're on Python 3.13+.**
+
 ❌ **Bad:**
 ```python
-from typing import Any
+from typing import Any, List, Dict, Optional
 
 def process(handlers: List[Any]) -> Dict[str, Any]:
+    pass
+
+def get_value() -> Optional[str]:
     pass
 ```
 
@@ -85,14 +90,19 @@ def process(handlers: List[Any]) -> Dict[str, Any]:
 ```python
 from rocm_kpack.database_handlers import DatabaseHandler
 
-def process(handlers: List[DatabaseHandler]) -> Dict[str, KpackInfo]:
+def process(handlers: list[DatabaseHandler]) -> dict[str, KpackInfo]:
+    pass
+
+def get_value() -> str | None:
     pass
 ```
 
 **Type hint best practices:**
-- Import the actual types you need
-- Use `Optional[T]` for nullable values
-- Use specific return types (not `tuple`, use `Tuple[Path, int]`)
+- Use built-in generics: `list[T]`, `dict[K, V]`, `set[T]`, `tuple[T, ...]`
+- Use `T | None` instead of `Optional[T]`
+- Use `X | Y` instead of `Union[X, Y]`
+- Import the actual types you need (not from `typing` for basic containers)
+- Use specific return types (not `tuple`, use `tuple[Path, int]`)
 - For dict values with structure, define a dataclass
 
 #### Extract Complex Type Signatures
@@ -289,8 +299,12 @@ def detect(self, path: Path) -> Optional[str]:
 
 **Put all imports at the top of the file. Avoid inline imports except for rare special cases.**
 
+**Do NOT use `from __future__ import annotations`.** It will be many years before we can rely on this as a default and we'd rather write code in a compatible by default way.
+
 ❌ **Bad:**
 ```python
+from __future__ import annotations
+
 def process_binary(input_path: Path, output_path: Path) -> None:
     """Process a binary file."""
     # ... some code ...
@@ -380,17 +394,52 @@ def compute_manifest_relative_path(self, binary_path: Path, prefix_root: Path) -
 manifest_relpath = self.compute_manifest_relative_path(binary_path, prefix_dir)
 ```
 
+### 12. No Hard-Coded Project Paths
+
+**Never hard-code project-specific paths. Code should be portable.**
+
+❌ **Bad:**
+```python
+# Hard-coded developer-specific paths
+with tempfile.TemporaryDirectory(dir="/develop/tmp") as tmpdir:
+    process(tmpdir)
+
+CONFIG_PATH = Path("/home/stella/rocm-workspace/config.json")
+```
+
+✅ **Good:**
+```python
+# Use system defaults or user-configurable paths
+with tempfile.TemporaryDirectory() as tmpdir:
+    process(tmpdir)
+
+# Use environment variables or relative paths
+CONFIG_PATH = Path(os.environ.get("ROCM_CONFIG", "config.json"))
+
+# Or derive from module location
+CONFIG_PATH = Path(__file__).parent / "config.json"
+```
+
+**Key points:**
+- Use `tempfile.TemporaryDirectory()` without `dir=` argument (uses system default)
+- Use environment variables for configurable paths
+- Use relative paths or derive from `__file__` when appropriate
+- If a specific temp location is needed, make it configurable via environment variable
+
 ## Code Review Checklist
 
 Before submitting code, verify:
 
 - [ ] No silent error handling (fail-fast on all errors)
 - [ ] No `Any` type hints (use specific types)
+- [ ] Modern type syntax (`list[T]`, `T | None`, not `List[T]`, `Optional[T]`)
+- [ ] No `from __future__ import annotations`
 - [ ] Complex type signatures extracted to NamedTuple/dataclass
 - [ ] No magic numbers or fake estimates
 - [ ] Tuples only for simple pairs, dataclasses for structured data
 - [ ] All imports at top of file (except documented circular dependencies)
 - [ ] No timeouts on binutils operations
+- [ ] No hard-coded project paths (use system defaults or env vars)
 - [ ] Output validation after critical operations
 - [ ] No duplicate code
 - [ ] Specific exception handling (not broad `except Exception`)
