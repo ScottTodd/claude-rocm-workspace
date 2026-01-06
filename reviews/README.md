@@ -9,12 +9,14 @@ This directory contains code review documentation and completed reviews.
 ### Request a Review
 
 **Comprehensive review (everything):**
+
 ```
 "Review my current branch"
 "Review PR #1234"
 ```
 
 **Focused review (single aspect):**
+
 ```
 "Do a style review of my changes"
 "Run a test coverage review"
@@ -22,6 +24,7 @@ This directory contains code review documentation and completed reviews.
 ```
 
 **Parallel reviews (multiple aspects):**
+
 ```
 "Run style, tests, and documentation reviews in parallel"
 "Review for architecture and security in parallel"
@@ -49,7 +52,7 @@ See [REVIEW_TYPES.md](REVIEW_TYPES.md) for detailed descriptions.
 
 1. **You request a review** with specific focus areas
 2. **Claude analyzes** your code with that focus in mind
-3. **Review is written** to `.claude/reviews/[branch-name].md` (or `[branch-name]_[type].md` for focused reviews)
+3. **Review is written** to `reviews/pr_{NUMBER}.md` or `reviews/local_{COUNTER}_{branch-name}.md` (with `_{TYPE}` suffix for focused reviews)
 4. **You address issues** based on severity (❌ BLOCKING, ⚠️ IMPORTANT, 💡 SUGGESTION)
 5. **Claude can re-review** after you fix blocking issues
 
@@ -58,7 +61,9 @@ See [REVIEW_TYPES.md](REVIEW_TYPES.md) for detailed descriptions.
 ## Review Severity Levels
 
 ### ❌ BLOCKING (Must Fix Before Human Review)
+
 Critical issues that prevent approval:
+
 - Bugs and correctness issues
 - Security vulnerabilities
 - Incomplete cleanup (dead code)
@@ -66,36 +71,79 @@ Critical issues that prevent approval:
 - Breaking changes without migration
 
 ### ⚠️ IMPORTANT (Should Fix Before Human Review)
+
 Issues that significantly impact quality:
+
 - Missing error handling
 - Poor naming that hurts readability
 - Test coverage gaps
 - Missing documentation for complex code
 
 ### 💡 SUGGESTION (Nice to Have)
+
 Optional improvements:
+
 - Style preferences
 - Additional test cases
 - Alternative approaches
 - Optimization opportunities
 
 ### 📋 FUTURE WORK (Out of Scope)
+
 Improvements for later:
+
 - Unrelated refactoring
 - Features beyond current scope
 - Large-scale changes
 
 ---
 
+## File Naming Convention
+
+### PR Reviews
+```
+reviews/pr_{NUMBER}.md              # Comprehensive review (no type suffix)
+reviews/pr_{NUMBER}_{TYPE}.md       # Focused review (with type suffix)
+```
+
+Examples:
+- `reviews/pr_2761.md` - comprehensive review of PR #2761
+- `reviews/pr_2761_style.md` - style-focused review of PR #2761
+- `reviews/pr_2761_tests.md` - test-focused review of PR #2761
+
+### Local Branch Reviews
+
+For reviewing local branches before they become PRs:
+
+```
+reviews/local_{COUNTER}_{branch-name}.md        # Comprehensive review
+reviews/local_{COUNTER}_{branch-name}_{TYPE}.md # Focused review
+```
+
+Examples:
+- `reviews/local_001_users-myname-fix-bug.md` - comprehensive review
+- `reviews/local_001_users-myname-fix-bug_style.md` - style-focused review
+- `reviews/local_002_add-new-feature.md` - next local review
+
+**Counter:** Use incrementing numbers (001, 002, etc.) for chronological ordering. Claude will scan existing files to determine the next number.
+
+**Branch name sanitization:** Slashes are converted to dashes (e.g., `users/myname/fix-bug` → `users-myname-fix-bug`). Other characters in branch names (including dashes) are preserved.
+
+**No type suffix = comprehensive:** When no type suffix is present, the review is comprehensive (covers all aspects).
+
+---
+
 ## Directory Structure
 
 ```
-.claude/reviews/
-├── README.md                          # This file
+reviews/
+├── README.md                          # This file (includes naming conventions)
 ├── REVIEW_GUIDELINES.md              # How to write reviews
 ├── REVIEW_TYPES.md                   # Review type definitions
-├── remove-pytorch-patch-support.md   # Example comprehensive review
-└── [branch-name]_[type].md          # Focused reviews (optional)
+├── pr_{NUMBER}.md                    # PR reviews
+├── pr_{NUMBER}_{TYPE}.md             # Focused PR reviews
+├── local_{COUNTER}_{branch-name}.md  # Local branch reviews
+└── remove-pytorch-patch-support.md   # Example (predates convention)
 ```
 
 ---
@@ -117,7 +165,7 @@ User: "Review my current branch"
 
 Claude:
 - Analyzes all aspects (style, tests, docs, architecture, security, performance)
-- Creates .claude/reviews/my-branch-name.md
+- Creates reviews/local_001_my-branch-name.md
 - Provides comprehensive assessment with all severity levels
 ```
 
@@ -128,7 +176,7 @@ User: "Do a style review of my refactoring"
 
 Claude:
 - Focuses only on code style, formatting, naming
-- Creates .claude/reviews/my-branch-name_style.md
+- Creates reviews/local_001_my-branch-name_style.md
 - Ignores other aspects (tests, architecture, etc.)
 ```
 
@@ -141,7 +189,7 @@ Claude:
 - Launches two review agents simultaneously
 - One analyzes test coverage
 - One analyzes documentation
-- Combines results into .claude/reviews/my-branch-name.md with separate sections
+- Combines results into reviews/local_001_my-branch-name.md with separate sections
 ```
 
 ### Example 4: Sequential Reviews
@@ -239,6 +287,7 @@ Claude will adapt the review to your specific needs.
 ## Questions?
 
 Ask Claude:
+
 - "What review type should I use for [scenario]?"
 - "Explain this review finding in more detail"
 - "How do I address this blocking issue?"
