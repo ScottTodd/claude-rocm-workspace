@@ -12,19 +12,21 @@ Project repository: https://github.com/ROCm/TheRock
 
 This is a meta-workspace. Actual source and build directories are scattered across the filesystem and referenced by absolute paths.
 
-**Python Environment:** Claude Code is launched with the project venv already active (symlinked as `venv/` in this workspace).
-
 ## Project Context
 
 ### What is ROCm?
+
 ROCm is AMD's open-source platform for GPU computing. It includes:
+
 - HIP (Heterogeneous-Interface for Portability) - CUDA alternative
 - ROCm runtime and drivers
 - Math libraries (rocBLAS, rocFFT, etc.)
 - Developer tools and compilers
 
 ### Build Infrastructure Focus
+
 As a build infra team member, typical work involves:
+
 - CMake build system configuration
 - CI/CD pipeline maintenance
 - Build dependency management
@@ -35,6 +37,7 @@ As a build infra team member, typical work involves:
 ## Common Tasks
 
 ### Building
+
 - Builds typically happen in separate build trees (see directory-map.md)
 - Out-of-tree builds are standard practice
 - Multiple build configurations (Release, Debug, RelWithDebInfo) often maintained simultaneously
@@ -71,11 +74,13 @@ ninja clr+expunge && ninja clr+dist
 ```
 
 ### Source Navigation
+
 - Source code is across multiple repositories and worktrees
 - Git submodules are used extensively
 - When editing build configs, check both source tree CMakeLists.txt and build tree caches
 
 ### Testing
+
 - Unit tests, integration tests, and packaging tests
 - Tests may run on different GPU architectures (gfx906, gfx908, gfx90a, etc.)
 
@@ -86,6 +91,7 @@ ninja clr+expunge && ninja clr+dist
 **When writing Python code, follow the [Python Style Guide](PYTHON-STYLE-GUIDE.md).**
 
 Key principles:
+
 - **Fail-fast**: Never silently continue on errors - raise exceptions immediately
 - **No tuples for structured data**: Use `@dataclass` for multi-field return values
 - **Specific type hints**: Never use `Any` - import and use concrete types
@@ -102,17 +108,20 @@ See [PYTHON-STYLE-GUIDE.md](PYTHON-STYLE-GUIDE.md) for detailed guidelines, exam
 ### Git Workflow
 
 #### Branch Naming
+
 Use the pattern: `users/<username>/<short-description>`
 
 Examples:
-- `users/stellaraccident/add-simde-third-party`
-- `users/stellaraccident/fix-cmake-detection`
+
+- `users/scotttodd/add-simde-third-party`
+- `users/scotttodd/fix-cmake-detection`
 
 #### Creating a Branch and Committing
+
 ```bash
 # Create and switch to a new branch
 cd /develop/therock
-git checkout -b users/stellaraccident/<description>
+git checkout -b users/scotttodd/<description>
 
 # Stage changes
 git add <files>
@@ -148,6 +157,7 @@ git log -1 --stat
 - Always include the Claude Code footer (emoji + link + Co-Authored-By)
 
 #### Submodules
+
 - Git submodules are used extensively
 - When editing build configs, check both source tree and build tree caches
 
@@ -217,29 +227,14 @@ You: /prep-pr
 [Full diff review since main in new window]
 ```
 
-#### VSCode Integration
-
-Uses the `stella-ide-mcp` VSCode extension for direct diff view control.
-
-**Setup:**
-1. Symlink extension: `ln -s /path/to/vscode-plugins/stella-ide-mcp ~/.vscode-server/extensions/stella-ide-mcp`
-2. Reload VSCode
-3. Add MCP server: `claude mcp add --transport sse vscode http://127.0.0.1:3742/sse`
-
-**MCP Tools:**
-- `mcp__vscode__openFile` - Open file at line
-- `mcp__vscode__openDiff` - Open diff view vs git ref
-- `mcp__vscode__openChangedFiles` - Open all changed files as diffs (with `newWindow` option)
-
 ### Tools
+
 - [List common tools: compilers, rocm-cmake, etc.]
 
 ## Reference
 
 - [ROCm Documentation](https://rocm.docs.amd.com/)
 - [TheRock repository](https://github.com/ROCm/TheRock)
-- [Adding Third-Party Dependencies](adding-third-party-dep.md) - Guide for integrating third-party libraries into TheRock
-- Internal wiki/docs: [add links]
 
 ## Notes
 
@@ -247,7 +242,6 @@ Uses the `stella-ide-mcp` VSCode extension for direct diff view control.
 - Note that TheRock is a super-project. The builds under the submodules (like rocm-systems) are sub-projects. Since dependency management is handled by the super-project, you want to refer to those build rules. For example, in the case of ROCR-Runtime and clr, see the `core/CMakeLists.txt` file. This is documented in docs/development/build_system.md.
 - Never do `git push` without explicit authorization.
 - Do not amend commits without explicit authorization. Stage changes and ask for reviews before commiting.
-- Note for future: GitHub issue references should use short form #NNNN instead of full URLs in commit messages.
 - Don't be a sycophant and stroke my ego about how right I am when I make suggestions. Remember that I can be wrong too and feel free to engage in light debate if my reasoning seems unsound but accept when I make a decision.
 - Don't claim that the result of work is "production" code or use shaky metrics to justify how things are progressing. Just say how things are without superlatives.
 - Before committing to rocm-kpack, run pre-commit.

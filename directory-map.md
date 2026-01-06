@@ -4,31 +4,24 @@ This document maps out where all ROCm-related directories live on this system.
 
 **Update the paths below to match your actual setup.**
 
-## Environment Setup
-
-**Python Environment:** Claude Code is launched with the project venv already active (symlinked as `venv/` in this workspace). This venv contains required build tools including:
-- meson (for building simde, libdrm, and other meson-based dependencies)
-- Other Python dependencies from requirements.txt
-
 ## Repository Aliases
 
 These aliases are used by `/stage-review` and other commands to resolve short names to paths.
 
 | Alias | Path | Notes |
 |-------|------|-------|
-| therock | /develop/therock | Main ROCm build repo |
-| rocm-kpack | /develop/therock/base/rocm-kpack | Kernel packaging tools (submodule)|
-| rocm-systems | /develop/therock/rocm-systems | ROCm Systems Superrepo (submodule)|
-| rocm-libraries | /develop/therock/rocm-libraries | ROCm Libraris Superrepo (submodule) |
-| jax | /develop/jax | JAX framework |
-| xla | /develop/xla | XLA compiler |
-| workspace | /home/stella/claude-rocm-workspace | This meta-workspace |
+| therock | D:/projects/TheRock | Main ROCm build repo |
+| rocm-kpack | D:/projects/rocm-kpack | Kernel packaging tools |
+| rocm-systems | D:/projects/TheRock/rocm-systems | ROCm Systems Superrepo (submodule)|
+| rocm-libraries | D:/projects/TheRock/rocm-libraries | ROCm Libraris Superrepo (submodule) |
+| workspace | D:/projects/claude-rocm-workspace | This meta-workspace |
 
 ## Build Trees
 
 ### Active Builds
-- **Main build:** `/develop/therock-build`
+
+- **Main build:** `D:/projects/TheRock/build`
   - Configuration: Release
-  - Target architecture: [gfx1201]
+  - Target architecture: [gfx1100]
   - CMake flags:
   - Built ROCm installation is under `dist/rocm`

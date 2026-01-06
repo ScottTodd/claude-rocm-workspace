@@ -40,9 +40,6 @@ Then remove it from this list.
 
 <!-- Keep a short list of recently completed tasks for reference -->
 
-- **[rdc-therock](tasks/completed/rdc-therock-task.md)** (2025-11-11) - Created RFC0007 for RDC TheRock integration with static gRPC
-- **[simde-library](tasks/completed/simde-library-task.md)** (2025-11-11) - Added SIMDe third-party library to TheRock
-
 <!-- Example:
 - **build-system-refactor** (2025-11-05) - Completed CMake modernization
 -->

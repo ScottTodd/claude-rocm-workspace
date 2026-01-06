@@ -39,8 +39,6 @@ cd /path/to/rocm-claude-workspace
 - `tasks/` - Task-specific notes and context
   - `tasks/active/` - Currently active tasks
   - `tasks/completed/` - Archived completed tasks
-- `workflows/` - Common workflows and procedures
-- `scripts/` - Helper scripts for multi-repo operations
 
 ## Task Management
 
