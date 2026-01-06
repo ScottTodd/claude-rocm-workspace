@@ -5,6 +5,9 @@
 # Workspace state (vscode commands, active task, etc.)
 .state/
 
+# Local Claude Code settings (machine-specific permissions)
+.claude/settings.local.json
+
 # Temporary files
 *.tmp
 *.swp
