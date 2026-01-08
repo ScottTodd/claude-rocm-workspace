@@ -177,10 +177,10 @@ Is this a correctness/security issue?
 ```markdown
 # Branch Review: [branch-name]
 
-**Branch:** `branch-name`
-**Base:** `main` or `upstream/main`
-**Reviewed:** YYYY-MM-DD
-**Commits:** [count] commits
+* **Branch:** `branch-name`
+* **Base:** `main` or `upstream/main`
+* **Reviewed:** YYYY-MM-DD
+* **Commits:** [count] commits
 
 ---
 
@@ -197,9 +197,11 @@ Is this a correctness/security issue?
 **[Status Symbol] [STATUS]** - [Brief justification]
 
 **Strengths:**
+
 - [Positive aspects]
 
 **[Blocking/Important] Issues:**
+
 - [List of issues by severity]
 
 ---
@@ -209,6 +211,7 @@ Is this a correctness/security issue?
 ### 1. [Component/File Name]
 
 **[Severity]: [Issue Title]**
+
 - Explanation
 - Impact
 - **Required action:** or **Recommendation:**
