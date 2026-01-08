@@ -149,12 +149,16 @@ git log -1 --stat
 ```
 
 #### Commit Message Best Practices
+
 - First line: Short summary (50-72 chars)
 - Blank line after summary
 - Detailed description explaining what and why
 - Include "Changes:" section with bullet points for key modifications
 - Add testing/verification notes
 - Always include the Claude Code footer (emoji + link + Co-Authored-By)
+- **DO NOT include issue references** (e.g., "Fixes #123", "Addresses issue #456")
+  - Issue tagging happens in pull requests, not individual commits
+  - Keeps commit messages focused on what changed, not tracking metadata
 
 #### Submodules
 
