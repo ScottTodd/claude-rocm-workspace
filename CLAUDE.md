@@ -160,6 +160,13 @@ git log -1 --stat
   - Issue tagging happens in pull requests, not individual commits
   - Keeps commit messages focused on what changed, not tracking metadata
 
+#### GPG Signing
+
+- **NEVER retry failed commits with `--no-gpg-sign`**
+  - The user uses a hardware device (YubiKey, etc.) to sign commits
+  - If signing times out, wait for the user to retry manually
+  - Do not attempt to bypass GPG signing under any circumstances
+
 #### Submodules
 
 - Git submodules are used extensively
