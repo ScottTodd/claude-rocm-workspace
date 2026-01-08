@@ -10,7 +10,15 @@ Project repository: https://github.com/ROCm/TheRock
 
 **Important:** See `directory-map.md` for all directory locations.
 
-This is a meta-workspace. Actual source and build directories are scattered across the filesystem and referenced by absolute paths.
+This is a meta-workspace. Actual source and build directories are scattered
+across the filesystem and referenced by absolute paths. Use relative paths when
+editing files.
+
+For example:
+
+- This meta-workspace directory: `D:/projects/claude-rocm-workspace`
+- TheRock directory: `D:/projects/TheRock`
+- Relative path to edit a file in TheRock: `../TheRock/docs/development/README.md`
 
 ## Project Context
 
