@@ -239,6 +239,69 @@ Posted status update at https://github.com/ROCm/TheRock/issues/2608#issuecomment
 - Checks API (hybrid approach)
 - Artifacts (async, auditable)
 
+### TODO: End-to-End Validation Experiment
+
+**Goal:** Validate the local bisect approach with real artifacts and tests to determine practicality vs CI-based approach.
+
+**Experiment Steps:**
+
+1. **Fetch artifacts from boundary commits:**
+   - Oldest commit: `3568e0df` (run ID `20723767265`)
+   - Newest commit: `050e88ee` (run ID `20784068010`)
+   - Download artifacts from S3 for both runs
+   - Measure: download time, compressed size, extracted size
+
+2. **Set up test environments:**
+   - Extract artifacts to test directories
+   - Set up env
+     - Configure environment variables (ROCM_PATH, LD_LIBRARY_PATH, etc.)
+     - Verify artifact structure and completeness
+     - Document any missing components or dependencies
+   - OR Build from source or repackage artifacts so tests can be run
+
+3. **Attempt to reproduce test failures:**
+   - PR #2812 mentions rocprim test failures on gfx94X Linux
+   - Try running the failing tests with both artifact sets
+   - Note: rocprim likely not included in artifacts (identified gap)
+   - Measure: test execution time for available tests
+
+4. **Measure performance metrics:**
+   - **Download time:** How long to fetch ~10 artifact sets?
+   - **Disk space:** How much storage needed for cache?
+   - **Test time:** How long do tests take to run locally?
+   - **Setup overhead:** Time to extract and configure environment?
+
+5. **Identify edge cases:**
+   - Missing dependencies (system packages, GPU drivers)
+   - Artifact compatibility issues (library versions, ABIs)
+   - GPU availability requirements (can tests run on CPU?)
+   - Environment pollution (conflicting ROCm installations)
+
+**Success Criteria:**
+
+- [ ] Successfully download and extract artifacts for both commits
+- [ ] Understand complete artifact structure and what's included
+- [ ] Identify what tests can/cannot be run with available artifacts
+- [ ] Collect performance data to inform local vs CI decision
+- [ ] Document any blockers or edge cases
+
+**Expected Learnings:**
+
+- Is local bisection practical given download/test times?
+- What's the developer experience like?
+- Does the artifact-based approach actually work end-to-end?
+- What percentage of regressions can we bisect with partial artifacts?
+
+**Risks:**
+
+- May require GPU hardware not available locally
+- Artifacts might not be sufficient to run any meaningful tests
+- Could discover fundamental issues with the approach
+
+**Time Estimate:** 2-4 hours for full experiment
+
+**Priority:** High - validates core assumptions before significant implementation
+
 ### Next Investigation Areas
 
 - [ ] Study existing `fetch_artifacts.py` to understand artifact download patterns
