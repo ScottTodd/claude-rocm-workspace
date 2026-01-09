@@ -134,12 +134,45 @@ Example mapping:
 - The `head_sha` filter makes queries efficient (no need to paginate through all runs)
 - 100% coverage: Every commit in our test range has artifacts available for bisection
 
+**S3 Artifact Structure:**
+
+Artifacts are uploaded to S3, not GitHub artifacts:
+- Bucket: `therock-ci-artifacts-external` (for external repos like rocm-systems)
+- Path structure: `ROCm-rocm-systems/{run_id}-{platform}/`
+- Artifact index: `index-{artifact_group}.html` (e.g., `index-gfx94X-dcgpu.html`)
+
+Example URL:
+```
+https://therock-ci-artifacts-external.s3.amazonaws.com/ROCm-rocm-systems/20723786674-linux/index-gfx94X-dcgpu.html
+```
+
+**Components Built (rocm-systems therock-ci.yml):**
+
+From run 20723786674, artifact group `gfx94X-dcgpu`:
+- AMD LLVM (compiler toolchain)
+- Base (core system libraries)
+- Core-HIP, Core-OCL, Core-Runtime
+- Core-HIPTests (GPU-specific tests for gfx94X)
+- ROCProfiler (compute, SDK, systems variants)
+- Third-party deps (FFTW3, Flatbuffers, Fmt, Nlohmann-JSON, Spdlog)
+
+**CRITICAL GAP IDENTIFIED:**
+
+rocm-systems CI builds only a **subset** of ROCm components. The failing tests mentioned in PR #2812 are for rocprim, which is **not** included in rocm-systems artifacts.
+
+This means:
+- We can bisect rocm-systems commits that affect the components actually built (HIP, runtime, profiler, etc.)
+- We **cannot** bisect regressions in downstream components like rocprim using only rocm-systems artifacts
+- Need to determine if TheRock's CI builds the full stack including rocprim
+
 **Next Steps:**
 - [x] Query GitHub API for workflow runs for each commit
 - [x] Build commit→run_id mapping
 - [x] Check if all 19 commits have workflow runs
-- [ ] Verify artifact availability for these runs (download artifacts using run_id)
-- [ ] Study `fetch_artifacts.py` to understand artifact download integration
+- [x] Explore S3 artifact structure and what's built
+- [ ] Determine how to get full-stack artifacts that include failing components
+- [ ] Check if TheRock CI runs build rocprim
+- [ ] Design solution for partial vs. full artifact coverage
 
 ### Next Investigation Areas
 
