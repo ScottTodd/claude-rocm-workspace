@@ -215,12 +215,29 @@ Posted status update at https://github.com/ROCm/TheRock/issues/2608#issuecomment
 - Documented challenges (orchestration complexity, feedback loop, resource contention)
 - Framed as complementary to local bisection, not a replacement
 - Strategy pattern: `LocalBisectStrategy` vs `CIBisectStrategy`
+- Added "Detailed Workflow" subsection with 5-step process:
+  1. Create bisect commit (update submodules)
+  2. Push to shared repo (branch cleanup concerns analyzed)
+  3. Trigger workflow via GitHub API
+  4. Await results (4 options: polling, webhooks, checks API, artifacts)
+  5. Record results and continue
 
 **Key Insights from Comment:**
 - Local machine has hardware/OS constraints
 - Need caching for "upwards of 10 different sets of artifacts side by side"
 - PyTorch testing is a separate concern
 - CI-based approach enables automated regression detection at scale
+
+**Branch Cleanup Analysis:**
+- 10-20 bisect commits = 10-20 branches in shared repo
+- Proposed strategies: automatic, time-based, reference-counted, ephemeral repo
+- Trade-offs documented between simplicity and pollution
+
+**Awaiting Results Options:**
+- Polling (simple, recommended for MVP)
+- Webhooks (efficient but requires infrastructure)
+- Checks API (hybrid approach)
+- Artifacts (async, auditable)
 
 ### Next Investigation Areas
 
