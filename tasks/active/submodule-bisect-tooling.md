@@ -158,21 +158,52 @@ From run 20723786674, artifact group `gfx94X-dcgpu`:
 
 **CRITICAL GAP IDENTIFIED:**
 
-rocm-systems CI builds only a **subset** of ROCm components. The failing tests mentioned in PR #2812 are for rocprim, which is **not** included in rocm-systems artifacts.
+rocm-systems CI builds only a **subset** of ROCM components. The failing tests mentioned in PR #2812 are for rocprim, which is **not** included in rocm-systems artifacts.
 
 This means:
 - We can bisect rocm-systems commits that affect the components actually built (HIP, runtime, profiler, etc.)
 - We **cannot** bisect regressions in downstream components like rocprim using only rocm-systems artifacts
-- Need to determine if TheRock's CI builds the full stack including rocprim
+- Need to support multiple bisect modes to handle partial artifact coverage
+
+**Design Decision: Two Bisect Modes**
+
+To handle partial artifact coverage, we'll design for two modes:
+
+**1. Lightweight Mode (Repackaging)**
+- Use pre-built artifacts directly without rebuilding
+- Repackage ROCm with substituted components from different commits
+- Fast: No compilation, just download and repackage
+- Works when: Downstream components don't need rebuilding against new libraries
+- Example: Test rocprim against different HIP runtime versions without rebuilding rocprim
+
+**2. Heavy Mode (Bootstrap + Rebuild)**
+- Use `build_tools/buildctl.py` to bootstrap build directory with available artifacts
+- Download pre-built components (AMD LLVM, Core runtime, etc.)
+- Build missing/test components from source (rocprim, rocBLAS, etc.)
+- Slower: Requires compilation but still faster than full TheRock build
+- Works when: Downstream components must be rebuilt against new libraries
+- Example: Bisect through commits where HIP API changes require rocprim rebuild
+
+**Advantages:**
+- Flexibility: Handle both shallow and deep regressions
+- Scalability: Lightweight mode can run on many low-powered machines in parallel
+- Practicality: Heavy mode available when lightweight isn't sufficient
+- Incremental: Can implement lightweight first, add heavy mode later
+
+**Implementation Considerations:**
+- ArtifactManager needs to support both download-only and bootstrap modes
+- Test scripts may need to specify which mode they require
+- Heavy mode needs access to source code (git submodules) for building
+- Both modes need GPU access for testing
 
 **Next Steps:**
 - [x] Query GitHub API for workflow runs for each commit
 - [x] Build commit→run_id mapping
 - [x] Check if all 19 commits have workflow runs
 - [x] Explore S3 artifact structure and what's built
-- [ ] Determine how to get full-stack artifacts that include failing components
-- [ ] Check if TheRock CI runs build rocprim
-- [ ] Design solution for partial vs. full artifact coverage
+- [x] Design dual-mode approach for artifact coverage
+- [ ] Prototype lightweight mode (repackaging) first
+- [ ] Document buildctl.py integration for heavy mode (future)
 
 ### Next Investigation Areas
 
