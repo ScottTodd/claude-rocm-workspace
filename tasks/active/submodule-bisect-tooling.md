@@ -205,12 +205,29 @@ To handle partial artifact coverage, we'll design for two modes:
 - [ ] Prototype lightweight mode (repackaging) first
 - [ ] Document buildctl.py integration for heavy mode (future)
 
+### 2026-01-09 - GitHub Comment Alignment
+
+Posted status update at https://github.com/ROCm/TheRock/issues/2608#issuecomment-3730778813
+
+**RFC Additions Based on Comment:**
+- Added "Future Work: CI-Orchestrated Bisection" section
+- Documented benefits (infrastructure reuse, parallelism, consistency)
+- Documented challenges (orchestration complexity, feedback loop, resource contention)
+- Framed as complementary to local bisection, not a replacement
+- Strategy pattern: `LocalBisectStrategy` vs `CIBisectStrategy`
+
+**Key Insights from Comment:**
+- Local machine has hardware/OS constraints
+- Need caching for "upwards of 10 different sets of artifacts side by side"
+- PyTorch testing is a separate concern
+- CI-based approach enables automated regression detection at scale
+
 ### Next Investigation Areas
 
 - [ ] Study existing `fetch_artifacts.py` to understand artifact download patterns
 - [ ] Explore GitHub Actions API for workflow run queries
 - [x] Identify a real regression in rocm-libraries or rocm-systems for testing
-- [ ] Prototype workflow mapper with real API calls
+- [x] Prototype workflow mapper with real API calls
 
 ## Decisions & Trade-offs
 
