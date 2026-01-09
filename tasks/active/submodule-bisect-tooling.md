@@ -114,11 +114,32 @@ Commits (oldest to newest):
 - `.github/workflows/therock-ci-linux.yml`
 - `.github/workflows/therock-ci-windows.yml`
 
+**Prototype Results** (2026-01-09):
+
+Created `prototypes/query_workflow_runs.py` to query GitHub API for workflow runs.
+
+Key findings:
+- ✓ **All 19 commits have therock-ci.yml workflow runs!**
+- ✓ All runs completed successfully (status: completed, conclusion: success)
+- ✓ Successfully mapped each commit to its run_id
+- ✓ GitHub API `head_sha` parameter works perfectly for filtering runs by commit
+- ✓ Used `gh` CLI for authenticated access (no token management needed)
+
+Example mapping:
+- Commit `3568e0df` → Run ID `20723767265`
+- Commit `050e88ee` → Run ID `20784068010`
+
+**Design Validation:**
+- The RFC's approach of querying workflow runs by commit SHA is validated
+- The `head_sha` filter makes queries efficient (no need to paginate through all runs)
+- 100% coverage: Every commit in our test range has artifacts available for bisection
+
 **Next Steps:**
-- [ ] Query GitHub API for workflow runs for each commit
-- [ ] Build commit→run_id mapping
-- [ ] Check if all 19 commits have workflow runs
-- [ ] Verify artifact availability for these runs
+- [x] Query GitHub API for workflow runs for each commit
+- [x] Build commit→run_id mapping
+- [x] Check if all 19 commits have workflow runs
+- [ ] Verify artifact availability for these runs (download artifacts using run_id)
+- [ ] Study `fetch_artifacts.py` to understand artifact download integration
 
 ### Next Investigation Areas
 

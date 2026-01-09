@@ -6,6 +6,7 @@ This script validates the bisect tooling design by querying real workflow runs
 for the rocm-systems commits from PR #2812.
 
 Uses `gh` CLI for authenticated API access.
+Uses the head_sha parameter to filter workflow runs by commit.
 
 Usage:
     python prototypes/query_workflow_runs.py
@@ -45,7 +46,7 @@ WORKFLOW_FILE = "therock-ci.yml"
 
 def gh_api(endpoint: str) -> dict[str, Any]:
     """Call GitHub API using gh CLI."""
-    cmd = ["gh", "api", endpoint, "--paginate"]
+    cmd = ["gh", "api", endpoint]
 
     try:
         result = subprocess.run(
@@ -65,34 +66,36 @@ def gh_api(endpoint: str) -> dict[str, Any]:
         raise
 
 
-def query_workflow_runs(repo: str, workflow_file: str) -> list[dict[str, Any]]:
-    """Query workflow runs for a specific workflow file."""
-    endpoint = f"/repos/{repo}/actions/workflows/{workflow_file}/runs"
-    print(f"Querying: {endpoint}", file=sys.stderr)
+def query_workflow_runs_for_commit(
+    repo: str,
+    workflow_file: str,
+    commit_sha: str,
+) -> list[dict[str, Any]]:
+    """Query workflow runs for a specific commit using head_sha filter."""
+    endpoint = f"/repos/{repo}/actions/workflows/{workflow_file}/runs?head_sha={commit_sha}"
 
     data = gh_api(endpoint)
-
-    # Handle paginated results - gh --paginate returns array of results
-    if isinstance(data, list):
-        all_runs = []
-        for page_data in data:
-            all_runs.extend(page_data.get("workflow_runs", []))
-        return all_runs
-    else:
-        return data.get("workflow_runs", [])
+    return data.get("workflow_runs", [])
 
 
 def build_commit_mapping(
+    repo: str,
+    workflow_file: str,
     commits: list[str],
-    runs: list[dict[str, Any]],
 ) -> dict[str, dict[str, Any] | None]:
-    """Build mapping from commits to workflow runs."""
-    mapping = {commit: None for commit in commits}
+    """Build mapping from commits to workflow runs by querying each commit."""
+    mapping: dict[str, dict[str, Any] | None] = {}
 
-    for run in runs:
-        head_sha = run.get("head_sha", "")
-        if head_sha in mapping:
-            mapping[head_sha] = {
+    for idx, commit in enumerate(commits, 1):
+        commit_short = commit[:8]
+        print(f"[{idx}/{len(commits)}] Querying runs for {commit_short}...", file=sys.stderr)
+
+        runs = query_workflow_runs_for_commit(repo, workflow_file, commit)
+
+        if runs:
+            # Take the first run (should only be one per commit for a given workflow)
+            run = runs[0]
+            mapping[commit] = {
                 "run_id": run["id"],
                 "run_number": run["run_number"],
                 "status": run["status"],
@@ -100,14 +103,21 @@ def build_commit_mapping(
                 "created_at": run["created_at"],
                 "html_url": run["html_url"],
             }
+            print(f"  ✓ Found run {run['id']}", file=sys.stderr)
+
+            if len(runs) > 1:
+                print(f"  WARNING: Found {len(runs)} runs for this commit!", file=sys.stderr)
+        else:
+            mapping[commit] = None
+            print(f"  ✗ No runs found", file=sys.stderr)
 
     return mapping
 
 
 def print_mapping_results(mapping: dict[str, dict[str, Any] | None]) -> None:
-    """Print the commit→run_id mapping results."""
+    """Print the commit->run_id mapping results."""
     print("\n" + "=" * 80)
-    print("COMMIT → RUN_ID MAPPING")
+    print("COMMIT -> RUN_ID MAPPING")
     print("=" * 80)
 
     found_count = 0
@@ -118,7 +128,7 @@ def print_mapping_results(mapping: dict[str, dict[str, Any] | None]) -> None:
 
         if run_info:
             found_count += 1
-            print(f"\n{idx:2d}. {commit_short} ✓ HAS RUN")
+            print(f"\n{idx:2d}. {commit_short} [OK] HAS RUN")
             print(f"    Run ID:     {run_info['run_id']}")
             print(f"    Run #:      {run_info['run_number']}")
             print(f"    Status:     {run_info['status']}")
@@ -127,7 +137,7 @@ def print_mapping_results(mapping: dict[str, dict[str, Any] | None]) -> None:
             print(f"    URL:        {run_info['html_url']}")
         else:
             missing_count += 1
-            print(f"\n{idx:2d}. {commit_short} ✗ NO RUN FOUND")
+            print(f"\n{idx:2d}. {commit_short} [MISS] NO RUN FOUND")
 
     print("\n" + "=" * 80)
     print(f"SUMMARY: {found_count} commits with runs, {missing_count} commits without runs")
@@ -138,12 +148,8 @@ def main() -> None:
     """Main entry point."""
     print(f"Querying workflow runs for {REPO}/{WORKFLOW_FILE}...\n", file=sys.stderr)
 
-    # Query workflow runs using gh CLI
-    runs = query_workflow_runs(REPO, WORKFLOW_FILE)
-    print(f"\nTotal runs fetched: {len(runs)}\n", file=sys.stderr)
-
-    # Build commit→run mapping
-    mapping = build_commit_mapping(COMMITS, runs)
+    # Build commit→run mapping by querying each commit
+    mapping = build_commit_mapping(REPO, WORKFLOW_FILE, COMMITS)
 
     # Print results
     print_mapping_results(mapping)
