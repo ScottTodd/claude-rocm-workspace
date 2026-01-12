@@ -1,11 +1,24 @@
 # PR Hygiene Checklist
 
 Objective gatekeeping checks that should pass before substantive review begins.
-These are automatable and will eventually be enforced by a bot.
+These are automatable and will eventually be enforced by a bot:
 
----
+## Summary
 
-## PR Title
+| Check | Automatable | Severity | Notes |
+|-------|-------------|----------|-------|
+| [Title format](#pr-title) | Yes | Block merge | Always enforced |
+| [Problem statement](#pr-description---motivation-or-problem-statement) | Partial | Block review | Exempt for [trivial changes](#self-evident-changes) |
+| [Testing evidence](#pr-description---testing-evidence) | Partial | Block review | Exempt for [docs/typos](#self-evident-changes) |
+| [Metrics included](#pr-description---metrics-when-applicable) | Partial | Flag for review | Only for applicable PR types |
+| [PR size](#pr-size) | Yes | Flag for review | Has explicit exceptions |
+| [Revert justification](#reverts) | Yes (detect revert) | Block review | Always enforced |
+| [Roll-forward explanation](#roll-forwards-re-landing-reverted-changes) | Partial | Block review | Always enforced |
+| [Reviewers assigned](#reviewers) | Yes | Flag for review | Guidance only |
+
+## Checklist items
+
+### PR Title
 
 **Rule:** Title must be descriptive and start with an uppercase letter.
 Must not be auto-generated from branch name or be overly vague.
@@ -32,9 +45,11 @@ Must not be auto-generated from branch name or be overly vague.
 
 ---
 
-## PR Description - Motivation or Problem Statement
+### PR Description - Motivation or Problem Statement
 
 **Rule:** PR description must clearly explain what problem is being solved or what feature is being added.
+
+**See [Self-Evident Changes](#self-evident-changes)** for exemptions (typo fixes, version bumps, etc.).
 
 **Fail patterns:**
 - Empty description
@@ -46,8 +61,9 @@ Must not be auto-generated from branch name or be overly vague.
 - Links to related GitHub issues (if applicable)
 - For bug fixes: includes error logs or reproduction steps (inline or linked)
 - For features: explains the use case
+- For self-evident changes: a brief title-like description is sufficient
 
-**Auto-comment:**
+**Auto-comment (only for non-trivial changes):**
 > PR description does not explain the motivation behind this work.
 > Please add context about:
 > - What issue or need motivated this change?
@@ -56,12 +72,14 @@ Must not be auto-generated from branch name or be overly vague.
 
 ---
 
-## PR Description - Testing Evidence
+### PR Description - Testing Evidence
 
 **Rule:** PR description must show evidence that changes were tested.
 
+**See [Self-Evident Changes](#self-evident-changes)** for exemptions (docs-only, typos, version bumps).
+
 **Fail patterns:**
-- No mention of testing
+- No mention of testing (for code changes)
 - "Tested locally" with no details
 - Only mentions CI will test it
 
@@ -70,8 +88,9 @@ Must not be auto-generated from branch name or be overly vague.
 - Screenshots or logs showing successful test output
 - "Added tests in `test_foo.py`, all passing"
 - For CI-only tests: explicit note explaining why local testing isn't feasible
+- For exempt changes: "CI passing" or no testing section is acceptable
 
-**Auto-comment:**
+**Auto-comment (only for code changes):**
 > PR description does not include testing evidence.
 > Please add:
 > - What tests were run (commands, test names)?
@@ -80,7 +99,7 @@ Must not be auto-generated from branch name or be overly vague.
 
 ---
 
-## PR Description - Metrics (When Applicable)
+### PR Description - Metrics (When Applicable)
 
 **Rule:** PRs that affect build time, test duration, or binary size should include before/after metrics.
 
@@ -105,7 +124,7 @@ Must not be auto-generated from branch name or be overly vague.
 
 ---
 
-## PR Size
+### PR Size
 
 **Rule:** PRs should be reviewable. Very large PRs should be split unless there's a good reason.
 
@@ -127,7 +146,7 @@ Must not be auto-generated from branch name or be overly vague.
 
 ---
 
-## Reverts
+### Reverts
 
 **Rule:** Revert PRs must include justification for the revert.
 
@@ -145,7 +164,7 @@ Must not be auto-generated from branch name or be overly vague.
 
 ---
 
-## Roll-forwards (Re-landing Reverted Changes)
+### Roll-forwards (Re-landing Reverted Changes)
 
 **Rule:** When re-landing a previously reverted PR, must explain what was fixed.
 
@@ -162,7 +181,7 @@ Must not be auto-generated from branch name or be overly vague.
 
 ---
 
-## Reviewers
+### Reviewers
 
 **Rule:** PR should have appropriate reviewers assigned based on the files changed.
 
@@ -175,15 +194,33 @@ Must not be auto-generated from branch name or be overly vague.
 
 ---
 
-## Summary
+## Appendix
 
-| Check | Automatable | Severity |
-|-------|-------------|----------|
-| Title format | Yes | Block merge |
-| Problem statement | Partial | Block review |
-| Testing evidence | Partial | Block review |
-| Metrics included | Partial | Flag for review |
-| PR size | Yes | Flag for review |
-| Revert justification | Yes (detect revert) | Block review |
-| Roll-forward explanation | Partial | Block review |
-| Reviewers assigned | Yes | Flag for review |
+### Self-Evident Changes
+
+Some PRs are simple enough that requiring detailed problem statements or testing
+evidence creates busy-work. Use judgment before flagging these sections.
+
+**Exempt from detailed problem statement:**
+- Typo fixes (the typo is the problem)
+- Broken link fixes
+- Version bumps with no behavioral changes
+- Simple dependency updates
+- Code formatting / linter fixes
+
+**Exempt from detailed testing evidence:**
+- Documentation-only changes
+- Comment-only changes
+- Version bumps (CI passing is sufficient)
+- Typo fixes in non-code files
+
+**Complexity signals that DO require full documentation:**
+- Changes to logic or control flow
+- New features or functionality
+- Bug fixes (need to explain what was broken)
+- Build system changes
+- Security-related changes
+- Anything that could break existing behavior
+
+**Rule of thumb:** If a reviewer would ask "why?" or "how was this tested?",
+the PR needs that context. If the answer is obvious from the diff, it doesn't.
