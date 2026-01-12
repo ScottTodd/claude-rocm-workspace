@@ -75,8 +75,14 @@ A comprehensive review covers all aspects:
 
 **Focus:** Code formatting, naming conventions, readability
 
+**Reference:** [TheRock Style Guides](../../TheRock/docs/development/style_guides/)
+
 **What it examines:**
-- Adherence to project style guides (PEP 8, project CLAUDE.md)
+- Adherence to language-specific style guides:
+  - [Python Style Guide](../../TheRock/docs/development/style_guides/python_style_guide.md) - type hints, dataclasses, error handling, pathlib
+  - [CMake Style Guide](../../TheRock/docs/development/style_guides/cmake_style_guide.md) - CMake conventions
+  - [Bash Style Guide](../../TheRock/docs/development/style_guides/bash_style_guide.md) - shell script patterns
+  - [GitHub Actions Style Guide](../../TheRock/docs/development/style_guides/github_actions_style_guide.md) - CI workflow patterns
 - Naming conventions (variables, functions, classes)
 - Code formatting and consistency
 - File organization

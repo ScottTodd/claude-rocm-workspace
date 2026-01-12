@@ -95,24 +95,23 @@ ninja clr+expunge && ninja clr+dist
 
 ## Conventions & Gotchas
 
-### Python Coding Standards
+### Coding Standards
 
-**When writing Python code, follow the [Python Style Guide](PYTHON-STYLE-GUIDE.md).**
+**Follow the style guides in [TheRock/docs/development/style_guides/](../TheRock/docs/development/style_guides/):**
 
-Key principles:
+| Guide | Use For |
+|-------|---------|
+| [Python Style Guide](../TheRock/docs/development/style_guides/python_style_guide.md) | All Python code |
+| [CMake Style Guide](../TheRock/docs/development/style_guides/cmake_style_guide.md) | CMake build configuration |
+| [Bash Style Guide](../TheRock/docs/development/style_guides/bash_style_guide.md) | Shell scripts |
+| [GitHub Actions Style Guide](../TheRock/docs/development/style_guides/github_actions_style_guide.md) | CI/CD workflows |
+
+Key principles across all languages:
 
 - **Fail-fast**: Never silently continue on errors - raise exceptions immediately
-- **No tuples for structured data**: Use `@dataclass` for multi-field return values
-- **Specific type hints**: Never use `Any` - import and use concrete types
-- **No timeouts on binutils**: Never add timeouts to readelf, objcopy, etc.
-- **Validate output**: Check that files exist and are non-empty after creation
-- **No magic numbers**: Especially not for size estimates or fake calculations
-
-See [PYTHON-STYLE-GUIDE.md](PYTHON-STYLE-GUIDE.md) for detailed guidelines, examples, and code review checklist.
-
-### Build System
-- [Document your team's CMake conventions]
-- [Note any non-standard build flags or requirements]
+- **Explicit over implicit**: Code should be self-documenting
+- **Validate output**: Check that operations actually succeeded
+- **DRY/YAGNI/KISS**: Don't repeat yourself, you aren't gonna need it, keep it simple
 
 ### Git Workflow
 
