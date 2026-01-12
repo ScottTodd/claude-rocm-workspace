@@ -40,6 +40,4 @@ Then remove it from this list.
 
 <!-- Keep a short list of recently completed tasks for reference -->
 
-<!-- Example:
-- **build-system-refactor** (2025-11-05) - Completed CMake modernization
--->
+- **skill-definitions-for-reviews** (2026-01-12) - Added `/review-pr` and `/review-branch` skills

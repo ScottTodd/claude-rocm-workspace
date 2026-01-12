@@ -183,36 +183,67 @@ git log -1 --stat
 
 ### Review Workflow
 
-We work in commit stacks. Claude commits incrementally with WIP commits, user reviews, we iterate, then squash to PR at milestones.
+Code reviews happen at two levels: **comprehensive reviews** (full PR/branch analysis) and **inline reviews** (quick feedback during iteration).
 
-#### Two Review Modes
+#### Comprehensive Code Reviews
 
-| Mode | When | Diff |
-|------|------|------|
-| **Incremental** | After each Claude batch | HEAD~1..HEAD (or HEAD~N) |
-| **Milestone** | Before PR/squash | main..HEAD |
+When you say "review this PR" or "review my branch", Claude performs a comprehensive code review using the system in `reviews/`.
 
-Incremental is the hot path—zero friction for "what did Claude just do."
+**Triggers** - any of these invoke the review system:
 
-#### Commands
-
-```bash
-# Stage changes and open in VSCode
-/stage-review [repo]
-
-# Just open diffs in VSCode (no commit)
-/vscode-diff [repo] [N]
-
-# Find and fix RVW comments
-/process-review [repo]
-
-# Full milestone review before PR
-/prep-pr [repo]
+```
+Review this PR: https://github.com/ROCm/TheRock/pull/2761
+Review PR https://github.com/ROCm/TheRock/pull/2761
+Can you review https://github.com/ROCm/TheRock/pull/2761
+Review my current branch
+Do a style review of my changes
 ```
 
-#### Review Comment Format
+**Skills:**
 
-Add comments inline using `RVW:` or `RVWY:` prefix:
+| Command | Description |
+|---------|-------------|
+| `/review-pr <URL> [types...]` | Review a GitHub PR |
+| `/review-branch [types...]` | Review the current local branch |
+
+**Review types** (optional - defaults to comprehensive):
+- `style` - Code formatting, naming, conventions
+- `tests` - Test coverage and quality
+- `documentation` - Docs, comments, help text
+- `architecture` - Design, patterns, structure
+- `security` - Vulnerabilities, validation, secrets
+- `performance` - Efficiency, scaling, resources
+
+**Examples:**
+
+```bash
+# Comprehensive review (all aspects)
+/review-pr https://github.com/ROCm/TheRock/pull/2761
+
+# Focused reviews
+/review-pr https://github.com/ROCm/TheRock/pull/2761 style
+/review-branch tests security
+
+# Natural language
+Review this PR with focus on architecture: https://github.com/ROCm/TheRock/pull/2761
+Do a security review of my branch
+```
+
+**Output files:**
+- PR reviews: `reviews/pr_{NUMBER}.md` (or `_style.md`, `_tests.md`, etc.)
+- Branch reviews: `reviews/local_{COUNTER}_{branch-name}.md`
+
+**Severity levels:**
+- `❌ BLOCKING` - Must fix before human review
+- `⚠️ IMPORTANT` - Should fix before human review
+- `💡 SUGGESTION` - Nice to have
+- `📋 FUTURE WORK` - Out of scope for this PR
+
+**Documentation:** See `reviews/README.md` for full details.
+
+#### Inline Reviews (Quick Iteration)
+
+For quick feedback during development, add inline comments with `RVW:` or `RVWY:` markers:
 
 | Marker | Meaning |
 |--------|---------|
@@ -223,29 +254,17 @@ Add comments inline using `RVW:` or `RVWY:` prefix:
 # RVW: This logic seems backwards - let's discuss
 # RVWY: Add error handling here
 ```
-```cpp
-// RVW: Should this handle the null case?
-// RVWY: Rename this variable to be clearer
-```
 
-Then run `/process-review` to address them.
+Then ask Claude to "process review comments" or "fix the RVW comments".
 
-#### Typical Flow
+### Task Tracking
 
-```
-Claude: [makes changes]
-Claude: "Ready for review?"
+Track work items in `tasks/active/`. See [ACTIVE-TASKS.md](ACTIVE-TASKS.md) for the full workflow.
 
-You: /stage-review
-[Diff views open in new VSCode window, you add RVW: comments]
-
-You: /process-review
-Claude: [shows each comment, proposes fix, waits for confirmation]
-Claude: [fixes, removes RVW marker, commits]
-
-You: /prep-pr
-[Full diff review since main in new window]
-```
+**Quick reference:**
+- Start a task: `/task task-name` or "I'm working on task-name"
+- Create new task: Copy `tasks/active/example-task.md` template
+- Complete a task: Move to `tasks/completed/`, update `ACTIVE-TASKS.md`
 
 ### Tools
 
