@@ -74,7 +74,7 @@ A comprehensive review covers all aspects:
 - Adherence to language-specific style guides:
   - [Python Style Guide](../../TheRock/docs/development/style_guides/python_style_guide.md) - type hints, dataclasses, error handling, pathlib, etc.
   - [CMake Style Guide](../../TheRock/docs/development/style_guides/cmake_style_guide.md)
-  - [Bash Style Guide](../../TheRock/docs/development/style_guides/bash_style_guide.md)patterns
+  - [Bash Style Guide](../../TheRock/docs/development/style_guides/bash_style_guide.md)
   - [GitHub Actions Style Guide](../../TheRock/docs/development/style_guides/github_actions_style_guide.md)
 - Naming conventions (variables, functions, classes)
 - Code formatting and consistency
