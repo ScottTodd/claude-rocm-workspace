@@ -11,12 +11,7 @@ Refactoring the CMake build system for better modularity
 
 ## Background Tasks
 
-<!-- Add tasks you're working on but not currently focused on -->
-
-<!-- Example:
-- **[ci-pipeline-perf](tasks/active/ci-pipeline-perf.md)** - Investigating CI build performance
-- **[gfx942-support](tasks/active/gfx942-support.md)** - Adding support for new GPU architecture
--->
+- **[code-review-guidelines](tasks/active/code-review-guidelines.md)** - Actionable review checklists for humans and Claude Code
 
 ## Quick Start New Task
 
