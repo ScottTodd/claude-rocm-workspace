@@ -111,15 +111,17 @@ Exit codes:
 **Output (human-readable to stdout):**
 
 ```
-Commit:     abc123def456...
-Repository: ROCm/TheRock
-Workflow:   ci.yml
-Run ID:     12345678901
-Status:     completed (success)
-URL:        https://github.com/ROCm/TheRock/actions/runs/12345678901
-S3 Bucket:  therock-ci-artifacts
-S3 Path:    12345678901-linux/
-Index:      https://therock-ci-artifacts.s3.amazonaws.com/12345678901-linux/index-gfx94X-dcgpu.html
+Commit:       abc123def456...
+Repository:   ROCm/TheRock
+Workflow:     ci.yml
+Run ID:       12345678901
+Status:       completed (success)
+URL:          https://github.com/ROCm/TheRock/actions/runs/12345678901
+Platform:     linux
+GPU Family:   gfx94X-dcgpu
+S3 Bucket:    therock-ci-artifacts
+S3 Path:      12345678901-linux/
+Index:        https://therock-ci-artifacts.s3.amazonaws.com/12345678901-linux/index-gfx94X-dcgpu.html
 ```
 
 **Python API (for script-to-script composition):**
@@ -135,9 +137,10 @@ class ArtifactRunInfo:
     status: str           # "completed", "in_progress", etc.
     conclusion: str | None   # "success", "failure", None if in_progress
     html_url: str
+    platform: str         # "linux" or "windows"
+    amdgpu_family: str    # e.g., "gfx94X-dcgpu"
     s3_bucket: str
     s3_path: str          # e.g., "12345678901-linux/"
-    amdgpu_family: str    # e.g., "gfx94X-dcgpu"
 
     @property
     def s3_uri(self) -> str:
@@ -225,16 +228,20 @@ def infer_workflow_for_repo(repo: str) -> str:
 from find_artifacts_for_commit import find_artifacts_for_commit, ArtifactRunInfo
 from artifact_manager import do_fetch
 
-info = find_artifacts_for_commit(commit="abc123", repo="ROCm/TheRock")
+info = find_artifacts_for_commit(
+    commit="abc123",
+    repo="ROCm/TheRock",
+    amdgpu_family="gfx94X-dcgpu",
+)
 if info is None:
     sys.exit("No artifacts found for commit")
 
 # Build args namespace for artifact_manager
 args = argparse.Namespace(
     run_id=info.run_id,
-    platform=info.s3_path.rstrip("/").split("-")[-1],  # extract platform from path
+    platform=info.platform,
     stage="all",
-    amdgpu_families="gfx94X-dcgpu",
+    amdgpu_families=info.amdgpu_family,
     output_dir=Path("./build"),
     # ... other required args
 )
@@ -256,13 +263,37 @@ Not in initial scope. Will add later:
 - Walk back through git history to find commit with successful CI
 - For rocm-libraries/rocm-systems: find TheRock ref from workflow
 
-### Out of Scope (Separate Task)
+### Out of Scope (Separate Tasks)
+
+**1. `gh` CLI fallback for `github_actions_utils.py`**
 
 `github_actions_utils.py` should support both:
 - GitHub REST API (current: `gha_send_request()` with `GITHUB_TOKEN`)
 - `gh` CLI fallback (when REST API auth unavailable but `gh` is authenticated)
 
 This would make local development easier when user has `gh auth login` but no `GITHUB_TOKEN` env var.
+
+**2. Consolidate `ArtifactRunInfo` with `BucketMetadata`**
+
+`fetch_artifacts.py` has `BucketMetadata`:
+```python
+@dataclass
+class BucketMetadata:
+    external_repo: str
+    bucket: str
+    workflow_run_id: str
+    platform: str
+    s3_key_path: str  # derived: f"{external_repo}{workflow_run_id}-{platform}"
+```
+
+Our `ArtifactRunInfo` overlaps (platform, bucket, path, run_id) but adds workflow metadata (commit, status, conclusion, html_url, amdgpu_family).
+
+Options:
+- `ArtifactRunInfo` contains `BucketMetadata` (composition)
+- Shared base class for S3 location info
+- Single unified dataclass
+
+Should revisit after initial implementation to reduce duplication.
 
 ## Investigation Notes
 
