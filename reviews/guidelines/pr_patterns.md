@@ -42,7 +42,8 @@ If not addressed in description:
 
 ### Detection
 
-- Changes to `external/` directory (new submodule)
+- Changes to `.gitmodules` (new submodule)
+- Changes to `third-party/` (support code for dependencies)
 - New entries in CMakeLists.txt `add_subdirectory()` or `FetchContent`
 - New `find_package()` calls
 - Changes to requirements.txt, pyproject.toml, package.json
@@ -75,6 +76,7 @@ If not addressed in description:
 - "What's the build time impact of adding this dependency?"
 - "Are there packaging considerations for this dependency?"
 - "Why was this dependency chosen over alternatives?"
+- "Who or which team is responsible for maintaining this dependency?"
 
 ---
 
@@ -85,24 +87,16 @@ If not addressed in description:
 - Changes to `CMakeLists.txt` files
 - Changes to `.cmake` files
 - Changes to `meson.build`, `Makefile`, or similar
-- Modifications to build scripts in `scripts/` or `tools/`
 
 ### Additional Checks
 
 - [ ] Changes follow [CMake Style Guide](../../TheRock/docs/development/style_guides/cmake_style_guide.md)
-- [ ] Tested with different configurations (`-DTHEROCK_ENABLE_*` variants)
 - [ ] Works on supported platforms (Linux, Windows if applicable)
-- [ ] Doesn't break incremental builds
 - [ ] Target names follow project conventions
 
 **TheRock-specific:**
 - Super-project vs sub-project patterns (see `docs/development/build_system.md`)
 - Check `core/CMakeLists.txt` for dependency management patterns
-
-### Questions for PR Author
-
-- "Was this tested with a clean build and an incremental build?"
-- "Which `THEROCK_ENABLE_*` configurations were tested?"
 
 ---
 
@@ -156,8 +150,8 @@ See [pr_hygiene.md](pr_hygiene.md#roll-forwards-re-landing-reverted-changes) - *
 
 ### Detection
 
-- Only `.md` files changed
-- Changes to `docs/` directory
+- Changed primarily `.md` files
+- Changes in the `docs/` directory
 - README updates
 
 ### Additional Checks
@@ -187,19 +181,17 @@ Apply [documentation.md](documentation.md) checklist (when created), including:
 
 - [ ] Follows [GitHub Actions Style Guide](../../TheRock/docs/development/style_guides/github_actions_style_guide.md)
 - [ ] Permissions are minimal (prefer read-only where possible)
-- [ ] No secrets exposed in logs
+- [ ] No use of GitHub secrets
 - [ ] Workflow triggers are appropriate
 - [ ] Job dependencies are correct
 
 **Security considerations:**
 - [ ] Uses pinned action versions (not `@main` or `@latest`)
-- [ ] Secrets use appropriate scoping
 - [ ] No command injection vulnerabilities in dynamic inputs
 
 ### Questions for PR Author
 
 - "Were these workflow changes tested on a branch first?"
-- "Do any new secrets need to be configured?"
 
 ---
 
@@ -232,7 +224,7 @@ Apply [documentation.md](documentation.md) checklist (when created), including:
 - [ ] Uses `set -euo pipefail` (or equivalent)
 - [ ] Proper quoting of variables
 - [ ] No command injection vulnerabilities
-- [ ] Works on target platforms (bash version compatibility)
+- [ ] Works on target platforms
 
 ---
 
@@ -279,6 +271,7 @@ Apply [security.md](security.md) checklist (when created), including:
 - [ ] Are performance claims backed by measurements?
 - [ ] Could the change regress other scenarios?
 - [ ] Is the optimization worth the complexity?
+- [ ] Is this an improvement for all configurations or is it a mixed bag?
 
 ---
 
