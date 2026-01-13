@@ -78,6 +78,115 @@ So here are some example "user journeys":
 3. I send a pull request to rocm-libraries with my changes. The CI workflows in that repository do the same thing.
 4. I want to compare the binary size of artifacts between two commits. I run the "find CI artifacts for commit" script once for each commit and it points me to where those artifacts are stored on AWS S3. I run a different script to diff the binary size of each file.
 
+## Implementation Plan
+
+### New Script: `find_artifacts_for_commit.py`
+
+Location: `build_tools/find_artifacts_for_commit.py`
+
+**CLI Interface:**
+
+```
+python find_artifacts_for_commit.py \
+  --commit <sha>              # Required, or HEAD if omitted
+  --repo <owner/repo>         # e.g., ROCm/TheRock (or detect from git remote)
+  --workflow <file>           # e.g., ci.yml (default: infer from repo)
+  --platform <linux|windows>  # Default: platform.system().lower()
+  --json                      # Output full details instead of just run_id
+
+Exit codes:
+  0 = found workflow run with artifacts
+  1 = not found (no workflow run for this commit)
+  2 = error (API failure, invalid input, etc.)
+```
+
+**Output formats:**
+
+Simple (default):
+```
+12345678901
+```
+
+JSON (`--json`):
+```json
+{
+  "run_id": "12345678901",
+  "commit_sha": "abc123...",
+  "conclusion": "success",
+  "html_url": "https://github.com/...",
+  "s3_bucket": "therock-ci-artifacts",
+  "s3_path": "12345678901-linux/"
+}
+```
+
+**Core Functions:**
+
+```python
+def get_workflow_run_for_commit(
+    repo: str,           # "ROCm/TheRock"
+    workflow: str,       # "ci.yml"
+    commit_sha: str,     # Full SHA
+) -> dict | None:
+    """Query GitHub API for workflow run matching this commit.
+
+    Uses github_actions_utils.gha_send_request() for API access.
+    Returns run metadata dict or None if no run exists.
+    """
+
+def get_artifact_location(
+    repo: str,
+    run_id: str,
+    platform: str,
+) -> dict:
+    """Determine S3 bucket and path for a workflow run's artifacts.
+
+    Uses github_actions_utils.retrieve_bucket_info() for bucket selection.
+    Returns {"bucket": "...", "path": "...", "base_uri": "s3://..."}.
+    """
+
+def detect_repo_from_git() -> str | None:
+    """Detect repo from git remote origin URL.
+
+    Parses: git@github.com:ROCm/TheRock.git -> ROCm/TheRock
+            https://github.com/ROCm/TheRock.git -> ROCm/TheRock
+    """
+
+def infer_workflow_for_repo(repo: str) -> str:
+    """Infer default workflow file for a repository.
+
+    ROCm/TheRock -> ci.yml
+    ROCm/rocm-libraries -> therock-ci.yml
+    ROCm/rocm-systems -> therock-ci.yml
+    """
+```
+
+**Composition with artifact_manager.py:**
+
+```bash
+# Find run_id, then fetch artifacts
+RUN_ID=$(python build_tools/find_artifacts_for_commit.py --commit abc123)
+python build_tools/artifact_manager.py fetch \
+  --run-id $RUN_ID \
+  --stage all \
+  --amdgpu-families gfx94X-dcgpu \
+  --output-dir ./build
+```
+
+### Future: Scenario 2 (Fallback Search)
+
+Not in initial scope. Will add later:
+- `--fallback` flag to search for baseline commit if direct lookup fails
+- Walk back through git history to find commit with successful CI
+- For rocm-libraries/rocm-systems: find TheRock ref from workflow
+
+### Out of Scope (Separate Task)
+
+`github_actions_utils.py` should support both:
+- GitHub REST API (current: `gha_send_request()` with `GITHUB_TOKEN`)
+- `gh` CLI fallback (when REST API auth unavailable but `gh` is authenticated)
+
+This would make local development easier when user has `gh auth login` but no `GITHUB_TOKEN` env var.
+
 ## Investigation Notes
 
 ### 2026-01-13 - Task Created
@@ -86,5 +195,9 @@ Extracted from submodule-bisect-tooling as a focused sub-task. Ready to implemen
 
 ## Next Steps
 
-1. [ ] Define step-by-step functions/scripts to implement
-2. [ ] Start implementation
+1. [x] Define script interface and core functions
+2. [ ] Implement `get_workflow_run_for_commit()`
+3. [ ] Implement `get_artifact_location()`
+4. [ ] Implement CLI with argparse
+5. [ ] Test with real commits from rocm-systems test case
+6. [ ] Add `detect_repo_from_git()` and `infer_workflow_for_repo()` helpers
