@@ -61,6 +61,23 @@ prototypes/query_workflow_runs.py           # Working prototype for commit→run
 - Queries `/repos/{repo}/actions/workflows/{workflow}/runs?head_sha={commit}`
 - Returns run_id, status, conclusion, url
 
+### Task list
+
+**Scenario 1**: For a given commit, check if it has CI artifacts already.
+
+**Scenario 2**: For a given commit that **does not** have CI artifacts yet, find an appropriate baseline commit that includes all artifacts for the desired GPU family.
+* The key observation is that _most_ commits do not modify all artifacts. Notably, the compiler in the amd-llvm artifact changes infrequently, so most workflows should be able to reuse the amd-llvm artifact from a prior job.
+* The search logic here will start simple and get more robust/complicated over time. We'll start at a commit by commit granularity but may later want to do a hashmap style lookup from artifact fprint (fingerprints) to a database of CI-produced artifacts that allows for efficient search across a large number of workflow runs and commits. See also https://github.com/ROCm/TheRock/pull/2432 (commit `77f0cb2112d1d0aaae0de6088a6e4337f2488233` in TheRock) which implemented the fingerprinting logic.
+* For commits in TheRock and for GPU families that are built continuously (see `amdgpu_family_info_matrix_presubmit` and `amdgpu_family_info_matrix_postsubmit` in `build_tools/github_actions/amdgpu_family_matrix.py`), we can currently assume that workflow runs of https://github.com/ROCm/TheRock/actions/workflows/ci.yml?query=branch%3Amain will include artifacts for all subprojects. So for a commit on a local branch or on a pull request, we could start by finding the base commit of that branch that already exists on the `main` branch and checking if that commit has completed workflow runs on github already. If it does not, or if that commit failed workflow runs for some reason, we could go back in history one commit at a time until we find a commit with artifacts.
+* For commits in rocm-libraries and rocm-systems, the baseline is currently the `ref` used for the `Checkout TheRock repository` step in the `therock-ci.yml` workflow. When a pull request runs a CI job in rocm-libararies it uses that commit of TheRock to checkout rocm-systems and amd-llvm.
+
+So here are some example "user journeys":
+
+1. I'm working locally. I branch off of `main` and make a few source changes to rocm-libraries. Now I want to build from source, but I don't want to build LLVM or rocm-systems. I run a script that finds artifacts from CI runs and bootstraps my local build.
+2. I send a pull request to TheRock with my changes. The CI workflows run the same script (or a similar script).
+3. I send a pull request to rocm-libraries with my changes. The CI workflows in that repository do the same thing.
+4. I want to compare the binary size of artifacts between two commits. I run the "find CI artifacts for commit" script once for each commit and it points me to where those artifacts are stored on AWS S3. I run a different script to diff the binary size of each file.
+
 ## Investigation Notes
 
 ### 2026-01-13 - Task Created
