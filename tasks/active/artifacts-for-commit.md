@@ -92,7 +92,7 @@ python find_artifacts_for_commit.py \
   --repo <owner/repo>         # e.g., ROCm/TheRock (or detect from git remote)
   --workflow <file>           # e.g., ci.yml (default: infer from repo)
   --platform <linux|windows>  # Default: platform.system().lower()
-  --json                      # Output full details instead of just run_id
+  --amdgpu-family <family>    # e.g., gfx94X-dcgpu, gfx110X-all (required for index URL)
 
 Exit codes:
   0 = found workflow run with artifacts
@@ -100,29 +100,86 @@ Exit codes:
   2 = error (API failure, invalid input, etc.)
 ```
 
-**Output formats:**
+**GPU Family Values** (from `amdgpu_family_matrix.py`):
 
-Simple (default):
+| Trigger | Family |
+|---------|--------|
+| presubmit | `gfx94X-dcgpu`, `gfx110X-all`, `gfx1151` |
+| postsubmit | `gfx950-dcgpu`, `gfx120X-all` |
+| nightly | `gfx90X-dcgpu`, `gfx101X-dgpu`, `gfx103X-dgpu`, `gfx1150`, `gfx1152`, `gfx1153` |
+
+**Output (human-readable to stdout):**
+
 ```
-12345678901
+Commit:     abc123def456...
+Repository: ROCm/TheRock
+Workflow:   ci.yml
+Run ID:     12345678901
+Status:     completed (success)
+URL:        https://github.com/ROCm/TheRock/actions/runs/12345678901
+S3 Bucket:  therock-ci-artifacts
+S3 Path:    12345678901-linux/
+Index:      https://therock-ci-artifacts.s3.amazonaws.com/12345678901-linux/index-gfx94X-dcgpu.html
 ```
 
-JSON (`--json`):
-```json
-{
-  "run_id": "12345678901",
-  "commit_sha": "abc123...",
-  "conclusion": "success",
-  "html_url": "https://github.com/...",
-  "s3_bucket": "therock-ci-artifacts",
-  "s3_path": "12345678901-linux/"
-}
+**Python API (for script-to-script composition):**
+
+```python
+@dataclass
+class ArtifactRunInfo:
+    """Information about a workflow run's artifacts."""
+    commit_sha: str
+    repo: str
+    workflow: str
+    run_id: str
+    status: str           # "completed", "in_progress", etc.
+    conclusion: str | None   # "success", "failure", None if in_progress
+    html_url: str
+    s3_bucket: str
+    s3_path: str          # e.g., "12345678901-linux/"
+    amdgpu_family: str    # e.g., "gfx94X-dcgpu"
+
+    @property
+    def s3_uri(self) -> str:
+        return f"s3://{self.s3_bucket}/{self.s3_path}"
+
+    @property
+    def index_url(self) -> str:
+        return f"https://{self.s3_bucket}.s3.amazonaws.com/{self.s3_path}index-{self.amdgpu_family}.html"
+
+# Usage from another Python script:
+from find_artifacts_for_commit import find_artifacts_for_commit
+
+info: ArtifactRunInfo | None = find_artifacts_for_commit(
+    commit="abc123",
+    repo="ROCm/TheRock",
+    amdgpu_family="gfx94X-dcgpu",
+)
+if info:
+    # Pass to artifact_manager or other tooling
+    print(f"Found artifacts at {info.s3_uri}")
+    print(f"Browse: {info.index_url}")
 ```
+
+This allows composition via Python imports rather than shell pipes or JSON parsing.
 
 **Core Functions:**
 
 ```python
-def get_workflow_run_for_commit(
+def find_artifacts_for_commit(
+    commit: str,
+    repo: str,
+    amdgpu_family: str,           # e.g., "gfx94X-dcgpu"
+    workflow: str | None = None,  # None = infer from repo
+    platform: str | None = None,  # None = current platform
+) -> ArtifactRunInfo | None:
+    """Main entry point: find artifact info for a commit.
+
+    Returns ArtifactRunInfo if workflow run exists, None otherwise.
+    This is the function other Python scripts should import and call.
+    """
+
+def query_workflow_run(
     repo: str,           # "ROCm/TheRock"
     workflow: str,       # "ci.yml"
     commit_sha: str,     # Full SHA
@@ -130,18 +187,19 @@ def get_workflow_run_for_commit(
     """Query GitHub API for workflow run matching this commit.
 
     Uses github_actions_utils.gha_send_request() for API access.
-    Returns run metadata dict or None if no run exists.
+    Returns raw API response dict or None if no run exists.
+    Internal function - callers should use find_artifacts_for_commit().
     """
 
 def get_artifact_location(
     repo: str,
     run_id: str,
     platform: str,
-) -> dict:
+) -> tuple[str, str]:
     """Determine S3 bucket and path for a workflow run's artifacts.
 
     Uses github_actions_utils.retrieve_bucket_info() for bucket selection.
-    Returns {"bucket": "...", "path": "...", "base_uri": "s3://..."}.
+    Returns (bucket, path) tuple.
     """
 
 def detect_repo_from_git() -> str | None:
@@ -162,14 +220,33 @@ def infer_workflow_for_repo(repo: str) -> str:
 
 **Composition with artifact_manager.py:**
 
+```python
+# In a higher-level script (e.g., bootstrap_from_commit.py)
+from find_artifacts_for_commit import find_artifacts_for_commit, ArtifactRunInfo
+from artifact_manager import do_fetch
+
+info = find_artifacts_for_commit(commit="abc123", repo="ROCm/TheRock")
+if info is None:
+    sys.exit("No artifacts found for commit")
+
+# Build args namespace for artifact_manager
+args = argparse.Namespace(
+    run_id=info.run_id,
+    platform=info.s3_path.rstrip("/").split("-")[-1],  # extract platform from path
+    stage="all",
+    amdgpu_families="gfx94X-dcgpu",
+    output_dir=Path("./build"),
+    # ... other required args
+)
+do_fetch(args)
+```
+
+Or via CLI (less preferred, but works):
 ```bash
-# Find run_id, then fetch artifacts
-RUN_ID=$(python build_tools/find_artifacts_for_commit.py --commit abc123)
-python build_tools/artifact_manager.py fetch \
-  --run-id $RUN_ID \
-  --stage all \
-  --amdgpu-families gfx94X-dcgpu \
-  --output-dir ./build
+# Human runs CLI, reads output, then runs artifact_manager
+python build_tools/find_artifacts_for_commit.py --commit abc123
+# Output shows run_id, user copies it
+python build_tools/artifact_manager.py fetch --run-id 12345678901 ...
 ```
 
 ### Future: Scenario 2 (Fallback Search)
