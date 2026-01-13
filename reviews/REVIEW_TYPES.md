@@ -27,7 +27,6 @@ Ask for a specific focused review:
 ```
 "Review this PR with a focus on test coverage"
 "Do a security review of these changes"
-"Check the documentation for this branch"
 ```
 
 ### Multiple Reviews in Parallel
@@ -57,13 +56,7 @@ A comprehensive review covers all aspects:
 **Covers:** All aspects of code quality
 
 **What it examines:**
-- Correctness and logic
-- Code style and conventions
-- Test coverage
-- Documentation
-- Architecture and design
-- Security concerns
-- Performance implications
+- All other review types
 
 **Output:** Single comprehensive review file with all findings
 
@@ -73,16 +66,16 @@ A comprehensive review covers all aspects:
 
 ### 2. Style Review
 
-**Focus:** Code formatting, naming conventions, readability
+**Focus:** Project conventions, readability
 
 **Reference:** [TheRock Style Guides](../../TheRock/docs/development/style_guides/)
 
 **What it examines:**
 - Adherence to language-specific style guides:
-  - [Python Style Guide](../../TheRock/docs/development/style_guides/python_style_guide.md) - type hints, dataclasses, error handling, pathlib
-  - [CMake Style Guide](../../TheRock/docs/development/style_guides/cmake_style_guide.md) - CMake conventions
-  - [Bash Style Guide](../../TheRock/docs/development/style_guides/bash_style_guide.md) - shell script patterns
-  - [GitHub Actions Style Guide](../../TheRock/docs/development/style_guides/github_actions_style_guide.md) - CI workflow patterns
+  - [Python Style Guide](../../TheRock/docs/development/style_guides/python_style_guide.md) - type hints, dataclasses, error handling, pathlib, etc.
+  - [CMake Style Guide](../../TheRock/docs/development/style_guides/cmake_style_guide.md)
+  - [Bash Style Guide](../../TheRock/docs/development/style_guides/bash_style_guide.md)patterns
+  - [GitHub Actions Style Guide](../../TheRock/docs/development/style_guides/github_actions_style_guide.md)
 - Naming conventions (variables, functions, classes)
 - Code formatting and consistency
 - File organization
