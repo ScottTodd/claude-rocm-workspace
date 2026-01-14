@@ -332,6 +332,62 @@ Created `build_tools/find_artifacts_for_commit.py` with:
 - Consider wrapping `ArtifactBackend` or using `BucketMetadata` to reduce duplication
 - Consider moving `print_artifact_info` into `ArtifactRunInfo` class
 
+Test commands and output:
+```
+D:\projects\TheRock (artifacts-for-commit)
+λ python build_tools\find_artifacts_for_commit.py --commit=62bc1eaa02e6ad1b49a718eed111cf4c9f03593a --amdgpu-family=gfx110X-all
+
+Warning: GITHUB_TOKEN not set, requests may be rate limited
+Sending request to URL: https://api.github.com/repos/ROCm/TheRock/actions/workflows/ci.yml/runs?head_sha=62bc1eaa02e6ad1b49a718eed111cf4c9f03593a
+Retrieving bucket info...
+  (explicit) github_repository: ROCm/TheRock
+  workflow_run_id             : 20384488184
+Warning: GITHUB_TOKEN not set, requests may be rate limited
+Sending request to URL: https://api.github.com/repos/ROCm/TheRock/actions/runs/20384488184
+  head_github_repository      : ScottTodd/TheRock
+  is_pr_from_fork             : True
+Retrieved bucket info:
+  external_repo: ROCm-TheRock/
+  bucket       : therock-ci-artifacts-external
+Commit:       62bc1eaa02e6ad1b49a718eed111cf4c9f03593a
+Repository:   ROCm/TheRock
+Workflow:     ci.yml
+Run ID:       20384488184
+Status:       completed (failure)
+Run URL:      https://github.com/ROCm/TheRock/actions/runs/20384488184
+Platform:     windows
+GPU Family:   gfx110X-all
+S3 Bucket:    therock-ci-artifacts-external
+S3 Path:      ROCm-TheRock/20384488184-windows/
+S3 Index:     https://therock-ci-artifacts-external.s3.amazonaws.com/ROCm-TheRock/20384488184-windows/index-gfx110X-all.html
+
+D:\projects\TheRock (artifacts-for-commit)
+λ python build_tools\find_artifacts_for_commit.py --commit=62bc1eaa02e6ad1b49a718eed111cf4c9f03593a --amdgpu-family=gfx110X-all
+Warning: GITHUB_TOKEN not set, requests may be rate limited
+Sending request to URL: https://api.github.com/repos/ROCm/TheRock/actions/workflows/ci.yml/runs?head_sha=62bc1eaa02e6ad1b49a718eed111cf4c9f03593a
+Retrieving bucket info...
+  (explicit) github_repository: ROCm/TheRock
+  workflow_run_id             : 20384488184
+Warning: GITHUB_TOKEN not set, requests may be rate limited
+Sending request to URL: https://api.github.com/repos/ROCm/TheRock/actions/runs/20384488184
+  head_github_repository      : ScottTodd/TheRock
+  is_pr_from_fork             : True
+Retrieved bucket info:
+  external_repo: ROCm-TheRock/
+  bucket       : therock-ci-artifacts-external
+Commit:       62bc1eaa02e6ad1b49a718eed111cf4c9f03593a
+Repository:   ROCm/TheRock
+Workflow:     ci.yml
+Run ID:       20384488184
+Status:       completed (failure)
+Run URL:      https://github.com/ROCm/TheRock/actions/runs/20384488184
+Platform:     windows
+GPU Family:   gfx110X-all
+S3 Bucket:    therock-ci-artifacts-external
+S3 Path:      ROCm-TheRock/20384488184-windows
+S3 Index:     https://therock-ci-artifacts-external.s3.amazonaws.com/ROCm-TheRock/20384488184-windowsindex-gfx110X-all.html
+```
+
 ## Next Steps
 
 1. [x] Define script interface and core functions
