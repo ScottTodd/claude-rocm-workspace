@@ -301,11 +301,46 @@ Should revisit after initial implementation to reduce duplication.
 
 Extracted from submodule-bisect-tooling as a focused sub-task. Ready to implement piece by piece.
 
+### 2026-01-13 - Initial Implementation Complete
+
+Created `build_tools/find_artifacts_for_commit.py` with:
+
+**ArtifactRunInfo dataclass** with descriptive field names:
+- `git_commit_sha`, `github_repository_name`, `external_repo`
+- `platform`, `amdgpu_family`
+- `workflow_file_name`, `workflow_run_id`, `workflow_run_status`, `workflow_run_conclusion`, `workflow_run_html_url`
+- `s3_bucket`
+- Computed properties: `s3_path`, `s3_uri`, `s3_index_url`
+
+**Functions:**
+- `query_workflow_run()` - GitHub API query via `gha_send_request()`
+- `find_artifacts_for_commit()` - Main entry point, returns `ArtifactRunInfo`
+- `infer_workflow_for_repo()` - Maps repo name to workflow file
+- `detect_repo_from_git()` - Parses git remotes for ROCm repos
+- `print_artifact_info()` - Human-readable CLI output
+
+**Tested with:**
+- rocm-systems commit `3568e0df` → Found run `20723767265` in `therock-ci-artifacts-external`
+- TheRock commit `77f0cb21` → Found run `20083647898` in `therock-ci-artifacts`
+- TheRock fork commit `62bc1eaa` → Found run `20384488184` in `therock-ci-artifacts-external`
+
+**Commits:**
+- `c8b65570` - Initial implementation
+- (uncommitted) - Renamed fields to be more descriptive, added `external_repo`, made `s3_path` computed
+
+**TODOs added in code:**
+- Consider wrapping `ArtifactBackend` or using `BucketMetadata` to reduce duplication
+- Consider moving `print_artifact_info` into `ArtifactRunInfo` class
+
 ## Next Steps
 
 1. [x] Define script interface and core functions
-2. [ ] Implement `get_workflow_run_for_commit()`
-3. [ ] Implement `get_artifact_location()`
-4. [ ] Implement CLI with argparse
-5. [ ] Test with real commits from rocm-systems test case
-6. [ ] Add `detect_repo_from_git()` and `infer_workflow_for_repo()` helpers
+2. [x] Implement `query_workflow_run()` using github_actions_utils
+3. [x] Implement S3 bucket/path resolution using `retrieve_bucket_info()`
+4. [x] Implement CLI with argparse and human-readable output
+5. [x] Test with real commits
+6. [x] Add `detect_repo_from_git()` and `infer_workflow_for_repo()` helpers
+7. [ ] Commit latest changes (field renames, `external_repo`, computed `s3_path`)
+8. [ ] Scenario 2: Fallback search for baseline commit with artifacts
+9. [ ] Consolidate with `BucketMetadata` in `fetch_artifacts.py`
+10. [ ] Add `gh` CLI fallback to `github_actions_utils.py` (separate task)
