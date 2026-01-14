@@ -38,8 +38,11 @@ The submodule bisect tooling needs to fetch pre-built artifacts for arbitrary co
 ### Directories/Files Involved
 ```
 prototypes/query_workflow_runs.py           # Working prototype for commit→run_id
-../TheRock/build_tools/fetch_artifacts.py   # Existing S3 artifact fetcher
-../TheRock/build_tools/github_actions/github_actions_utils.py  # GitHub API utils
+../TheRock/build_tools/find_artifacts_for_commit.py   # NEW: Find artifacts for a commit
+../TheRock/build_tools/find_latest_artifacts.py       # NEW: Find latest commit with artifacts
+../TheRock/build_tools/fetch_artifacts.py             # Existing S3 artifact fetcher
+../TheRock/build_tools/github_actions/github_actions_utils.py  # GitHub API utils (refactored)
+../TheRock/build_tools/github_actions/tests/github_actions_utils_test.py  # Tests for GitHubAPI
 ../TheRock/build_tools/bisect/              # Target location for new code
 ```
 
@@ -265,13 +268,7 @@ Not in initial scope. Will add later:
 
 ### Out of Scope (Separate Tasks)
 
-**1. `gh` CLI fallback for `github_actions_utils.py`**
-
-`github_actions_utils.py` should support both:
-- GitHub REST API (current: `gha_send_request()` with `GITHUB_TOKEN`)
-- `gh` CLI fallback (when REST API auth unavailable but `gh` is authenticated)
-
-This would make local development easier when user has `gh auth login` but no `GITHUB_TOKEN` env var.
+**1. ~~`gh` CLI fallback for `github_actions_utils.py`~~** ✅ DONE (see 2026-01-14 notes)
 
 **2. Consolidate `ArtifactRunInfo` with `BucketMetadata`**
 
@@ -300,6 +297,42 @@ Should revisit after initial implementation to reduce duplication.
 ### 2026-01-13 - Task Created
 
 Extracted from submodule-bisect-tooling as a focused sub-task. Ready to implement piece by piece.
+
+### 2026-01-14 - GitHubAPI Auth and find_latest_artifacts.py
+
+**New script: `find_latest_artifacts.py`**
+
+Created script to find the most recent commit on a branch with CI artifacts. Uses GitHub API to list commits, then checks each for artifacts via S3 HEAD requests.
+
+Key features:
+- Uses GitHub API for commit listing (no local git dependency)
+- Verifies artifacts actually exist via HTTP HEAD to S3 index URL
+- `--max-commits` flag to limit search depth (default 50)
+- `-v/--verbose` for progress output
+
+**New function: `check_artifacts_exist()`** in `find_artifacts_for_commit.py`
+
+Added S3 verification via HTTP HEAD request. This is important because workflow status/conclusion alone isn't reliable - a CI run can fail tests but still upload artifacts.
+
+**GitHubAPI refactoring** in `github_actions_utils.py` (will be separate PR)
+
+Refactored GitHub API authentication into a `GitHubAPI` class:
+- Detects auth automatically: GITHUB_TOKEN → gh CLI → unauthenticated
+- `AuthMethod` enum as inner class
+- Private methods: `_detect_auth_method()`, `_send_request_via_gh_cli()`, `_send_request_via_rest_api()`
+- Module singleton `_default_github_api` with wrapper functions for backwards compatibility
+- `GitHubAPIError` exception class
+
+This enables local dev with `gh auth login` without needing GITHUB_TOKEN env var.
+
+**Commits on `artifacts-for-commit` branch:**
+- Multiple commits for GitHubAPI class refactoring (to be cherry-picked to separate PR)
+- `find_latest_artifacts.py` implementation
+- `check_artifacts_exist()` addition
+
+**Next session:** After GitHubAPI auth changes are in separate PR, continue with:
+- Adjusting logging verbosity (reduce noise)
+- Landing initial `find_artifacts_for_commit.py` and `find_latest_artifacts.py`
 
 ### 2026-01-13 - Initial Implementation Complete
 
@@ -385,7 +418,7 @@ Platform:     windows
 GPU Family:   gfx110X-all
 S3 Bucket:    therock-ci-artifacts-external
 S3 Path:      ROCm-TheRock/20384488184-windows
-S3 Index:     https://therock-ci-artifacts-external.s3.amazonaws.com/ROCm-TheRock/20384488184-windowsindex-gfx110X-all.html
+S3 Index:     https://therock-ci-artifacts-external.s3.amazonaws.com/ROCm-TheRock/20384488184-windows/index-gfx110X-all.html
 ```
 
 ## Next Steps
@@ -396,7 +429,9 @@ S3 Index:     https://therock-ci-artifacts-external.s3.amazonaws.com/ROCm-TheRoc
 4. [x] Implement CLI with argparse and human-readable output
 5. [x] Test with real commits
 6. [x] Add `detect_repo_from_git()` and `infer_workflow_for_repo()` helpers
-7. [ ] Commit latest changes (field renames, `external_repo`, computed `s3_path`)
-8. [ ] Scenario 2: Fallback search for baseline commit with artifacts
-9. [ ] Consolidate with `BucketMetadata` in `fetch_artifacts.py`
-10. [ ] Add `gh` CLI fallback to `github_actions_utils.py` (separate task)
+7. [x] Commit latest changes (field renames, `external_repo`, computed `s3_path`)
+8. [x] Add `gh` CLI fallback to `github_actions_utils.py` (will be separate PR)
+9. [ ] Adjust logging verbosity (reduce noise from github_actions_utils)
+10. [ ] Land initial implementations of `find_artifacts_for_commit.py` and `find_latest_artifacts.py`
+11. [ ] Scenario 2: Fallback search for baseline commit with artifacts
+12. [ ] Consolidate with `BucketMetadata` in `fetch_artifacts.py`
