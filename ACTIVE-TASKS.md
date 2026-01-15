@@ -12,6 +12,7 @@ Refactoring the CMake build system for better modularity
 ## Background Tasks
 
 - **[code-review-guidelines](tasks/active/code-review-guidelines.md)** - Actionable review checklists for humans and Claude Code
+- **[python-env-setup](tasks/active/python-env-setup.md)** - Set up venv with pytest for Claude Code workspace
 
 ## Quick Start New Task
 
