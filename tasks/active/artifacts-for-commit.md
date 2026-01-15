@@ -334,6 +334,11 @@ This enables local dev with `gh auth login` without needing GITHUB_TOKEN env var
 - Adjusting logging verbosity (reduce noise)
 - Landing initial `find_artifacts_for_commit.py` and `find_latest_artifacts.py`
 
+**Session end state (2026-01-14):**
+- `github-actions-gh-authentication` branch: Sent as PR for review (single commit: eeb69681)
+- `artifacts-for-commit` branch: Still has the artifact scripts, will need rebase after auth PR lands
+- Review written: `reviews/local_003_github-actions-gh-authentication.md` (APPROVED)
+
 ### 2026-01-13 - Initial Implementation Complete
 
 Created `build_tools/find_artifacts_for_commit.py` with:
