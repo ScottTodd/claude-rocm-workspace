@@ -25,6 +25,7 @@ review system in `reviews/README.md`.
 - [x] Add summary/TOC to each page for quick scanning
 - [x] Add exemptions for trivial changes (avoid busy-work)
 - [x] Tailor test duration guidance for superproject context
+- [x] Create github_actions.md guidelines (caller analysis, input propagation, trigger testing)
 - [ ] Streamline docs for human scanning vs tool prescriptiveness
 - [ ] Create documentation.md guidelines
 - [ ] Create security.md guidelines
@@ -53,10 +54,30 @@ reviews/guidelines/
   pr_hygiene.md      # Bot-enforceable gatekeeping
   tests.md           # Test review checklist
   pr_patterns.md     # Pattern detection → guidelines mapping
+  github_actions.md  # GitHub Actions workflow review checklist
 reviews/raw_notes.md # Source notes (not committed)
 ```
 
 ## Investigation Notes
+
+### 2026-01-15 - GitHub Actions Guidelines
+
+Created `github_actions.md` after analyzing a missed regression in PR #2771.
+
+**What happened:** PR #2771 changed `setup.yml` to use `inputs.linux_amdgpu_families`
+instead of `github.event.inputs.linux_amdgpu_families`. The `ci_nightly.yml` caller
+wasn't updated to pass that input, breaking `workflow_dispatch` functionality.
+
+**Root cause of missed review:**
+1. Didn't trace data flow through all callers of the modified workflow
+2. Trusted "verified CI runs" without checking all trigger paths
+3. Didn't understand `inputs` vs `github.event.inputs` semantics
+
+**Key guidelines added:**
+- Caller inventory: List all callers before approving reusable workflow changes
+- Input propagation: Understand which input source works for which trigger
+- Trigger path testing: Each trigger type (dispatch, call, PR) needs separate testing
+- Breaking change detection: Input renames/semantic changes break callers
 
 ### 2026-01-12 - Initial Implementation
 

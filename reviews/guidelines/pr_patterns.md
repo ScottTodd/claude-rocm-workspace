@@ -176,22 +176,26 @@ Apply [documentation.md](documentation.md) checklist (when created), including:
 - Changes to `.github/workflows/`
 - Changes to CI configuration files
 - New or modified GitHub Actions
+- Changes to reusable workflows (workflows with `workflow_call` trigger)
 
 ### Additional Checks
 
+Apply full [github_actions.md](github_actions.md) checklist, especially:
+
+- [ ] All callers of modified reusable workflows updated
+- [ ] Input propagation correct (`inputs` vs `github.event.inputs`)
+- [ ] Each trigger type tested (dispatch, call, PR, push)
+- [ ] No breaking changes to existing callers
 - [ ] Follows [GitHub Actions Style Guide](../../TheRock/docs/development/style_guides/github_actions_style_guide.md)
 - [ ] Permissions are minimal (prefer read-only where possible)
-- [ ] No use of GitHub secrets
-- [ ] Workflow triggers are appropriate
-- [ ] Job dependencies are correct
-
-**Security considerations:**
 - [ ] Uses pinned action versions (not `@main` or `@latest`)
 - [ ] No command injection vulnerabilities in dynamic inputs
 
 ### Questions for PR Author
 
-- "Were these workflow changes tested on a branch first?"
+- "Which workflows call this reusable workflow? Were they all updated?"
+- "Was `workflow_dispatch` tested from the GitHub UI?"
+- "Does this change affect external repositories (rocm-libraries, rocm-systems)?"
 
 ---
 
@@ -286,7 +290,7 @@ Quick reference for which guidelines to apply:
 | Build changes | pr_hygiene + (project-specific patterns) |
 | Revert | pr_hygiene (revert section) |
 | Docs only | pr_hygiene (reduced) + documentation |
-| CI changes | pr_hygiene + security |
+| CI changes | pr_hygiene + github_actions + security |
 | Python code | pr_hygiene + style |
 | Shell scripts | pr_hygiene + style + security |
 | Security-sensitive | pr_hygiene + security |
