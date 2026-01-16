@@ -443,15 +443,20 @@ S3 Index:     https://therock-ci-artifacts-external.s3.amazonaws.com/ROCm-TheRoc
 - Commits: `2a7e341a`, `5dc9f8aa`
 
 **Current branch state:**
-- `github-actions-gh-authentication`: PR under review with gh CLI auth + error handling
-- `artifacts-for-commit`: Has API refactoring commits, needs rebase
+- `github-actions-gh-authentication`: PR #2771 under review (gh CLI auth + error handling)
+- `github-actions-query-workflow-runs`: PR #2961 sent for review (query functions + tests)
+- `artifacts-for-commit`: Has local commits for find_artifacts_for_commit.py, will land after PRs merge
+
+**PRs in flight:**
+- https://github.com/ROCm/TheRock/pull/2771 - gh CLI authentication
+- https://github.com/ROCm/TheRock/pull/2961 - gha_query_workflow_runs_for_commit + unit tests
 
 ## Next Steps / Plan
 
 **Immediate (branch management):**
-1. [ ] Rebase `github_actions_utils.py` changes onto `github-actions-gh-authentication` branch
-2. [ ] Add unit tests for new functions (`gha_query_workflow_runs_for_commit`, updated `retrieve_bucket_info`)
-3. [ ] Send PR for review
+1. [x] Rebase `github_actions_utils.py` changes onto `github-actions-gh-authentication` branch
+2. [x] Add unit tests for new functions (`gha_query_workflow_runs_for_commit`, updated `retrieve_bucket_info`)
+3. [x] Send PR for review → PR #2961
 
 **After PRs land:**
 4. [ ] Adjust logging verbosity - use Python `logging` module with levels at module level
