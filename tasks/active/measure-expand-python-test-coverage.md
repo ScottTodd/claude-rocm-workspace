@@ -17,7 +17,22 @@ TheRock's `build_tools/` directory contains ~18,000 LOC across 105 Python files 
 
 ---
 
-## Phase 1: Local Coverage Measurement (First Priority)
+## Phase 0: Team Coordination (FIRST)
+
+Before diving deep into implementation, get team buy-in and involvement:
+
+- [ ] **File GitHub issue** proposing coverage measurement for `build_tools/`
+  - Reference the audit: `reports/python_audit_build_tools_2026-01-09.md`
+  - Propose target metrics (e.g., 60% coverage for critical files)
+  - Ask for input on CI integration approach (Codecov vs self-hosted)
+  - Tag relevant team members for feedback
+- [ ] Get consensus on approach before implementing CI integration
+
+This avoids building infrastructure the team doesn't want or that conflicts with existing plans.
+
+---
+
+## Phase 1: Local Coverage Measurement
 
 ### Setup
 

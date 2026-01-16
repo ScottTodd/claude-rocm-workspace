@@ -83,8 +83,16 @@ This saves reviewer time and ensures authors have actually run their tests.
 
 **Questions to ask:**
 - Does every new public function/class have test coverage?
+- Does every **new code path in existing functions** have test coverage?
+  - New parameters that change behavior
+  - New branches (if/else paths)
+  - New early returns or error conditions
 - Are the tests testing behavior, not just that code runs?
 - Do tests cover the stated use case from the PR description?
+
+**Common miss:** A function is refactored to accept an optional parameter that skips
+some work (e.g., pass pre-fetched data to avoid redundant API call). The new parameter
+path needs test coverage even though the function already has tests for the old path.
 
 **Severity:**
 - No tests for new functionality: **BLOCKING**
