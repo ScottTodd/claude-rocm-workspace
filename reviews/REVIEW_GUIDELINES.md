@@ -170,6 +170,11 @@ Is this a correctness/security issue?
 - Opportunity to refactor unrelated code
 - Enhancement that's genuinely independent
 
+### Key Principle: API Renames
+
+- **Internal-only code** (single repo): Update all callsites, no backwards compat alias needed
+- **Public/cross-repo APIs**: May need backwards compat alias or coordinated migration
+
 ---
 
 ## Review Structure Template
