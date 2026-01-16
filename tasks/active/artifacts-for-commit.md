@@ -426,17 +426,37 @@ S3 Path:      ROCm-TheRock/20384488184-windows
 S3 Index:     https://therock-ci-artifacts-external.s3.amazonaws.com/ROCm-TheRock/20384488184-windows/index-gfx110X-all.html
 ```
 
-## Next Steps
+### 2026-01-15 - Refactoring and Error Handling
 
-1. [x] Define script interface and core functions
-2. [x] Implement `query_workflow_run()` using github_actions_utils
-3. [x] Implement S3 bucket/path resolution using `retrieve_bucket_info()`
-4. [x] Implement CLI with argparse and human-readable output
-5. [x] Test with real commits
-6. [x] Add `detect_repo_from_git()` and `infer_workflow_for_repo()` helpers
-7. [x] Commit latest changes (field renames, `external_repo`, computed `s3_path`)
-8. [x] Add `gh` CLI fallback to `github_actions_utils.py` (will be separate PR)
-9. [ ] Adjust logging verbosity (reduce noise from github_actions_utils)
-10. [ ] Land initial implementations of `find_artifacts_for_commit.py` and `find_latest_artifacts.py`
-11. [ ] Scenario 2: Fallback search for baseline commit with artifacts
-12. [ ] Consolidate with `BucketMetadata` in `fetch_artifacts.py`
+**Error handling improvements** (on `github-actions-gh-authentication` branch):
+- Standardized all error paths in `GitHubAPI.send_request()` to raise `GitHubAPIError`
+- Exception chaining via `raise ... from e` preserves original cause
+- Added unit tests for all failure modes (timeout, OSError, HTTP errors, JSON errors)
+- Commit: `9026d029`
+
+**API deduplication** (on `artifacts-for-commit` branch):
+- Renamed `gha_query_workflow_run_information` → `gha_query_workflow_run_by_id` (with compat alias)
+- Added `gha_query_workflow_runs_for_commit()` - queries by commit SHA, returns list
+- `retrieve_bucket_info()` now accepts `workflow_run` param to skip redundant API call
+- `find_artifacts_for_commit()` iterates runs, uses `check_artifacts_exist()` to find first with artifacts
+- Added `git_commit_url` property to `ArtifactRunInfo`
+- Commits: `2a7e341a`, `5dc9f8aa`
+
+**Current branch state:**
+- `github-actions-gh-authentication`: PR under review with gh CLI auth + error handling
+- `artifacts-for-commit`: Has API refactoring commits, needs rebase
+
+## Next Steps / Plan
+
+**Immediate (branch management):**
+1. [ ] Rebase `github_actions_utils.py` changes onto `github-actions-gh-authentication` branch
+2. [ ] Add unit tests for new functions (`gha_query_workflow_runs_for_commit`, updated `retrieve_bucket_info`)
+3. [ ] Send PR for review
+
+**After PRs land:**
+4. [ ] Adjust logging verbosity - use Python `logging` module with levels at module level
+   - Scripts like `find_artifacts_for_commit.py` can control verbosity via `-v`/`-vv` flags
+   - Quiet by default, verbose on request
+5. [ ] Land `find_artifacts_for_commit.py` and `find_latest_artifacts.py`
+6. [ ] Scenario 2: Fallback search for baseline commit with artifacts
+7. [ ] Consolidate with `BucketMetadata` in `fetch_artifacts.py`
