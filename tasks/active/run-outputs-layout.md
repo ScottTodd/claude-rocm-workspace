@@ -361,3 +361,29 @@ Update consumers to use new API:
 **For PR #3000:** Keep current API, merge as-is (the refactoring is additive and can come later)
 
 **Follow-up PR:** Implement OutputLocation pattern, migrate consumers, then deprecate/remove old methods
+
+### Design Issue Discovered (2026-01-20)
+
+While implementing OutputLocation, we found that `fetch_artifacts.py` directly accesses S3:
+
+```python
+# fetch_artifacts.py bypasses ArtifactBackend:
+def list_s3_artifacts(run_root: RunOutputRoot, ...):
+    paginator.paginate(Bucket=run_root.bucket, Prefix=run_root.prefix)
+```
+
+This is problematic because:
+1. Duplicates logic already in `S3Backend.list_artifacts()`
+2. Couples code to S3 implementation details
+3. Makes `RunOutputRoot.bucket` a leaky abstraction
+4. Blocks making `RunOutputRoot` truly backend-agnostic
+
+**Recommended sequencing:**
+1. First: Migrate `fetch_artifacts.py` to use `ArtifactBackend` (separate PR)
+2. Then: Resume OutputLocation work with cleaner foundations
+
+**Staged work:** Branch `run-outputs-locations` has partial OutputLocation implementation:
+- `OutputLocation` class added
+- Location methods added to `RunOutputRoot`
+- `post_build_upload.py` and `artifact_backend.py` migrated
+- Old methods not yet removed
