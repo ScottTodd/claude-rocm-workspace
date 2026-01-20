@@ -48,3 +48,6 @@ __pycache__/
 
 # OS files
 Thumbs.db
+
+# Python venvs
+*.venv
