@@ -5,10 +5,10 @@ repositories:
 
 # Run Outputs Layout Consolidation
 
-**Status:** In progress
+**Status:** Ready for PR
 **Priority:** P2 (Medium)
 **Started:** 2026-01-19
-**Target:** TBD
+**Branch:** `run-outputs` (14 commits)
 
 ## Overview
 
@@ -73,6 +73,52 @@ This duplication made it hard to:
 - **Rationale:** `_therock_utils/` is for shared utilities; `artifact_backend.py` already lives there.
 - **Alternatives considered:** `github_actions_utils.py` (already too large), new top-level module
 
+## Future Work: Compatibility & Versioning
+
+### The Problem
+
+Upload code runs at a fixed point in time and makes layout decisions. Download code runs later and needs to know what to expect. We've already encountered this with:
+
+1. **Bucket cutover** (`_BUCKET_CUTOVER_DATE`): Bucket naming changed from `therock-artifacts` to `therock-ci-artifacts`. Download code checks workflow run date to determine which bucket.
+
+2. **Subdirectory migration** (planned): Moving artifacts from root to `artifacts/` subdirectory would be another breaking change.
+
+As these systems get heavier use, we won't be able to make breaking changes without a compatibility window.
+
+### Options Considered
+
+**Option A: Index/Sitemap at RunOutputRoot**
+- Upload creates a machine-readable index (e.g., `manifest.json` or `sitemap.json`) at the root
+- Index describes schema version, lists files, includes checksums
+- Download code reads index first, then knows how to find everything
+- Pros: Self-describing, enables discovery, future-proof
+- Cons: One more file to upload, need to handle missing index for old runs
+
+**Option B: Breaking Changes + Retention Policy**
+- Establish artifact retention policy (e.g., 30/60/90 days)
+- Make breaking changes with notice period
+- Once retention window passes, old code paths can be deleted
+- Pros: Simpler code, no accumulating backwards-compat logic
+- Cons: Users referencing old runs will break during transition
+
+**Option C: Simple Presence Checks (current approach)**
+- For subdirectory change: check if `artifacts/` exists, fall back to root
+- For bucket changes: use date-based logic
+- Pros: Simple, no new infrastructure
+- Cons: Each change adds more conditional logic
+
+### Recommendation (2026-01-19)
+
+1. **Short term**: Use presence checks for subdirectory migration (Option C)
+2. **Medium term**: Establish retention policy - this makes Option B viable
+3. **Long term**: If we need richer metadata (discovery, dependency graphs, checksums), add an index. But don't add it just for schema versioning.
+
+### Open Questions
+
+- What retention period is appropriate? (30/60/90 days?)
+- Do we need machine-readable artifact discovery? (Currently requires S3 list operations)
+- Should the index include build metadata beyond just file listings?
+
 ## Investigation Notes
 
 ### 2026-01-19 - Initial Implementation
@@ -101,12 +147,15 @@ This duplication made it hard to:
 - `build_tools/_therock_utils/artifact_backend.py` - Migrated to use `RunOutputRoot` (committed)
 - `build_tools/tests/run_outputs_test.py` - NEW: Unit tests for `RunOutputRoot` (committed)
 - `build_tools/tests/artifact_backend_test.py` - Updated for new interface (committed)
-- `docs/development/run_outputs_layout.md` - NEW: Documentation (uncommitted)
-- `docs/development/README.md` - Added link to run_outputs_layout.md (uncommitted)
+- `docs/development/run_outputs_layout.md` - NEW: Documentation (committed)
+- `docs/development/README.md` - Added link to run_outputs_layout.md (committed)
+- `build_tools/fetch_artifacts.py` - Migrated to use `RunOutputRoot` (committed)
+- `build_tools/github_actions/upload_test_report_script.py` - Migrated (committed)
+- `build_tools/github_actions/github_actions_utils.py` - Removed `retrieve_bucket_info()` (committed)
 
 ### PRs
 
-- (pending) Ready for PR creation
+- Branch: `run-outputs` (14 commits, ready for PR)
 
 ## Next Steps
 
@@ -114,8 +163,10 @@ This duplication made it hard to:
 2. [x] Write unit tests for `RunOutputRoot`
 3. [x] Migrate `artifact_backend.py` to use `RunOutputRoot`
 4. [x] Add documentation to `docs/development/`
-5. [ ] Create PR for review
-6. [ ] After PR lands, update `find_artifacts_for_commit.py` on `artifacts-for-commit` branch
+5. [x] Migrate `fetch_artifacts.py` and `upload_test_report_script.py`
+6. [x] Consolidate `retrieve_bucket_info()` into `run_outputs.py`
+7. [ ] Create PR for review
+8. [ ] After PR lands, update `find_artifacts_for_commit.py` on `artifacts-for-commit` branch
 
 ## Layout Reference
 
@@ -131,12 +182,8 @@ Current layout structure (documented in `run_outputs.py`):
 │   ├── ninja_logs.tar.gz                     # Ninja timing logs
 │   ├── index.html                            # Log index
 │   └── build_time_analysis.html              # Build timing (Linux)
-├── manifests/{artifact_group}/
-│   └── therock_manifest.json                 # Build manifest
-├── python/{artifact_group}/                  # [future]
-│   ├── *.whl
-│   └── *.tar.gz
-└── packages/{artifact_group}/                # [future]
-    ├── *.deb
-    └── *.rpm
+└── manifests/{artifact_group}/
+    └── therock_manifest.json                 # Build manifest
 ```
+
+Future output types (python packages, native packages, reports) can be added by extending `RunOutputRoot` - see docs/development/run_outputs_layout.md for instructions.
