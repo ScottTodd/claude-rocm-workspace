@@ -5,10 +5,11 @@ repositories:
 
 # Run Outputs Layout Consolidation
 
-**Status:** Ready for PR
+**Status:** In Review
 **Priority:** P2 (Medium)
 **Started:** 2026-01-19
-**Branch:** `run-outputs` (14 commits)
+**Branch:** `run-outputs` (15 commits)
+**PR:** https://github.com/ROCm/TheRock/pull/3000
 
 ## Overview
 
@@ -121,6 +122,14 @@ As these systems get heavier use, we won't be able to make breaking changes with
 
 ## Investigation Notes
 
+### 2026-01-19 - PR Submitted
+
+- Fixed test failures discovered before PR:
+  - `fetch_artifacts_test.py`: Updated to use `RunOutputRoot` instead of removed `BucketMetadata`
+  - `artifact_manager_tool_test.py`: Updated `LocalDirectoryBackend` calls to use new `RunOutputRoot` interface
+- All tests passing: 131 passed in `build_tools/tests/`, 42 passed in `build_tools/github_actions/tests/`
+- PR submitted as #3000
+
 ### 2026-01-19 - Ready for PR
 
 - All migrations complete (14 commits on `run-outputs` branch)
@@ -163,7 +172,7 @@ As these systems get heavier use, we won't be able to make breaking changes with
 
 ### PRs
 
-- Branch: `run-outputs` (14 commits, ready for PR)
+- **PR #3000**: https://github.com/ROCm/TheRock/pull/3000 (15 commits, in review)
 
 ## Next Steps
 
@@ -173,8 +182,26 @@ As these systems get heavier use, we won't be able to make breaking changes with
 4. [x] Add documentation to `docs/development/`
 5. [x] Migrate `fetch_artifacts.py` and `upload_test_report_script.py`
 6. [x] Consolidate `retrieve_bucket_info()` into `run_outputs.py`
-7. [ ] Create PR for review
-8. [ ] After PR lands, update `find_artifacts_for_commit.py` on `artifacts-for-commit` branch
+7. [x] Create PR for review
+8. [ ] Address review feedback (if any)
+9. [ ] After PR lands, update `find_artifacts_for_commit.py` on `artifacts-for-commit` branch
+
+## PR Split Consideration
+
+Considered splitting into two PRs but decided against it:
+
+**Option considered: Two PRs**
+- PR 1 (~1100 lines, additive): `run_outputs.py` + tests + documentation
+- PR 2 (~700 lines, migrations): Migrate all consumers + consolidate `retrieve_bucket_info()`
+
+**Why single PR was chosen:**
+- Changes are tightly coupled - `RunOutputRoot.from_workflow_run()` needs `_retrieve_bucket_info`
+- Splitting would require either duplicating code or temporary import coupling
+- The migration is mechanical and easy to verify
+- Well-tested (39 new tests + updated existing tests)
+- Single PR gives reviewers full context: new API + how it's used
+
+**If reviewer requests split:** Natural boundary would be foundation (additive) vs migrations (uses new module), but would need refactoring to decouple `retrieve_bucket_info`.
 
 ## Layout Reference
 
