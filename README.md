@@ -1,78 +1,113 @@
 # ROCm Claude Code Workspace
 
-This is a dedicated workspace for using Claude Code to work on ROCm/TheRock and related projects.
+A meta-workspace for using Claude Code to work on ROCm/TheRock and related projects. This repository serves as a "control center" that provides centralized context, tooling, and documentation for AI-assisted development.
 
-## Purpose
+## Why a Meta-Workspace?
 
-As a build infrastructure engineer working on ROCm, my workflow involves:
-- Multiple source repositories (TheRock, git worktrees, submodules)
-- Multiple build directories scattered across the filesystem
-- Complex build pipelines and tooling
+Build infrastructure work on ROCm involves multiple scattered repositories and build directories. Rather than making any single ROCm project the Claude Code workspace, this separate meta-repository:
 
-Rather than making the ROCm project hierarchy itself the Claude Code workspace, this separate meta-repository serves as a "control center" that:
 - Provides centralized context and documentation for Claude Code
-- Maps out where all the various directories live
+- Maps out where all the various directories live (see `directory-map.md`)
 - Contains workflows, notes, and helper scripts
 - Stays version-controlled without polluting the actual ROCm repositories
 
+## Directory Structure
+
+```
+claude-rocm-workspace/
+├── CLAUDE.md              # Project context and instructions for Claude Code
+├── ACTIVE-TASKS.md        # Current task tracking
+├── directory-map.md       # Map of ROCm directories on your system
+│
+├── tasks/                 # Task management
+│   ├── active/            # Currently active tasks
+│   └── completed/         # Archived completed tasks
+│
+├── reviews/               # Code review system
+│   ├── README.md          # Quick start guide
+│   ├── REVIEW_GUIDELINES.md
+│   ├── REVIEW_TYPES.md
+│   ├── guidelines/        # Domain-specific review checklists
+│   ├── pr_*.md            # PR reviews
+│   └── local_*.md         # Local branch reviews
+│
+├── plans/                 # Implementation plans and design docs
+├── reports/               # Audit reports and analyses
+│
+└── .claude/               # Claude Code configuration
+    ├── commands/          # Slash commands (/task, /review-pr, etc.)
+    ├── agents/            # Custom subagents (build-infra, ci-pipeline)
+    └── settings.json      # Workspace settings
+```
+
+## Key Features
+
+### Code Review System
+
+The `reviews/` directory contains a structured code review system with severity levels and focused review types.
+
+**Quick start:**
+```bash
+/review-pr https://github.com/ROCm/TheRock/pull/1234  # Review a PR
+/review-branch                                        # Review current branch
+/review-branch style tests                            # Focused reviews
+```
+
+See `reviews/README.md` for full documentation.
+
+### Task Management
+
+Track and switch between multiple tasks without losing context.
+
+**Commands:**
+```bash
+/task task-name                    # Switch to a task
+```
+
+**Workflow:**
+1. Create `tasks/active/your-task.md` (use `example-task.md` as template)
+2. Add to `ACTIVE-TASKS.md`
+3. Switch with `/task your-task` or "I'm working on your-task"
+4. Move to `tasks/completed/` when done
+
+### Custom Agents
+
+Domain-specific subagents in `.claude/agents/`:
+
+| Agent | Purpose |
+|-------|---------|
+| `build-infra` | CMake, meson, pkg-config, ROCm build patterns |
+| `ci-pipeline` | GitHub Actions, CI/CD workflows |
+
+### Slash Commands
+
+Available commands in `.claude/commands/`:
+
+| Command | Description |
+|---------|-------------|
+| `/task <name>` | Switch to a task |
+| `/review-pr <URL>` | Review a GitHub PR |
+| `/review-branch` | Review current local branch |
+| `/wip` | Quick WIP commit |
+
 ## Setup
 
-1. Clone this repository to your preferred location
+1. Clone this repository
 2. Update `directory-map.md` with your actual directory paths
-3. Update `CLAUDE.md` with your project-specific context
+3. Customize `CLAUDE.md` with your project-specific context
 4. Run Claude Code from this directory
-5. Reference actual ROCm source/build directories using absolute paths
-
-## Usage Pattern
 
 ```bash
-cd /path/to/rocm-claude-workspace
-# Launch Claude Code here
-# Claude can read/edit files anywhere via absolute paths
+cd /path/to/claude-rocm-workspace
+claude   # Claude can read/edit files anywhere via absolute paths
 ```
 
-## Structure
+## Adapting for Your Project
 
-- `CLAUDE.md` - Overall project context for Claude Code
-- `directory-map.md` - Map of all ROCm-related directories on your system
-- `ACTIVE-TASKS.md` - Track current and background tasks
-- `tasks/` - Task-specific notes and context
-  - `tasks/active/` - Currently active tasks
-  - `tasks/completed/` - Archived completed tasks
+This workspace pattern can be adapted for any multi-repository project:
 
-## Task Management
-
-This workspace supports juggling multiple tasks simultaneously:
-
-### Starting a New Task
-
-1. Create a new file: `tasks/active/your-task-name.md`
-2. Use `tasks/active/example-task.md` as a template
-3. Add your task to `ACTIVE-TASKS.md`
-4. Switch to the task: Tell Claude "I'm working on your-task-name" or use `/task your-task-name`
-
-### Working with Tasks
-
-- **Switch tasks verbally:** "Let's work on the cmake-refactor task now"
-- **Use the slash command:** `/task cmake-refactor`
-- **Check active tasks:** Ask Claude to read `ACTIVE-TASKS.md`
-
-### Completing Tasks
-
-```bash
-# Move to completed directory
-mv tasks/active/task-name.md tasks/completed/
-
-# Update ACTIVE-TASKS.md to remove it from the list
-```
-
-### Why This Approach?
-
-- **Single Claude session:** No need to restart when switching tasks
-- **Shared context:** Tasks can reference each other when they overlap
-- **Organized:** Easy to see what's active vs completed
-- **Flexible:** Works for short-term and long-term tasks
-
-## Sharing
-
-Feel free to fork/adapt this setup for your own ROCm work. The directory paths are specific to my environment, so you'll need to update `directory-map.md` for your setup.
+1. Fork this repository
+2. Replace ROCm-specific content in `CLAUDE.md`
+3. Update `directory-map.md` for your environment
+4. Customize the review guidelines for your project's conventions
+5. Add task templates relevant to your work
