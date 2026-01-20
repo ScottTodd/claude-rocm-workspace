@@ -1,13 +1,19 @@
 # ROCm Claude Code Workspace
 
-A meta-workspace for using Claude Code to work on ROCm/TheRock and related projects. This repository serves as a "control center" that provides centralized context, tooling, and documentation for AI-assisted development.
+A meta-workspace for using Claude Code to work on
+[ROCm/TheRock](https://github.com/ROCm/TheRock) and related projects. This
+repository serves as a "control center" that provides centralized context,
+tooling, and documentation for AI-assisted development.
 
 ## Why a Meta-Workspace?
 
-Build infrastructure work on ROCm involves multiple scattered repositories and build directories. Rather than making any single ROCm project the Claude Code workspace, this separate meta-repository:
+Build infrastructure work on ROCm involves multiple scattered repositories and
+build directories. Rather than making any single ROCm project the Claude Code
+workspace, this separate meta-repository:
 
 - Provides centralized context and documentation for Claude Code
-- Maps out where all the various directories live (see `directory-map.md`)
+- Maps out where all the various directories live (see
+  [`directory-map.md`](/directory-map.md))
 - Contains workflows, notes, and helper scripts
 - Stays version-controlled without polluting the actual ROCm repositories
 
@@ -44,7 +50,7 @@ claude-rocm-workspace/
 
 ### Code Review System
 
-The `reviews/` directory contains a structured code review system with severity levels and focused review types.
+The [`reviews/`](/reviews/) directory contains a structured code review system.
 
 **Quick start:**
 ```bash
@@ -53,7 +59,7 @@ The `reviews/` directory contains a structured code review system with severity 
 /review-branch style tests                            # Focused reviews
 ```
 
-See `reviews/README.md` for full documentation.
+See [`reviews/README.md`](/reviews/README.md) for full documentation.
 
 ### Task Management
 
@@ -65,30 +71,31 @@ Track and switch between multiple tasks without losing context.
 ```
 
 **Workflow:**
-1. Create `tasks/active/your-task.md` (use `example-task.md` as template)
+1. Create `tasks/active/your-task.md` (use
+   [`example-task.md`](/tasks/active/example-task.md) as template)
 2. Add to `ACTIVE-TASKS.md`
 3. Switch with `/task your-task` or "I'm working on your-task"
 4. Move to `tasks/completed/` when done
 
 ### Custom Agents
 
-Domain-specific subagents in `.claude/agents/`:
+Domain-specific subagents in [`.claude/agents/`](/.claude/agents/):
 
 | Agent | Purpose |
 |-------|---------|
-| `build-infra` | CMake, meson, pkg-config, ROCm build patterns |
-| `ci-pipeline` | GitHub Actions, CI/CD workflows |
+| [`build-infra`](/.claude/agents/build-infra.md) | CMake, meson, pkg-config, ROCm build patterns |
+| [`ci-pipeline`](/.claude/agents/ci-pipeline.md) | GitHub Actions, CI/CD workflows |
 
 ### Slash Commands
 
-Available commands in `.claude/commands/`:
+Available commands in [`.claude/commands/`](/.claude/commands/):
 
 | Command | Description |
 |---------|-------------|
-| `/task <name>` | Switch to a task |
-| `/review-pr <URL>` | Review a GitHub PR |
-| `/review-branch` | Review current local branch |
-| `/wip` | Quick WIP commit |
+| [`/task <name>`](/.claude/commands/task.md) | Switch to a task |
+| [`/review-pr <URL>`](/.claude/commands/review-pr.md) | Review a GitHub PR |
+| [`/review-branch`](/.claude/commands/review-branch.md) | Review current local branch |
+| [`/wip`](/.claude/commands/wip.md) | Quick WIP commit |
 
 ## Setup
 
@@ -99,7 +106,7 @@ Available commands in `.claude/commands/`:
 
 ```bash
 cd /path/to/claude-rocm-workspace
-claude   # Claude can read/edit files anywhere via absolute paths
+claude
 ```
 
 ## Adapting for Your Project
