@@ -114,11 +114,41 @@ Created three guideline files:
   - **Rationale:** Avoid busy-work for typo fixes, version bumps
   - **Alternatives considered:** Require everything (creates friction)
 
+### Future - Markdown/Documentation Style Guidelines
+
+Need to create documentation authoring guidelines in two locations:
+- `TheRock/docs/development/style_guides/markdown.md` (or `documentation.md`)
+- `claude-rocm-workspace/reviews/guidelines/documentation.md`
+
+**Key rules to include:**
+
+1. **Line wrapping:** Prefer wrapping lines at 80 characters for readability in
+   editors and diffs
+
+2. **File/directory references:** Use hyperlinks with code block styling
+   - Good: [`src/config.py`](../src/config.py)
+   - Bad: src/config.py or `src/config.py` (no link)
+
+3. **Follow Google Technical Writing Style guide** for tone and structure
+   - https://developers.google.com/tech-writing
+   - Active voice, present tense
+   - Short sentences, one idea per sentence
+   - Define acronyms on first use
+
+4. **Sentence case for headings** - don't Capitalize Every Word
+   - Good: "Build system configuration"
+   - Bad: "Build System Configuration"
+
+5. **Other candidates:**
+   - Info density (avoid filler words)
+   - Code blocks for commands, file paths, variable names
+   - Consistent list formatting (periods vs no periods)
+
 ## Next Steps
 
 1. [ ] Streamline documentation for dual audience (human scan vs tool rules)
 2. [ ] Add summary/TOC to pr_patterns.md
-3. [ ] Create documentation.md with info density, code block, link checks
+3. [ ] Create documentation.md with markdown/writing style rules (see notes above)
 4. [ ] Create security.md with secrets, permissions, injection checks
 5. [ ] Test with actual PR reviews to validate usefulness
 6. [ ] Move to TheRock repo once stable
