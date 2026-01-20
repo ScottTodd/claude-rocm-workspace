@@ -249,27 +249,115 @@ We want a better workflow for testing the run outputs structure locally:
 - Same code path for S3 and local testing
 - `LocalDirectoryBackend` already exists for artifacts; extend pattern to all output types
 
-### Design Validation (2026-01-20)
+### Design Options Considered (2026-01-20)
 
-Verified that `RunOutputRoot` supports these future directions:
+The current `RunOutputRoot` is heavily S3-oriented (`s3_uri`, `artifact_s3_key`, `https_url`, etc.). We evaluated options to make S3 and local backends first-class citizens:
 
-| Upload Target | RunOutputRoot Method | Status |
-|--------------|---------------------|--------|
-| artifacts/*.tar.xz | `artifact_s3_key(filename)` | ✓ |
-| index-{group}.html | `artifact_index_s3_key(group)` | ✓ |
-| logs/*.log, *.tar.gz | `log_file_s3_key(group, filename)` | ✓ |
-| logs/index.html | `log_index_url()` | ⚠️ Add `log_index_s3_key()` |
-| logs/build_time_analysis.html | `build_time_analysis_url()` | ⚠️ Add `build_time_analysis_s3_key()` |
-| manifest.json | `manifest_s3_key(group)` | ✓ |
+**Option A: Backend-Agnostic Paths + Separate Backend Classes**
+- `RunOutputRoot` returns only relative paths
+- Separate `S3Backend` and `LocalBackend` classes resolve paths and handle I/O
+- Pros: Clean separation of concerns
+- Cons: Two concepts to manage, more indirection
 
-**Conclusion:** The design is sound. Key observations:
-- `*_s3_key()` methods return **relative paths** usable by any backend (not actually S3-specific)
-- Path computation is cleanly separated from I/O operations
-- Two minor additions needed (`log_index_s3_key`, `build_time_analysis_s3_key`)
-- Architecture supports both dry-run mode and backend abstraction without rework
+**Option B: Location Objects** ✓ SELECTED
+- `RunOutputRoot` returns `OutputLocation` objects
+- `OutputLocation` has `.s3_uri`, `.https_url`, `.local_path(staging_dir)` properties
+- Caller decides which representation they need at point of use
+- Pros: Unified API, all representations from one object, composable
+- Cons: Another class, slightly more verbose usage
 
-### When to Implement
+**Option C: Parallel APIs in RunOutputRoot**
+- Add `artifact_local_path()`, `log_local_path()`, etc. alongside existing S3 methods
+- Pros: Simple, explicit, no new abstractions
+- Cons: Method explosion (3-4 methods per output type)
 
-Not blocking PR #3000. These are nice-to-haves that build on the foundation:
-1. After PR lands, can add `--dry-run` to `post_build_upload.py` (quick win)
-2. Backend abstraction is larger scope, do when there's a concrete use case driving it
+**Option D: Resolver Pattern**
+- `RunOutputRoot` takes a resolver that determines how paths are materialized
+- Pros: Pluggable, single method per output type
+- Cons: Return type always string (loses `Path` for local), resolver chosen at construction
+
+### Decision: Option B (Location Objects)
+
+Selected because:
+1. Single source of truth - one method returns an object with all representations
+2. Caller decides which representation at point of use
+3. Works well with dry-run (print `loc.s3_uri`) and local testing (`loc.local_path(dir)`)
+4. `OutputLocation` is simple and immutable
+5. Reduces method count in `RunOutputRoot`
+6. Naturally extends to I/O operations later
+
+### Implementation Plan
+
+#### Phase 1: Add OutputLocation class
+
+Add `OutputLocation` dataclass to `run_outputs.py`:
+
+```python
+@dataclass(frozen=True)
+class OutputLocation:
+    """A location that can be resolved to S3 URI, HTTPS URL, or local path."""
+    bucket: str
+    relative_path: str
+
+    @property
+    def s3_uri(self) -> str:
+        return f"s3://{self.bucket}/{self.relative_path}"
+
+    @property
+    def https_url(self) -> str:
+        return f"https://{self.bucket}.s3.amazonaws.com/{self.relative_path}"
+
+    def local_path(self, staging_dir: Path) -> Path:
+        return staging_dir / self.relative_path
+```
+
+#### Phase 2: Add location methods to RunOutputRoot
+
+Add new methods that return `OutputLocation`:
+
+```python
+def artifact(self, filename: str) -> OutputLocation:
+    return OutputLocation(self.bucket, f"{self.artifacts_prefix()}/{filename}")
+
+def artifact_index(self, artifact_group: str) -> OutputLocation:
+    return OutputLocation(self.bucket, f"{self.artifacts_prefix()}/index-{artifact_group}.html")
+
+def log_file(self, artifact_group: str, filename: str) -> OutputLocation:
+    return OutputLocation(self.bucket, f"{self.prefix}/logs/{artifact_group}/{filename}")
+
+def log_index(self, artifact_group: str) -> OutputLocation:
+    return OutputLocation(self.bucket, f"{self.prefix}/logs/{artifact_group}/index.html")
+
+def manifest(self, artifact_group: str) -> OutputLocation:
+    return OutputLocation(self.bucket, f"{self.prefix}/manifests/{artifact_group}/therock_manifest.json")
+```
+
+#### Phase 3: Migrate consumers
+
+Update consumers to use new API:
+- `post_build_upload.py`
+- `artifact_backend.py` (LocalDirectoryBackend and S3Backend)
+- `fetch_artifacts.py`
+- `upload_test_report_script.py`
+
+#### Phase 4: Clean up
+
+- Remove old `*_s3_uri()`, `*_s3_key()`, `*_https_url()` methods
+- Remove `local_path()` and `for_local()`
+- Update documentation
+
+### Files to Modify
+
+| File | Changes |
+|------|---------|
+| `_therock_utils/run_outputs.py` | Add `OutputLocation`, new methods, deprecate old |
+| `_therock_utils/artifact_backend.py` | Use `OutputLocation` in backends |
+| `github_actions/post_build_upload.py` | Use new API |
+| `tests/run_outputs_test.py` | Add tests for `OutputLocation` |
+| `docs/development/run_outputs_layout.md` | Update documentation |
+
+### Scope Decision
+
+**For PR #3000:** Keep current API, merge as-is (the refactoring is additive and can come later)
+
+**Follow-up PR:** Implement OutputLocation pattern, migrate consumers, then deprecate/remove old methods
