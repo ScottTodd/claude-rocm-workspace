@@ -222,3 +222,54 @@ Current layout structure (documented in `run_outputs.py`):
 ```
 
 Future output types (python packages, native packages, reports) can be added by extending `RunOutputRoot` - see docs/development/run_outputs_layout.md for instructions.
+
+## Follow-up Work: Local Testing & Backend Abstraction
+
+### Motivation
+
+We want a better workflow for testing the run outputs structure locally:
+1. See what `post_build_upload.py` would do without actually uploading (dry-run)
+2. Actually copy local build outputs into the CI structure for testing downstream tools
+3. Compose with `LocalDirectoryBackend` in `artifact_backend.py`
+
+### Planned Changes
+
+**A. Add `--dry-run` to `post_build_upload.py`**
+- Print what would be uploaded (S3 paths, file sizes) without doing it
+- Useful for debugging CI and verifying path computation
+- Low effort, immediate value
+
+**B. Refactor upload functions to use a backend abstraction**
+- Create `RunOutputBackend` (or extend `ArtifactBackend`) to handle all output types:
+  - Artifacts (.tar.xz, .tar.zst)
+  - Logs (.log, ninja_logs.tar.gz, index.html, build_time_analysis.html)
+  - Manifests (therock_manifest.json)
+  - Indices (index-{artifact_group}.html)
+- `post_build_upload.py` uses backend.upload_artifact(), backend.upload_log(), etc.
+- Same code path for S3 and local testing
+- `LocalDirectoryBackend` already exists for artifacts; extend pattern to all output types
+
+### Design Validation (2026-01-20)
+
+Verified that `RunOutputRoot` supports these future directions:
+
+| Upload Target | RunOutputRoot Method | Status |
+|--------------|---------------------|--------|
+| artifacts/*.tar.xz | `artifact_s3_key(filename)` | ✓ |
+| index-{group}.html | `artifact_index_s3_key(group)` | ✓ |
+| logs/*.log, *.tar.gz | `log_file_s3_key(group, filename)` | ✓ |
+| logs/index.html | `log_index_url()` | ⚠️ Add `log_index_s3_key()` |
+| logs/build_time_analysis.html | `build_time_analysis_url()` | ⚠️ Add `build_time_analysis_s3_key()` |
+| manifest.json | `manifest_s3_key(group)` | ✓ |
+
+**Conclusion:** The design is sound. Key observations:
+- `*_s3_key()` methods return **relative paths** usable by any backend (not actually S3-specific)
+- Path computation is cleanly separated from I/O operations
+- Two minor additions needed (`log_index_s3_key`, `build_time_analysis_s3_key`)
+- Architecture supports both dry-run mode and backend abstraction without rework
+
+### When to Implement
+
+Not blocking PR #3000. These are nice-to-haves that build on the foundation:
+1. After PR lands, can add `--dry-run` to `post_build_upload.py` (quick win)
+2. Backend abstraction is larger scope, do when there's a concrete use case driving it
