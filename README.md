@@ -72,7 +72,7 @@ Track and switch between multiple tasks without losing context.
 
 **Workflow:**
 1. Create `tasks/active/your-task.md` (use
-   [`example-task.md`](/tasks/active/example-task.md) as template)
+   [`example-task.md`](/tasks/example-task.md) as template)
 2. Add to `ACTIVE-TASKS.md`
 3. Switch with `/task your-task` or "I'm working on your-task"
 4. Move to `tasks/completed/` when done

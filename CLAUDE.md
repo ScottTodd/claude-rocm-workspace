@@ -262,7 +262,7 @@ Track work items in `tasks/active/`. See [ACTIVE-TASKS.md](ACTIVE-TASKS.md) for 
 
 **Quick reference:**
 - Start a task: `/task task-name` or "I'm working on task-name"
-- Create new task: Copy `tasks/active/example-task.md` template
+- Create new task: Copy `tasks/example-task.md` template
 - Complete a task: Move to `tasks/completed/`, update `ACTIVE-TASKS.md`
 
 ### Tools

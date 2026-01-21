@@ -17,7 +17,7 @@ Refactoring the CMake build system for better modularity
 ## Quick Start New Task
 
 1. Create a new file: `tasks/active/task-name.md`
-2. Copy the template from `tasks/active/example-task.md`
+2. Copy the template from `tasks/example-task.md`
 3. Add it to this list
 4. Tell Claude: "I'm working on task-name" or use `/task task-name`
 
