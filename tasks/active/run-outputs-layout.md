@@ -387,3 +387,60 @@ This is problematic because:
 - Location methods added to `RunOutputRoot`
 - `post_build_upload.py` and `artifact_backend.py` migrated
 - Old methods not yet removed
+
+### 2026-01-20 - Migrated fetch_artifacts.py to use ArtifactBackend
+
+**Completed:**
+- Removed `BucketMetadata` dataclass (duplicated path construction)
+- Removed module-level S3 client (now uses `S3Backend.s3_client`)
+- Updated `list_s3_artifacts()` to take `S3Backend` instead of `BucketMetadata`
+- Updated `download_artifact()` to use `backend.s3_client` (preserves retry logic)
+- Updated `get_artifact_download_requests()` to take `S3Backend`
+- Updated `run()` to create `S3Backend` instead of `BucketMetadata`
+- Updated tests to mock `S3Backend` instead of `BucketMetadata` and `paginator`
+- Added test for artifact_group filtering behavior
+
+**Key changes:**
+- `list_s3_artifacts()` now calls `backend.list_artifacts()` and applies artifact_group filtering post-hoc
+- This allows the filtering logic (artifact_group in name OR "generic" in name) to stay in `fetch_artifacts.py` while the raw S3 operations are in the backend
+
+**Tests:** 98 passed, 1 skipped (all `build_tools/tests/`)
+
+### 2026-01-20 - Made fetch_artifacts.py use generic ArtifactBackend interface
+
+**Completed:**
+- Added retry logic (3 retries with exponential backoff) to `S3Backend.download_artifact()`
+- Updated `ArtifactDownloadRequest`:
+  - Changed `backend: S3Backend` to `backend: ArtifactBackend` (generic)
+  - Renamed `artifact_key` to `artifact_name` (just the filename, not full S3 key)
+  - Removed `bucket` field (backend knows its bucket)
+- Simplified `download_artifact()` to just call `backend.download_artifact(artifact_name, output_path)`
+- Updated `get_artifact_download_requests()` to use `ArtifactBackend` type hint
+- Removed unused `time` import from `fetch_artifacts.py`
+
+**Benefits:**
+- `fetch_artifacts.py` no longer accesses S3-specific details like `s3_client`
+- Retry logic is now in the backend where it belongs
+- `ArtifactDownloadRequest` could theoretically work with `LocalDirectoryBackend` for testing
+- Cleaner abstraction boundary
+
+**Tests:** 98 passed, 1 skipped
+
+### 2026-01-20 - PR #3019: Migrate fetch_artifacts.py to ArtifactBackend
+
+**PR:** https://github.com/ROCm/TheRock/pull/3019
+**Branch:** `fetch-artifacts-backend` (6 commits)
+
+**Final changes:**
+- Removed `BucketMetadata` class and module-level S3 client
+- Renamed `list_s3_artifacts()` → `list_artifacts_for_group()` (backend-agnostic)
+- Reused `DownloadRequest` and `download_artifact()` from `artifact_manager.py`
+- Removed duplicate retry logic (now in `artifact_manager.py`)
+- Removed useless `testListArtifactsForGroup_NotFound` test
+- Moved `output_dir.mkdir()` to after dry-run check
+
+**Net change:** -119 lines (+69, -188) across 2 files
+
+**Review:** `reviews/local_006_fetch-artifacts-backend.md` - APPROVED
+
+**Next:** Resume `OutputLocation` work on `run-outputs-locations` branch with cleaner foundations. The `fetch_artifacts.py` refactoring resolves the leaky abstraction issue where it was directly accessing S3 via `run_root.bucket` and `run_root.prefix`.
