@@ -309,10 +309,43 @@ Variable `x` could be `user_count` for clarity.
 
 ---
 
+## Specialized Review Guidelines
+
+For PRs that add tests or documentation, consult the detailed guidelines:
+
+| PR Type | Guideline File |
+|---------|----------------|
+| Adding/modifying tests | [guidelines/tests.md](guidelines/tests.md) |
+| Adding/modifying documentation | [guidelines/documentation.md](guidelines/documentation.md) |
+| GitHub Actions workflows | [guidelines/github_actions.md](guidelines/github_actions.md) |
+| General PR hygiene | [guidelines/pr_hygiene.md](guidelines/pr_hygiene.md) |
+| Common PR patterns | [guidelines/pr_patterns.md](guidelines/pr_patterns.md) |
+
+### Quick Reference: Test Anti-Patterns (BLOCKING)
+
+These test issues should always be marked **BLOCKING**:
+
+1. **Testing standard library wrappers** - Don't test code that just calls `shutil.rmtree()` or `print()`
+2. **Over-mocking** - If you mock the file read in a function that reads files, the test is useless
+3. **Change detector tests** - Tests that mirror implementation details break on any refactor
+4. **Testing frameworks** - Don't test argparse, json, etc.
+5. **Excessive patching** - 5+ patches means you're testing call sequences, not behavior
+
+### Quick Reference: Documentation Anti-Patterns (BLOCKING)
+
+These documentation issues should always be marked **BLOCKING**:
+
+1. **Stale information** - Specific counts, percentages, version numbers that will change
+2. **Generic instructions** - Don't duplicate how to use pytest/unittest; link to official docs
+3. **Wrong location** - Testing practices belong in style guides, not nested READMEs
+
+---
+
 ## Review Checklist
 
 Before finalizing a review, verify:
 
+**General:**
 - [ ] Overall assessment has clear status (APPROVED/CHANGES REQUESTED/REJECTED)
 - [ ] Every blocking issue is marked with ❌ BLOCKING
 - [ ] Blocking issues are listed in "REQUIRED Before Human Review" section
@@ -322,3 +355,14 @@ Before finalizing a review, verify:
 - [ ] No incomplete cleanup is marked as "optional" or "future work"
 - [ ] Testing recommendations are specific to the changes
 - [ ] Conclusion matches overall assessment status
+
+**For PRs adding tests:** See [guidelines/tests.md](guidelines/tests.md) for full checklist
+- [ ] Tests verify OUR code, not standard library wrappers
+- [ ] Mocks don't defeat the test's purpose (use real files where possible)
+- [ ] No change detector tests or excessive patching (5+ is a red flag)
+- [ ] File naming matches project conventions (`*_test.py`)
+
+**For PRs adding documentation:** See [guidelines/documentation.md](guidelines/documentation.md) for full checklist
+- [ ] No stale information (counts, percentages, versions)
+- [ ] Not duplicating standard tool documentation
+- [ ] Documentation in correct location (style guide vs nested README)

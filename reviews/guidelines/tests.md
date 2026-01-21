@@ -304,6 +304,162 @@ if the code structure makes testing unnecessarily difficult.
 
 ---
 
+## Test Anti-Patterns (BLOCKING)
+
+Bad tests are worse than no tests because they create maintenance burden without
+providing value, give false confidence, and make refactoring harder. The following
+patterns should be marked as **BLOCKING** issues.
+
+### 1. Testing Trivial Wrappers Around Standard Library
+
+**Don't test code that just calls standard library functions.**
+
+```python
+# BAD: The function just calls shutil.rmtree() - don't test it
+def test_remove_dir(self):
+    packaging_utils.remove_dir(test_dir)
+    self.assertFalse(test_dir.exists())
+
+# BAD: Testing print_function_name() which just calls print()
+def test_print_function_name(self):
+    ...
+```
+
+**Ask:** "Is this testing OUR logic, or is it testing Python's standard library?"
+
+**Severity:** BLOCKING - Remove these tests, they add maintenance burden with no value.
+
+### 2. Over-Mocking That Defeats the Purpose
+
+**If you mock the thing being tested, the test is useless.**
+
+```python
+# BAD: Mocking the file read in a function that reads files
+@patch("pathlib.Path.open", new_callable=mock_open, read_data='[{"Package": "test"}]')
+def test_read_package_json_file(self, mock_file):
+    result = packaging_utils.read_package_json_file()
+    # This tests nothing - just that json.load works on mocked data
+
+# GOOD: Use the real file
+def test_read_package_json_file(self):
+    result = packaging_utils.read_package_json_file()
+    self.assertIn("amdrocm-llvm", [p["Package"] for p in result])
+```
+
+**Ask:** "Would this test catch a bug in the real implementation?"
+
+**Severity:** BLOCKING - Rewrite to test real behavior.
+
+### 3. Change Detector Tests
+
+**Tests that just mirror implementation details break on any change.**
+
+```python
+# BAD: This test just duplicates the true_values list from the implementation
+def test_key_true_values(self):
+    true_values = ["1", "true", "t", "yes", "y", "on", "enable", "enabled", "found"]
+    for val in true_values:
+        self.assertTrue(is_key_defined({"key": val}, "key"))
+
+# GOOD: Test actual behavior with real data
+def test_key_defined_in_real_package(self):
+    packages = read_package_json_file()
+    pkg = next(p for p in packages if p["Package"] == "amdrocm-llvm")
+    # Test that a known-true key is defined
+    self.assertTrue(is_key_defined(pkg, "Postinstall"))
+```
+
+**Ask:** "Will this test break if we refactor without changing behavior?"
+
+**Severity:** BLOCKING - Rewrite to test behavior, not implementation.
+
+### 4. Testing Standard Library / Framework Features
+
+**Don't test argparse, shutil, json, etc.**
+
+```python
+# BAD: Testing that argparse parses arguments
+def test_main_parses_arguments(self):
+    argv = ["--artifacts-dir", "/tmp", "--pkg-type", "deb"]
+    build_package.main(argv)
+    # This tests argparse, not our code
+
+# GOOD: Test our actual logic with parsed args
+def test_run_creates_expected_packages(self):
+    # Test the business logic, not argument parsing
+```
+
+**Severity:** BLOCKING - Remove these tests.
+
+### 5. Excessive Patching That Obscures Intent
+
+**If a test patches 5+ things, it's testing call sequences, not behavior.**
+
+```python
+# BAD: 14 patches - what is this even testing?
+@patch("build_package.convert_runpath_to_rpath")
+@patch("build_package.package_with_dpkg_build")
+@patch("build_package.copy_package_contents")
+# ... 11 more patches ...
+def test_create_versioned_deb_with_artifacts(self, ...):
+    # This just verifies mocks were called in order
+
+# GOOD: Use real temp files, mock only external tools
+def test_create_versioned_deb_with_artifacts(self, tmp_path):
+    # Set up real files in tmp_path
+    # Mock only dpkg-buildpackage (external tool)
+    # Verify actual output files exist with correct content
+```
+
+**Severity:** BLOCKING if >10 patches, IMPORTANT if 5-10 patches. Rewrite with fewer mocks.
+
+### 6. Patching print() Unnecessarily
+
+Logging during tests is fine. Don't patch `print` unless testing output formatting.
+
+```python
+# BAD: Why patch print?
+@patch("builtins.print")
+def test_copy_files(self, mock_print):
+    ...
+
+# GOOD: Just let it print (or use logging)
+def test_copy_files(self):
+    ...
+```
+
+**Severity:** IMPORTANT - Remove unnecessary patches.
+
+### 7. Not Verifying Actual Output
+
+```python
+# BAD: Only checks existence
+self.assertTrue(output_file.exists())
+
+# GOOD: Verify content
+self.assertTrue(output_file.exists())
+content = output_file.read_text()
+self.assertIn("expected_value", content)
+```
+
+**Severity:** IMPORTANT - Add content verification.
+
+### 8. File Naming Convention Violations
+
+Follow project conventions. TheRock uses `*_test.py` naming (not `test_*.py`).
+
+```
+# BAD
+test_linux_packaging_utils.py
+
+# GOOD
+linux_packaging_utils_test.py
+```
+
+**Severity:** IMPORTANT - Rename to match project conventions.
+
+---
+
 ## Summary Checklist
 
 **Before reviewing code:**
@@ -318,3 +474,13 @@ if the code structure makes testing unnecessarily difficult.
 - [ ] Test duration is reasonable
 - [ ] Tests can be run locally (or explain why not)
 - [ ] Tests are integrated with CI
+
+**Test anti-pattern checks:**
+- [ ] Tests verify OUR code, not standard library functions
+- [ ] Mocks don't defeat the purpose of the test (use real files where possible)
+- [ ] Tests would catch real bugs, not just implementation changes
+- [ ] No testing of argparse/shutil/json/etc. directly
+- [ ] Patch count is reasonable (<5 patches per test ideally)
+- [ ] Tests verify actual output content, not just that code ran
+- [ ] File naming matches project conventions (`*_test.py`)
+- [ ] No unnecessary patching of print/logging
