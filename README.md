@@ -102,12 +102,29 @@ Available commands in [`.claude/commands/`](/.claude/commands/):
 1. Clone this repository
 2. Update `directory-map.md` with your actual directory paths
 3. Customize `CLAUDE.md` with your project-specific context
-4. Run Claude Code from this directory
+4. Set up the Python environment (see below)
+5. Run Claude Code using the launcher script
 
-```bash
-cd /path/to/claude-rocm-workspace
-claude
+### Python Environment
+
+A Python virtual environment ensures tools like `pytest` are available when
+Claude runs commands.
+
+**One-time setup (Windows):**
+```powershell
+cd D:\projects\claude-rocm-workspace
+py -V:3.12 -m venv 3.12.venv
+.\3.12.venv\Scripts\activate.bat
+pip install -r ..\TheRock\requirements.txt
 ```
+
+**Launching Claude:**
+```powershell
+.\scripts\claude.bat
+```
+
+The launcher script activates the venv before starting Claude, so Python tools
+are available in the session.
 
 ## Adapting for Your Project
 
