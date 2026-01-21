@@ -22,7 +22,6 @@ workspace, this separate meta-repository:
 ```
 claude-rocm-workspace/
 ├── CLAUDE.md              # Project context and instructions for Claude Code
-├── ACTIVE-TASKS.md        # Current task tracking
 ├── directory-map.md       # Map of ROCm directories on your system
 │
 ├── tasks/                 # Task management
@@ -73,9 +72,8 @@ Track and switch between multiple tasks without losing context.
 **Workflow:**
 1. Create `tasks/active/your-task.md` (use
    [`example-task.md`](/tasks/example-task.md) as template)
-2. Add to `ACTIVE-TASKS.md`
-3. Switch with `/task your-task` or "I'm working on your-task"
-4. Move to `tasks/completed/` when done
+2. Switch with `/task your-task` or "I'm working on your-task"
+3. Move to `tasks/completed/` when done
 
 ### Custom Agents
 

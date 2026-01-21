@@ -258,12 +258,12 @@ Then ask Claude to "process review comments" or "fix the RVW comments".
 
 ### Task Tracking
 
-Track work items in `tasks/active/`. See [ACTIVE-TASKS.md](ACTIVE-TASKS.md) for the full workflow.
+Track work items in `tasks/active/`.
 
 **Quick reference:**
 - Start a task: `/task task-name` or "I'm working on task-name"
 - Create new task: Copy `tasks/example-task.md` template
-- Complete a task: Move to `tasks/completed/`, update `ACTIVE-TASKS.md`
+- Complete a task: Move to `tasks/completed/`
 
 ### Tools
 
