@@ -167,6 +167,9 @@ git log -1 --stat
 - **DO NOT include issue references** (e.g., "Fixes #123", "Addresses issue #456")
   - Issue tagging happens in pull requests, not individual commits
   - Keeps commit messages focused on what changed, not tracking metadata
+- **DO NOT include pull request references** (e.g. "#123")
+  - PR tagging happens in pull requests, not individual commits
+  - Referencing _commit hashes_ is fine though
 
 #### GPG Signing
 
