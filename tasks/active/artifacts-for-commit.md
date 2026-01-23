@@ -448,20 +448,41 @@ S3 Index:     https://therock-ci-artifacts-external.s3.amazonaws.com/ROCm-TheRoc
 - `artifacts-for-commit`: Has local commits for find_artifacts_for_commit.py, will land after PRs merge
 
 **PRs in flight:**
-- https://github.com/ROCm/TheRock/pull/2771 - gh CLI authentication
-- https://github.com/ROCm/TheRock/pull/2961 - gha_query_workflow_runs_for_commit + unit tests
+- https://github.com/ROCm/TheRock/pull/2771 - gh CLI authentication ✅ MERGED 2026-01-15
+- https://github.com/ROCm/TheRock/pull/2961 - gha_query_workflow_runs_for_commit + unit tests ✅ MERGED 2026-01-16
+
+### 2026-01-22 - Prerequisite PRs Merged, Rebase Needed
+
+Both prerequisite PRs are now merged. The `artifacts-for-commit` branch (23 commits) needs rebasing onto current `main`. Most commits should drop automatically since they're already in main via those PRs.
+
+**Branch diffs after rebase should be limited to:**
+- `build_tools/find_artifacts_for_commit.py` (new file)
+- `build_tools/find_latest_artifacts.py` (new file)
+- Possibly minor diffs to `github_actions_utils.py` (older versions of error handling/timeout code that should be resolved in favor of main)
+
+**Cleanup items identified:**
+- `find_latest_artifacts.py` calls `check_artifacts_exist()` redundantly — the current `find_artifacts_for_commit()` already calls it internally when iterating workflow runs. The `find_latest_artifacts` code at line 124 checks again after getting a result.
+- Logging verbosity: still using raw `print()` to stderr; should switch to Python `logging` module.
+
+**Parallel work: `run-outputs-layout` (PR #3000)**
+- Introduces `RunOutputRoot` to consolidate S3 path computation
+- Lists "Migrate `find_artifacts_for_commit.py` to use `RunOutputRoot`" as future work
+- Landing the artifact scripts with `ArtifactRunInfo` is fine for now — migration happens separately
+- Expect merge conflicts between these branches when both land, but they're in different files so should be manageable
 
 ## Next Steps / Plan
 
-**Immediate (branch management):**
+**Done:**
 1. [x] Rebase `github_actions_utils.py` changes onto `github-actions-gh-authentication` branch
 2. [x] Add unit tests for new functions (`gha_query_workflow_runs_for_commit`, updated `retrieve_bucket_info`)
 3. [x] Send PR for review → PR #2961
+4. [x] Rebase `artifacts-for-commit` onto current `main` (drop merged commits)
 
-**After PRs land:**
-4. [ ] Adjust logging verbosity - use Python `logging` module with levels at module level
-   - Scripts like `find_artifacts_for_commit.py` can control verbosity via `-v`/`-vv` flags
-   - Quiet by default, verbose on request
-5. [ ] Land `find_artifacts_for_commit.py` and `find_latest_artifacts.py`
-6. [ ] Scenario 2: Fallback search for baseline commit with artifacts
-7. [ ] Consolidate with `BucketMetadata` in `fetch_artifacts.py`
+**Next session:**
+5. [ ] Refine and review the scripts (cleanup items above, logging verbosity, etc.)
+6. [ ] Add unit tests for `find_artifacts_for_commit.py` and `find_latest_artifacts.py`
+7. [ ] Send PR for review — note in PR description that `ArtifactRunInfo` will be refactored to use `RunOutputRoot` once PR #3000 lands
+
+**After artifact scripts land:**
+8. [ ] Scenario 2: Fallback search for baseline commit with artifacts
+9. [ ] Consolidate `ArtifactRunInfo` with `RunOutputRoot` (after PR #3000 lands)
