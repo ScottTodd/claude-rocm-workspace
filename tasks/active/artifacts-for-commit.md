@@ -292,6 +292,16 @@ Options:
 
 Should revisit after initial implementation to reduce duplication.
 
+**3. Resolve partial commit SHAs in `github_actions_utils.py`**
+
+The GitHub API `head_sha` parameter requires a full 40-char SHA. Add a `resolve_commit_sha(partial, repo)` function to `github_actions_utils.py` that:
+- Returns as-is if already a full 40-char hex string
+- Tries local `git rev-parse --verify {partial}^{commit}` first (fast, no network)
+- Falls back to GitHub API `GET /repos/{owner}/{repo}/commits/{partial}` (works without local clone)
+- Raises if the partial SHA is ambiguous (git errors with "ambiguous argument", GitHub returns 409/422)
+
+This would let `find_artifacts_for_commit.py` accept abbreviated SHAs from the user.
+
 ## Investigation Notes
 
 ### 2026-01-13 - Task Created
@@ -470,6 +480,31 @@ Both prerequisite PRs are now merged. The `artifacts-for-commit` branch (23 comm
 - Landing the artifact scripts with `ArtifactRunInfo` is fine for now — migration happens separately
 - Expect merge conflicts between these branches when both land, but they're in different files so should be manageable
 
+### 2026-01-23 - Unit Tests Added
+
+**Tests created:**
+- `build_tools/tests/find_artifacts_for_commit_test.py` — 4 tests for `find_artifacts_for_commit()`
+- `build_tools/tests/find_latest_artifacts_test.py` — 3 tests for `find_latest_artifacts()`
+
+**Mocking strategy:**
+- `check_if_artifacts_exist()` is mocked in all tests (S3 retention policy means artifacts may be deleted for older runs)
+- `get_recent_branch_commits_via_api()` is mocked in find_latest_artifacts tests (controls which commits are searched)
+- GitHub API calls (`gha_query_workflow_runs_for_commit`, `retrieve_bucket_info`) are NOT mocked — they hit the real API
+- Tests use `_skip_unless_authenticated_github_api_is_available` decorator
+
+**Pinned test data:**
+- `find_artifacts_for_commit_test.py`: Uses `77f0cb21...` (main, run 20083647898) and `62bc1eaa...` (fork, run 20384488184)
+- `find_latest_artifacts_test.py`: Uses two consecutive main commits: `5ea91c38...` (run 21249928112) and `02946b22...` (run 21243829022)
+
+**Commits on `artifacts-for-commit` branch:**
+- `4810e7bf` - Add tests for find_artifacts_for_commit and find_latest_artifacts
+- `d224b48a` - Cleanup find_artifacts_for_commit_test (user edit)
+- `b12cf34c` - Use consecutive main branch commits in find_latest_artifacts tests
+
+**Open questions for next session:**
+- `detect_repo_from_git()` concern is narrower than initially thought: in CI, `retrieve_bucket_info()` uses the `GITHUB_REPOSITORY` env var (which is always correct). Locally, `detect_repo_from_git()` would always return `ROCm/TheRock` since that's the repo you'd be in. For rocm-libraries usage, `--repo` would need to be explicit — but that's the expected CI usage pattern anyway.
+- Need rocm-libraries test cases to exercise different workflow/bucket paths.
+
 ## Next Steps / Plan
 
 **Done:**
@@ -477,12 +512,14 @@ Both prerequisite PRs are now merged. The `artifacts-for-commit` branch (23 comm
 2. [x] Add unit tests for new functions (`gha_query_workflow_runs_for_commit`, updated `retrieve_bucket_info`)
 3. [x] Send PR for review → PR #2961
 4. [x] Rebase `artifacts-for-commit` onto current `main` (drop merged commits)
+5. [x] Add unit tests for `find_artifacts_for_commit.py` and `find_latest_artifacts.py`
 
 **Next session:**
-5. [ ] Refine and review the scripts (cleanup items above, logging verbosity, etc.)
-6. [ ] Add unit tests for `find_artifacts_for_commit.py` and `find_latest_artifacts.py`
-7. [ ] Send PR for review — note in PR description that `ArtifactRunInfo` will be refactored to use `RunOutputRoot` once PR #3000 lands
+6. [ ] Add test case(s) for rocm-libraries usage (different workflow, different bucket)
+7. [ ] Verify `detect_repo_from_git()` default is fine — in CI, `retrieve_bucket_info()` uses `GITHUB_REPOSITORY` env var; locally it always returns `ROCm/TheRock`. For rocm-libraries CI usage, `--repo` is passed explicitly.
+8. [ ] Logging: switch from `print()` to Python `logging` module
+9. [ ] Send PR for review — note in PR description that `ArtifactRunInfo` will be refactored to use `RunOutputRoot` once PR #3000 lands
 
 **After artifact scripts land:**
-8. [ ] Scenario 2: Fallback search for baseline commit with artifacts
-9. [ ] Consolidate `ArtifactRunInfo` with `RunOutputRoot` (after PR #3000 lands)
+10. [ ] Scenario 2: Fallback search for baseline commit with artifacts
+11. [ ] Consolidate `ArtifactRunInfo` with `RunOutputRoot` (after PR #3000 lands)
