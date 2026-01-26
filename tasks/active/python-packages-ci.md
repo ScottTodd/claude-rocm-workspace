@@ -41,6 +41,7 @@ The desired workflow:
 ### Related Work
 
 - **PR #3000:** `RunOutputRoot` class for CI run outputs paths (must land first)
+- **PR #3099:** `test_rocm_wheels.yml` workflow (in review)
 - **Task:** `run-outputs-layout.md` - defines S3 layout structure
 - **Workflow:** `test_pytorch_wheels.yml` - pattern for testing wheels
 
@@ -218,6 +219,32 @@ This would compute the index URL automatically using `RunOutputRoot`.
 - Windows workflow already validates packages work locally
 - Linux Docker container may need different approach for local testing
 
+### 2026-01-26 - Created test_rocm_wheels.yml
+
+Created `.github/workflows/test_rocm_wheels.yml` - a simplified version of `test_pytorch_wheels.yml`
+that just installs ROCm packages and runs `rocm-sdk test`.
+
+**Design decisions:**
+- Uses existing `setup_venv.py` with `--index-url` and `--index-subdir` (reuses existing tooling)
+- Deferred the "two-index pattern" - can test with nightly/dev release URLs for now
+- Supports both `workflow_dispatch` (manual trigger) and `workflow_call` (can be called by other workflows)
+- Uses same container image as `test_pytorch_wheels.yml` for Linux GPU runners
+- Separate workflow file (vs inlining into build workflows) for better composability
+  - Build workflows run on CPU runners; test needs GPU runners
+  - Linux build can't run tests inline due to Docker issues
+  - Separate workflow can test wheels from any source (nightly, dev, future CI uploads)
+
+**Inputs:**
+- `amdgpu_family` - GPU family (default: gfx94X-dcgpu)
+- `test_runs_on` - Runner label (default: linux-mi325-1gpu-ossci-rocm-frac)
+- `package_index_url` - Base URL (default: https://rocm.nightlies.amd.com/v2)
+- `rocm_version` - Required, e.g., "7.10.0a20251124"
+- `python_version` - Python version (default: 3.12)
+
+**PR #3099** submitted for review.
+
+**Next:** Wait for PR review, then test workflow manually with nightly wheels after merge.
+
 ## Implementation Plan
 
 ### Phase 1: S3 Upload from Build Workflows
@@ -262,8 +289,9 @@ This would compute the index URL automatically using `RunOutputRoot`.
 1. [x] Create task file
 2. [ ] Wait for PR #3000 to land (or implement on top of `run-outputs` branch)
 3. [ ] Design and implement S3 upload in build workflows
-4. [ ] Create test workflow
-5. [ ] Test end-to-end
+4. [x] Create test workflow (`test_rocm_wheels.yml`)
+5. [ ] Test end-to-end (manually trigger with nightly wheels)
+6. [x] Submit PR for test workflow - **PR #3099**
 
 ## Decisions Made
 
