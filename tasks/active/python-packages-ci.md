@@ -40,10 +40,11 @@ The desired workflow:
 
 ### Related Work
 
-- **PR #3000:** `RunOutputRoot` class for CI run outputs paths (must land first)
+- **PR #3000:** `RunOutputRoot` class for CI run outputs paths (blocked on other PRs, proceeding without)
 - **PR #3099:** `test_rocm_wheels.yml` workflow (in review)
 - **Task:** `run-outputs-layout.md` - defines S3 layout structure
 - **Workflow:** `test_pytorch_wheels.yml` - pattern for testing wheels
+- **Workflow:** `release_portable_linux_packages.yml` - has S3 upload steps to reference
 
 ### Directories/Files Involved
 
@@ -243,6 +244,46 @@ that just installs ROCm packages and runs `rocm-sdk test`.
 
 **PR #3099** submitted for review.
 
+### 2026-01-26 - S3 Upload Strategy Discussion
+
+PR #3000 (`RunOutputRoot`) is blocked waiting on other PRs. Need to push ahead with S3
+uploads without that refactoring.
+
+**Key decision:** Use CI artifacts bucket, NOT dev releases bucket.
+- Dev releases (`therock-dev-python`) are for actual dev releases, not CI testing
+- CI builds should go to `therock-ci-artifacts` with per-run paths
+
+**Upload location:**
+```
+Bucket: therock-ci-artifacts
+Path:   {run_id}-linux/python/{artifact_group}/dist/
+```
+
+**Index generation options:**
+
+1. **No index (shortcut):** Upload wheels only, download before installing
+   ```bash
+   # In test workflow:
+   aws s3 sync s3://therock-ci-artifacts/{run_id}-linux/python/{artifact_group}/dist/ ./wheels/
+   pip install rocm[libraries,devel]==$VERSION --find-links=./wheels/ --no-index
+   ```
+
+2. **Inline piprepo (cleaner):** Generate index during upload
+   ```bash
+   # In build workflow:
+   piprepo build "$PACKAGES_DIR/dist"
+   aws s3 sync $PACKAGES_DIR/dist/ s3://therock-ci-artifacts/.../dist/
+   aws s3 sync $PACKAGES_DIR/dist/simple/ s3://therock-ci-artifacts/.../simple/
+   ```
+   Then test workflow uses `--index-url` as designed.
+
+Option 2 isn't much more work since `piprepo` is already installed in the build workflow.
+The index is just HTML files - small and fast to upload.
+
+**Open questions:**
+- IAM permissions for CI artifacts bucket (may need different role than `therock-dev`)
+- Lifecycle policies for cleanup of old CI uploads
+
 **Next:** Wait for PR review, then test workflow manually with nightly wheels after merge.
 
 ## Implementation Plan
@@ -287,22 +328,32 @@ that just installs ROCm packages and runs `rocm-sdk test`.
 ## Next Steps
 
 1. [x] Create task file
-2. [ ] Wait for PR #3000 to land (or implement on top of `run-outputs` branch)
-3. [ ] Design and implement S3 upload in build workflows
-4. [x] Create test workflow (`test_rocm_wheels.yml`)
-5. [ ] Test end-to-end (manually trigger with nightly wheels)
-6. [x] Submit PR for test workflow - **PR #3099**
+2. [x] Create test workflow (`test_rocm_wheels.yml`) - **PR #3099** in review
+3. [ ] Add S3 upload to `build_portable_linux_python_packages.yml`
+   - Use CI artifacts bucket with per-run paths
+   - Decide: inline piprepo index vs. download-first approach
+   - Check IAM permissions for CI artifacts bucket
+4. [ ] Update `test_rocm_wheels.yml` if needed (depends on index strategy)
+5. [ ] Test end-to-end with CI-built wheels
+6. [ ] Add S3 upload to `build_windows_python_packages.yml` (same pattern)
 
 ## Decisions Made
 
-- **Bucket:** Same CI artifacts bucket (`therock-ci-artifacts`), with `python/{artifact_group}/`
-  subdirectory for per-run packages and `python-deps/` for the base deps index
-- **Index strategy:** Deps-only base index + per-run rocm-only index (avoids version ambiguity)
+- **Bucket:** CI artifacts bucket (`therock-ci-artifacts`) for CI builds, NOT dev releases bucket
+  - Path: `{run_id}-linux/python/{artifact_group}/` for per-run isolation
+  - Keeps CI builds separate from actual dev/nightly/prerelease releases
+- **Index strategy (target):** Deps-only base index + per-run rocm-only index (avoids version ambiguity)
+- **Index strategy (shortcut):** Can skip index generation initially, use `--find-links` with downloaded wheels
 - **Base index:** Architecture-neutral, reuse existing `update_dependencies.py` / `manage.py` tooling
-- **Linux sanity check:** Skip local testing, rely on GPU test workflow
+- **Linux sanity check:** Skip local testing in build workflow, rely on GPU test workflow
+- **Test workflow:** Separate `test_rocm_wheels.yml` (not inlined into build workflows)
+  - Build workflows use CPU runners; testing needs GPU runners
+  - Separate workflow enables testing wheels from any source (CI, nightly, dev)
 
 ## Open Questions
 
 - Should test workflow run on PRs or only after merge?
   - **Leaning:** At least on merge; optionally on PRs with GPU runner availability
 - Which deps to include in base index? Same as nightly, or a subset?
+- IAM permissions for CI artifacts bucket - does existing role work or need new one?
+- Lifecycle policies for CI uploads - how long to retain per-run packages?
