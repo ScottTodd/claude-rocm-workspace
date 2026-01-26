@@ -505,6 +505,22 @@ Both prerequisite PRs are now merged. The `artifacts-for-commit` branch (23 comm
 - `detect_repo_from_git()` concern is narrower than initially thought: in CI, `retrieve_bucket_info()` uses the `GITHUB_REPOSITORY` env var (which is always correct). Locally, `detect_repo_from_git()` would always return `ROCm/TheRock` since that's the repo you'd be in. For rocm-libraries usage, `--repo` would need to be explicit — but that's the expected CI usage pattern anyway.
 - Need rocm-libraries test cases to exercise different workflow/bucket paths.
 
+### 2026-01-26 - PR Sent for Review
+
+**Work completed:**
+- Added test for `gha_query_recent_branch_commits()` in `github_actions_utils_test.py`
+- Added rocm-libraries test case to `find_artifacts_for_commit_test.py` (commit `ab692342`, run `21365647639`)
+- Fixed mock paths in `find_latest_artifacts_test.py` after function rename
+- Fixed typos in scripts
+- Added documentation to `docs/development/installing_artifacts.md`:
+  - New "Finding Run IDs Programmatically" subsection
+  - Examples for both scripts
+  - TODO comment about adding `--commit` to `install_rocm_from_artifacts.py`
+
+**PR sent:** https://github.com/ROCm/TheRock/pull/3093
+
+**Branch state:** 12 commits, all tests passing, review approved (local_008)
+
 ## Next Steps / Plan
 
 **Done:**
@@ -513,13 +529,15 @@ Both prerequisite PRs are now merged. The `artifacts-for-commit` branch (23 comm
 3. [x] Send PR for review → PR #2961
 4. [x] Rebase `artifacts-for-commit` onto current `main` (drop merged commits)
 5. [x] Add unit tests for `find_artifacts_for_commit.py` and `find_latest_artifacts.py`
+6. [x] Add test case(s) for rocm-libraries usage (different workflow, different bucket)
+7. [x] Add documentation to `docs/development/installing_artifacts.md`
+8. [x] Send PR for review → **PR #3093** https://github.com/ROCm/TheRock/pull/3093
 
-**Next session:**
-6. [ ] Add test case(s) for rocm-libraries usage (different workflow, different bucket)
-7. [ ] Verify `detect_repo_from_git()` default is fine — in CI, `retrieve_bucket_info()` uses `GITHUB_REPOSITORY` env var; locally it always returns `ROCm/TheRock`. For rocm-libraries CI usage, `--repo` is passed explicitly.
-8. [ ] Logging: switch from `print()` to Python `logging` module
-9. [ ] Send PR for review — note in PR description that `ArtifactRunInfo` will be refactored to use `RunOutputRoot` once PR #3000 lands
+**Deferred / Future work:**
+- [ ] Logging: switch from `print()` to Python `logging` module (can be follow-up)
+- [ ] Verify `detect_repo_from_git()` default behavior (low priority - works correctly in practice)
 
 **After artifact scripts land:**
-10. [ ] Scenario 2: Fallback search for baseline commit with artifacts
-11. [ ] Consolidate `ArtifactRunInfo` with `RunOutputRoot` (after PR #3000 lands)
+- [ ] Add `--commit` option to `install_rocm_from_artifacts.py` (see TODO in installing_artifacts.md)
+- [ ] Scenario 2: Fallback search for baseline commit with artifacts
+- [ ] Consolidate `ArtifactRunInfo` with `RunOutputRoot` (after PR #3000 lands)
