@@ -26,9 +26,12 @@ Must not be auto-generated from branch name or be overly vague.
 **Fail patterns:**
 - `Users/someone/branch-name` - branch name as title
 - `users/someone/fix-thing` - branch name, also lowercase
+- `build ocltst for OpenCL` - starts with lowercase (should be "Build ocltst...")
 - `fix` - too vague
 - `update` - too vague
 - `WIP` - work in progress, not ready for review
+
+**Note:** These are blocking issues, not nitpicks. Consistent formatting is a baseline expectation.
 
 **Pass patterns:**
 - `Add ROCm 6.2 support for MI300X`
@@ -55,20 +58,29 @@ Must not be auto-generated from branch name or be overly vague.
 - Empty description
 - Description only contains checklist items with no context
 - "Fixes bug" with no explanation of what bug
+- Motivation that restates *what* the PR does instead of explaining *why*
+  - Title: "Build ocltst for OpenCL" / Motivation: "build ocltst for OpenCL" - this adds no information
+- Using jargon or tool names without explanation
+  - "Enable foobarbaz" - what is foobarbaz? Why do we want it?
+  - Reviewers shouldn't need to research unfamiliar terms to understand the PR's purpose
+
+**Key principle:** The motivation must answer "why should we merge this?" not "what does this PR do?" The title already says what it does.
 
 **Pass patterns:**
 - Explains the symptom/issue that motivated the change
 - Links to related GitHub issues (if applicable)
 - For bug fixes: includes error logs or reproduction steps (inline or linked)
-- For features: explains the use case
-- For self-evident changes: a brief title-like description is sufficient
+- For features: explains the use case and who benefits
+- Defines unfamiliar terms or tools being introduced
+- For self-evident changes: a brief title-like description is sufficient (see exemptions)
 
 **Auto-comment (only for non-trivial changes):**
 > PR description does not explain the motivation behind this work.
 > Please add context about:
-> - What issue or need motivated this change?
+> - What issue or need motivated this change? (Don't just restate the title)
 > - For bug fixes: What was the error/symptom? (include logs or link to issue)
-> - For features: What use case does this enable?
+> - For features: What use case does this enable? Who benefits?
+> - If introducing unfamiliar tools/terms: Brief explanation of what they are
 
 ---
 
