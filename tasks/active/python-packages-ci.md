@@ -19,7 +19,7 @@ Build and test ROCm Python packages as part of CI, not just during PyTorch relea
 - [ ] Upload Python packages from `build_portable_linux_python_packages.yml` to S3
 - [ ] Upload Python packages from `build_windows_python_packages.yml` to S3
 - [ ] Create pip-compatible index for each workflow run
-- [ ] Add `test_rocm_wheels.yml` workflow to test packages with `rocm-sdk test`
+- [x] Add `test_rocm_wheels.yml` workflow to test packages with `rocm-sdk test`
 - [ ] (Future) Extend `setup_venv.py` to install from workflow run S3 paths
 - [ ] (Future) Trigger dev PyTorch builds and tests
 
@@ -41,7 +41,10 @@ The desired workflow:
 ### Related Work
 
 - **PR #3000:** `RunOutputRoot` class for CI run outputs paths (blocked on other PRs, proceeding without)
-- **PR #3099:** `test_rocm_wheels.yml` workflow (in review)
+- **PR #3099:** `test_rocm_wheels.yml` workflow (merged)
+- **Issue #3115:** Test failures discovered when running on GPU machines
+- **PR #3116:** Workaround for test failures
+- **PR #3119:** Fine-grained test coverage improvements
 - **Task:** `run-outputs-layout.md` - defines S3 layout structure
 - **Workflow:** `test_pytorch_wheels.yml` - pattern for testing wheels
 - **Workflow:** `release_portable_linux_packages.yml` - has S3 upload steps to reference
@@ -286,6 +289,19 @@ The index is just HTML files - small and fast to upload.
 
 **Next:** Wait for PR review, then test workflow manually with nightly wheels after merge.
 
+### 2026-01-27 - PR #3099 Merged, Test Failures Found
+
+**PR #3099 merged.** Ran the test workflow on GPU machines and discovered test failures.
+
+**Issue #3115:** Documents the test failures found when running `rocm-sdk test` on actual GPU hardware.
+
+**Follow-up PRs:**
+- **PR #3116:** Workaround for the immediate test failures (unblocks CI)
+- **PR #3119:** Adds more fine-grained test coverage to catch issues earlier
+
+This validates the approach - the test workflow successfully caught issues that weren't being
+detected before. The follow-up work improves test granularity so failures are easier to diagnose.
+
 ## Implementation Plan
 
 ### Phase 1: S3 Upload from Build Workflows
@@ -328,7 +344,7 @@ The index is just HTML files - small and fast to upload.
 ## Next Steps
 
 1. [x] Create task file
-2. [x] Create test workflow (`test_rocm_wheels.yml`) - **PR #3099** in review
+2. [x] Create test workflow (`test_rocm_wheels.yml`) - **PR #3099** merged
 3. [ ] Add S3 upload to `build_portable_linux_python_packages.yml`
    - Use CI artifacts bucket with per-run paths
    - Decide: inline piprepo index vs. download-first approach
