@@ -9,6 +9,7 @@ repositories:
 **Priority:** P1 (High)
 **Started:** 2026-01-21
 **Issue:** https://github.com/ROCm/TheRock/issues/1559
+**Branch:** `python-packages-upload`
 
 ## Overview
 
@@ -45,6 +46,7 @@ The desired workflow:
 - **Issue #3115:** Test failures discovered when running on GPU machines
 - **PR #3116:** Workaround for test failures
 - **PR #3119:** Fine-grained test coverage improvements
+- **PR #3093:** `find_artifacts_for_commit.py` - auto-discover latest CI artifacts (from `artifacts-for-commit` task)
 - **Task:** `run-outputs-layout.md` - defines S3 layout structure
 - **Workflow:** `test_pytorch_wheels.yml` - pattern for testing wheels
 - **Workflow:** `release_portable_linux_packages.yml` - has S3 upload steps to reference
@@ -350,8 +352,73 @@ Considered three options:
 
 **Local testing support:**
 - `--dry-run` flag: print what would be uploaded without actually uploading
+- `--output-dir` flag: "upload" to local directory instead of S3
 - `--bucket` override: can test with `therock-artifacts-testing` bucket
 - Useful for validating path computation and index generation locally
+
+**Committed:** `e02e888` on branch `python-packages-upload` - initial script without piprepo integration
+
+### Testing Procedure (TODO: Document)
+
+Need to develop and document a full local testing workflow:
+
+1. **Fetch artifacts from CI**
+   ```bash
+   RUN_ID=17123441166
+   TARGET=gfx110X-all
+   mkdir -p $HOME/.therock/$RUN_ID/artifacts
+   python ./build_tools/fetch_artifacts.py \
+     --run-id=$RUN_ID \
+     --target=$TARGET \
+     --output-dir=$HOME/.therock/$RUN_ID/artifacts
+   ```
+
+2. **Build Python packages**
+   ```bash
+   python ./build_tools/build_python_packages.py \
+     --artifact-dir=$HOME/.therock/$RUN_ID/artifacts \
+     --dest-dir=$HOME/.therock/$RUN_ID/packages
+   ```
+
+3. **Run upload script with local output**
+   ```bash
+   python ./build_tools/github_actions/upload_python_packages.py \
+     --packages-dir=$HOME/.therock/$RUN_ID/packages \
+     --artifact-group=$TARGET \
+     --run-id=$RUN_ID \
+     --output-dir=$HOME/.therock/$RUN_ID/upload-test
+   ```
+
+4. **Test install from local output**
+   ```bash
+   # Generate pip index (TODO: will be done by upload script)
+   pip install piprepo
+   piprepo build $HOME/.therock/$RUN_ID/upload-test/$RUN_ID-linux/python/$TARGET/dist
+
+   # Install from local index
+   python -m venv .venv && source .venv/bin/activate
+   pip install rocm[libraries,devel] --pre \
+     --extra-index-url file://$HOME/.therock/$RUN_ID/upload-test/$RUN_ID-linux/python/$TARGET/dist/simple
+   rocm-sdk test
+   ```
+
+**Reference docs:**
+- `external-builds/pytorch/README.md` - "Building the rocm Python packages from artifacts fetched from a CI run"
+- `docs/packaging/python_packaging.md` - piprepo usage for local index
+
+**Related:** PR #3093 (`artifacts-for-commit` task) will add `find_artifacts_for_commit.py` to get
+latest CI artifacts without manually looking up run IDs. Once that lands, step 1 becomes:
+```bash
+# Auto-discover latest artifacts for a commit/branch
+python ./build_tools/find_artifacts_for_commit.py --target=gfx110X-all --output-dir=...
+```
+
+**TODO:** Once workflow is validated:
+- Add to `docs/packaging/python_packaging.md` or create new dev guide
+- Include workflow diagrams showing the pipeline (local dev + CI paths)
+- Diagram format: Excalidraw SVGs for complex diagrams (see `docs/development/assets/*.excalidraw.svg`),
+  mermaid.js or ASCII for simpler inline diagrams
+- Reference: `docs/development/development_guide.md` has existing build architecture diagram
 
 ## Implementation Plan
 
