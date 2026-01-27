@@ -55,7 +55,10 @@ The desired workflow:
 .github/workflows/build_portable_linux_python_packages.yml
 .github/workflows/build_windows_python_packages.yml
 .github/workflows/test_rocm_wheels.yml  # NEW
-build_tools/_therock_utils/run_outputs.py
+build_tools/github_actions/upload_python_packages.py  # NEW - upload script
+build_tools/github_actions/post_build_upload.py       # Reference for upload patterns
+build_tools/github_actions/github_actions_utils.py    # retrieve_bucket_info()
+build_tools/_therock_utils/run_outputs.py             # Future: RunOutputRoot
 build_tools/setup_venv.py
 build_tools/third_party/s3_management/   # existing tooling for deps index
 docs/packaging/python_packaging.md
@@ -302,18 +305,63 @@ The index is just HTML files - small and fast to upload.
 This validates the approach - the test workflow successfully caught issues that weren't being
 detected before. The follow-up work improves test granularity so failures are easier to diagnose.
 
+### 2026-01-27 - S3 Upload Architecture Discussion
+
+**Unified vision for S3 uploads:**
+- Every workflow run uploads ALL files (logs, artifacts, packages) to `therock-*-artifacts` buckets
+- Release workflows copy subsets to distribution buckets (e.g., `therock-nightly-python`)
+- This unifies CI and CD - artifacts bucket is "source of truth", distribution buckets are curated views
+
+**Existing infrastructure:**
+- `post_build_upload.py` - uploads logs, artifacts, manifests from build workflows
+- Uses `retrieve_bucket_info()` to select bucket based on repo/fork/release type
+- Path pattern: `{external_repo}{run_id}-{platform}/`
+- PR #3000 (`RunOutputRoot`) consolidates path computation but is blocked
+
+**PyTorch wheels workflow comparison:**
+- Uses dedicated Python buckets: `therock-{release_type}-python`
+- Uploads to `s3://${S3_BUCKET_PY}/${s3_staging_subdir}/${amdgpu_family}/`
+- Uses `manage.py` to regenerate pip index after upload
+- Has staging → test → promote flow
+
+**Decision: Create new `upload_python_packages.py` script**
+
+Considered three options:
+
+| Option | Description | Verdict |
+|--------|-------------|---------|
+| A. Extend `post_build_upload.py` | Add `--upload-python-packages` flag | Awkward - different input structure |
+| B. New `upload_python_packages.py` | Separate script, same abstractions | **Selected** - clean separation |
+| C. Refactor to unified `run_output_upload.py` | One script with modes | Larger scope, blocked on PR #3000 |
+
+**Rationale for Option B:**
+- `post_build_upload.py` expects build dir structure (`logs/`, `artifacts/`, manifest path)
+- Python packages workflow has different structure (`PACKAGES_DIR/dist/`)
+- New script can use same bucket selection logic (`retrieve_bucket_info()`)
+- Can migrate to `RunOutputRoot` when PR #3000 lands
+- Both scripts write to unified structure in artifacts bucket
+
+**Script responsibilities:**
+1. Use `retrieve_bucket_info()` to get bucket
+2. Generate pip index with `piprepo build`
+3. Upload wheels/sdists to `{run_id}-{platform}/python/{artifact_group}/dist/`
+4. Upload pip index to `{run_id}-{platform}/python/{artifact_group}/simple/`
+5. Add links to GitHub job summary
+
 ## Implementation Plan
 
 ### Phase 1: S3 Upload from Build Workflows
 
-1. **Extend `RunOutputRoot`** with Python package path methods (depends on PR #3000)
-2. **Create upload helper** (or inline in workflow):
-   - Run `piprepo build $PACKAGES_DIR/dist`
-   - Upload `dist/` to S3 python packages path
-   - Upload `simple/` to S3 pip index path
-3. **Update Linux workflow** to call upload helper
-4. **Update Windows workflow** to call upload helper
-5. **Manual testing:** Download packages from S3, install manually, verify they work
+1. **Create `upload_python_packages.py`** script:
+   - Use `retrieve_bucket_info()` for bucket selection
+   - Generate pip index with `piprepo build`
+   - Upload wheels/sdists to `{run_id}-{platform}/python/{artifact_group}/dist/`
+   - Upload pip index to `{run_id}-{platform}/python/{artifact_group}/simple/`
+   - Add links to GitHub job summary
+   - (Future: migrate to `RunOutputRoot` when PR #3000 lands)
+2. **Update Linux workflow** to call upload script
+3. **Update Windows workflow** to call upload script (same pattern)
+4. **Manual testing:** Download packages from S3, install manually, verify they work
 
 ### Phase 2: Base Deps Index Setup
 
@@ -338,26 +386,34 @@ detected before. The follow-up work improves test granularity so failures are ea
 
 ## Dependencies
 
-- **PR #3000** (`RunOutputRoot`) must land first
-- PR #3019 (`fetch_artifacts.py` refactor) would be nice but not blocking
+- **PR #3000** (`RunOutputRoot`) - nice to have but not blocking; can use `retrieve_bucket_info()` directly
+- PR #3019 (`fetch_artifacts.py` refactor) - not blocking
 
 ## Next Steps
 
 1. [x] Create task file
 2. [x] Create test workflow (`test_rocm_wheels.yml`) - **PR #3099** merged
-3. [ ] Add S3 upload to `build_portable_linux_python_packages.yml`
-   - Use CI artifacts bucket with per-run paths
-   - Decide: inline piprepo index vs. download-first approach
-   - Check IAM permissions for CI artifacts bucket
-4. [ ] Update `test_rocm_wheels.yml` if needed (depends on index strategy)
-5. [ ] Test end-to-end with CI-built wheels
-6. [ ] Add S3 upload to `build_windows_python_packages.yml` (same pattern)
+3. [ ] Create `upload_python_packages.py` script
+   - Use `retrieve_bucket_info()` for bucket selection
+   - Generate pip index with `piprepo build`
+   - Upload dist/ and simple/ to S3
+   - Add GitHub job summary links
+4. [ ] Add S3 upload step to `build_portable_linux_python_packages.yml`
+   - Add `id-token: write` permission for AWS credentials
+   - Call `upload_python_packages.py`
+5. [ ] Update `test_rocm_wheels.yml` to accept CI artifact URLs
+6. [ ] Test end-to-end with CI-built wheels
+7. [ ] Add S3 upload to `build_windows_python_packages.yml` (same pattern)
 
 ## Decisions Made
 
 - **Bucket:** CI artifacts bucket (`therock-ci-artifacts`) for CI builds, NOT dev releases bucket
   - Path: `{run_id}-linux/python/{artifact_group}/` for per-run isolation
   - Keeps CI builds separate from actual dev/nightly/prerelease releases
+- **Upload script:** New `upload_python_packages.py` (not extending `post_build_upload.py`)
+  - Different input structure (packages dir vs build dir with logs/artifacts/manifests)
+  - Uses same bucket selection logic (`retrieve_bucket_info()`)
+  - Can migrate to `RunOutputRoot` when PR #3000 lands
 - **Index strategy (target):** Deps-only base index + per-run rocm-only index (avoids version ambiguity)
 - **Index strategy (shortcut):** Can skip index generation initially, use `--find-links` with downloaded wheels
 - **Base index:** Architecture-neutral, reuse existing `update_dependencies.py` / `manage.py` tooling
