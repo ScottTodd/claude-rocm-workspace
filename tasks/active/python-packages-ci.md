@@ -348,6 +348,11 @@ Considered three options:
 4. Upload pip index to `{run_id}-{platform}/python/{artifact_group}/simple/`
 5. Add links to GitHub job summary
 
+**Local testing support:**
+- `--dry-run` flag: print what would be uploaded without actually uploading
+- `--bucket` override: can test with `therock-artifacts-testing` bucket
+- Useful for validating path computation and index generation locally
+
 ## Implementation Plan
 
 ### Phase 1: S3 Upload from Build Workflows
