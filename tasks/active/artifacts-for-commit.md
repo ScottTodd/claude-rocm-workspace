@@ -541,3 +541,22 @@ Both prerequisite PRs are now merged. The `artifacts-for-commit` branch (23 comm
 - [ ] Add `--commit` option to `install_rocm_from_artifacts.py` (see TODO in installing_artifacts.md)
 - [ ] Scenario 2: Fallback search for baseline commit with artifacts
 - [ ] Consolidate `ArtifactRunInfo` with `RunOutputRoot` (after PR #3000 lands)
+
+### 2026-01-26 - Rate Limit Error Handling (PR review feedback)
+
+**Problem identified:** REST API 403 responses for rate limits showed misleading "Check if your token has the necessary permissions" message instead of indicating rate limiting.
+
+**Changes made:**
+- `github_actions_utils.py`: Read HTTPError response body, detect "rate limit" text, provide actionable message with `gh auth login` guidance and docs link
+- `find_artifacts_for_commit.py`: Now raises `GitHubAPIError` instead of catching and returning `None`. This distinguishes "no artifacts" (None) from "couldn't check" (exception). CLI `main()` catches and exits with code 2.
+- `find_latest_artifacts.py`: Same pattern - propagates `GitHubAPIError` from both commit listing and artifact checking. CLI catches with exit code 2.
+- Kept `--max-commits` argument after discussion - error messages are clearer when user controls the search depth.
+
+**Tests added:**
+- `test_rest_api_rate_limit_error_provides_helpful_message` - verifies REST API rate limit detection
+- `test_gh_cli_rate_limit_error_passes_through_message` - verifies gh CLI passes through message
+- `test_rate_limit_error_raises_exception` - verifies exception propagation in find_artifacts_for_commit
+
+**Commit:** `9f90be04` - "Improve rate limit error handling in artifact scripts"
+
+**Branch state:** 13 commits on `artifacts-for-commit`, PR #3093 still under review
