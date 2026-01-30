@@ -42,6 +42,7 @@ The desired workflow:
 ### Related Work
 
 - **Issue #3177:** Tracking issue for expanding CI workflows (ROCm Python, PyTorch, JAX, native Linux)
+- **PR #3182:** E2E integration - upload and test Python packages in CI (draft, awaiting results)
 - **PR #3000:** `RunOutputRoot` class for CI run outputs paths (blocked on other PRs, proceeding without)
 - **PR #3099:** `test_rocm_wheels.yml` workflow (merged)
 - **Issue #3115:** Test failures discovered when running on GPU machines
@@ -532,6 +533,33 @@ Implementation plan from issue:
 
 Related issues: #1522, #2281
 
+### 2026-01-30 (continued) - Linux Workflow Refactor and E2E Testing
+
+**Windows workflow debugging:**
+- First CI run failed with path mangling issue (`Path.resolve()` on Windows with Git Bash paths)
+- Fixed by removing `.resolve()` call in `upload_python_packages.py` (commit `d99ced83`)
+- Second CI run failed due to missing quotes around workflow arguments
+- Fixed quoting in both Windows and Linux workflows
+
+**Linux workflow refactored** to run entirely inside container:
+- Added `container:` directive with manylinux image and AWS config volume mount
+- Added `permissions: id-token: write` for AWS OIDC auth
+- Added `AWS_SHARED_CREDENTIALS_FILE` env var
+- Replaced `linux_portable_build.py --build-python-only` with direct `build_python_packages.py` call
+- Added "Configure AWS Credentials" step before upload
+- Removed unused `MANYLINUX` env var (only needed for cmake builds, not Python packaging)
+
+**PR #3182 submitted:** Draft PR showing full e2e integration in CI workflows.
+- Builds Python packages for all artifact groups
+- Runs tests on GPU runners where available
+- Waiting for workflow results
+
+**Validation:** Used the new workflow to test PR #2877 (suspected to break Python packages).
+The workflow failed as expected, proving this CI coverage is valuable.
+See: https://github.com/ROCm/TheRock/pull/2877#discussion_r2748337856
+
+**Issue #1559 updated** with progress notes.
+
 ## Implementation Plan
 
 ### Phase 1: S3 Upload from Build Workflows
@@ -593,13 +621,19 @@ Related issues: #1522, #2281
    - Added test workflow call with `package_find_links_url`
    - Removed inline sanity check (testing on GPU machines)
    - Commit `ed9b03ae` on branch `users/scotttodd/python-package-test`
-7. [ ] **Test Windows workflow** in CI
-8. [ ] **Revamp Linux workflow** (while Windows tests run)
+7. [x] **Test Windows workflow** in CI
+   - Fixed `Path.resolve()` issue (commit `d99ced83`)
+   - Fixed argument quoting issues
+8. [x] **Revamp Linux workflow**
    - Run entire job under container image (like `build_portable_linux_artifacts.yml`)
-   - Call `build_python_packages.py` directly (like Windows workflow does)
-   - Remove `linux_portable_build.py --image=... --build-python-only` pattern
-   - This ensures AWS CLI and credentials are available for upload step
-9. [ ] Test end-to-end with CI-built wheels (both platforms)
+   - Call `build_python_packages.py` directly
+   - Added AWS credentials configuration
+   - Removed unused `MANYLINUX` env var
+9. [ ] **Test end-to-end with CI-built wheels** - **PR #3182** (draft demo, awaiting results)
+   - Builds Python packages for all artifact groups
+   - Tests on GPU runners where available
+   - Will remain as draft; splitting into smaller focused PRs for review
+   - See task list on PR #3182 for sequenced PR plan
 10. [x] **File tracking issue** - **Issue #3177**
     - Covers ROCm Python, PyTorch, JAX, native Linux packages
     - Documents CI/CD divergence and unification plan
