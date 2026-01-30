@@ -465,6 +465,41 @@ Key implementation decisions:
 - Successfully installed with `pip install rocm --find-links=.../index.html`
 - Uploaded to `therock-artifacts-testing` bucket and verified pip install works from S3
 
+### 2026-01-29 - Integration and CI Test Run
+
+**Branch:** `users/scotttodd/python-package-test`
+
+**Changes made:**
+1. Plumbed `--find-links-url` through `setup_venv.py` and `test_rocm_wheels.yml`
+   - `setup_venv.py` now accepts `--find-links-url` as alternative to `--index-url`/`--index-subdir`
+   - `test_rocm_wheels.yml` accepts `package_find_links_url` input
+   - Both URL patterns can be passed; script prioritizes `--find-links-url` if set
+
+2. Connected `build_portable_linux_python_packages.yml` to `test_rocm_wheels.yml`:
+   - Added `generate_target_to_run` job (same pattern as other workflows)
+   - Added `test_rocm_wheels` job that calls the test workflow
+   - Upload script sets `package_find_links_url` output via `gha_set_output()`
+
+3. Integration with `ci_linux.yml` is implicit:
+   - `ci_linux.yml` → `build_portable_linux_python_packages.yml` → `test_rocm_wheels.yml`
+   - No need to pass URL back up; testing happens within build workflow
+
+**CI test run:** https://github.com/ROCm/TheRock/actions/runs/21499417722/job/61942129720
+
+**Issues discovered:**
+1. **AWS CLI not available:** The upload step runs outside the Docker container, so `aws` isn't on PATH
+2. **AWS credentials not loaded:** Need proper IAM role configuration for the job
+
+**Root cause:** The workflow uses `linux_portable_build.py --image=... --build-python-only` which runs
+the build inside a Docker container, but the upload step runs on the host runner where AWS CLI and
+credentials aren't available.
+
+**Solution:** Revamp the Linux workflow to match `build_portable_linux_artifacts.yml` pattern:
+- Run the entire job under the container image (using `container:` in the job spec)
+- Call `build_python_packages.py` directly instead of going through `linux_portable_build.py`
+- This ensures `aws` CLI is available and credentials are properly loaded
+- Reference: `build_windows_python_packages.yml` already uses this pattern (no Docker wrapper)
+
 ## Implementation Plan
 
 ### Phase 1: S3 Upload from Build Workflows
@@ -515,12 +550,22 @@ Key implementation decisions:
    - Generates index with `indexer.py` (replaced piprepo)
    - Uploads to `{run_id}-{platform}/python/{artifact_group}/`
    - Adds GitHub job summary with install instructions
-4. [ ] Add S3 upload step to `build_portable_linux_python_packages.yml`
-   - Add `id-token: write` permission for AWS credentials
-   - Call `upload_python_packages.py`
-5. [ ] Update `test_rocm_wheels.yml` to accept CI artifact URLs (use `--find-links`)
-6. [ ] Test end-to-end with CI-built wheels
-7. [ ] Add S3 upload to `build_windows_python_packages.yml` (same pattern)
+4. [x] Update `test_rocm_wheels.yml` to accept CI artifact URLs (use `--find-links`)
+   - Added `package_find_links_url` input
+   - Updated `setup_venv.py` with `--find-links-url` flag
+5. [x] Connect `build_portable_linux_python_packages.yml` to `test_rocm_wheels.yml`
+   - Initial integration done on branch `users/scotttodd/python-package-test`
+   - CI test revealed AWS/Docker issues (see 2026-01-29 notes)
+6. [ ] **Port changes to Windows workflow** (`build_windows_python_packages.yml`)
+   - Add upload step calling `upload_python_packages.py`
+   - Add test workflow call with `package_find_links_url`
+7. [ ] **Test Windows workflow** in CI
+8. [ ] **Revamp Linux workflow** (while Windows tests run)
+   - Run entire job under container image (like `build_portable_linux_artifacts.yml`)
+   - Call `build_python_packages.py` directly (like Windows workflow does)
+   - Remove `linux_portable_build.py --image=... --build-python-only` pattern
+   - This ensures AWS CLI and credentials are available for upload step
+9. [ ] Test end-to-end with CI-built wheels (both platforms)
 
 ## Decisions Made
 
