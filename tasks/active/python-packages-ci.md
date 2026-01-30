@@ -566,6 +566,10 @@ credentials aren't available.
    - Remove `linux_portable_build.py --image=... --build-python-only` pattern
    - This ensures AWS CLI and credentials are available for upload step
 9. [ ] Test end-to-end with CI-built wheels (both platforms)
+10. [ ] **File tracking issue: "Run PyTorch builds and tests on pull requests"**
+    - High-level step-by-step requirements
+    - Highlight the hard problems being solved (without fine details)
+    - Let developers follow progress and understand the roadmap
 
 ## Decisions Made
 
