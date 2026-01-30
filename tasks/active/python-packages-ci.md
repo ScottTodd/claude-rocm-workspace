@@ -41,6 +41,7 @@ The desired workflow:
 
 ### Related Work
 
+- **Issue #3177:** Tracking issue for expanding CI workflows (ROCm Python, PyTorch, JAX, native Linux)
 - **PR #3000:** `RunOutputRoot` class for CI run outputs paths (blocked on other PRs, proceeding without)
 - **PR #3099:** `test_rocm_wheels.yml` workflow (merged)
 - **Issue #3115:** Test failures discovered when running on GPU machines
@@ -500,6 +501,37 @@ credentials aren't available.
 - This ensures `aws` CLI is available and credentials are properly loaded
 - Reference: `build_windows_python_packages.yml` already uses this pattern (no Docker wrapper)
 
+### 2026-01-30 - Windows Workflow and Tracking Issue
+
+**Commit `ed9b03ae`:** Added S3 upload and GPU testing to Windows workflow.
+
+Changes to `build_windows_python_packages.yml`:
+- Added upload step using `upload_python_packages.py`
+- Added `generate_target_to_run` job to determine Windows test runner
+- Added `test_rocm_wheels` job to run GPU tests after upload
+- Added `repository`/`ref` inputs for workflow_call compatibility
+- Removed inline sanity check (testing happens on GPU machines now)
+- Removed `piprepo` dependency (upload script uses `indexer.py`)
+
+This matches the pattern from the Linux workflow.
+
+**Issue #3177 filed:** Tracking issue for expanding CI workflows to build and test packages.
+
+Key points from the issue:
+- CI and CD workflows have diverged; commits passing presubmit can break releases
+- Goal: CI and CD workflows should reuse the same building blocks
+- Central output directory per workflow run in cloud storage (`{run_id}-{platform}/`)
+- Release workflows copy subsets to dedicated release buckets
+
+Implementation plan from issue:
+1. ROCm Python packages (this task) - upload + test in CI
+2. PyTorch packages - rework staging/promote logic for CI vs release
+3. Integrate into rocm-libraries and rocm-systems repos
+4. JAX packages - either use tarballs or switch to ROCm Python packages
+5. Native Linux packages - support CI artifacts bucket
+
+Related issues: #1522, #2281
+
 ## Implementation Plan
 
 ### Phase 1: S3 Upload from Build Workflows
@@ -556,9 +588,11 @@ credentials aren't available.
 5. [x] Connect `build_portable_linux_python_packages.yml` to `test_rocm_wheels.yml`
    - Initial integration done on branch `users/scotttodd/python-package-test`
    - CI test revealed AWS/Docker issues (see 2026-01-29 notes)
-6. [ ] **Port changes to Windows workflow** (`build_windows_python_packages.yml`)
-   - Add upload step calling `upload_python_packages.py`
-   - Add test workflow call with `package_find_links_url`
+6. [x] **Port changes to Windows workflow** (`build_windows_python_packages.yml`)
+   - Added upload step calling `upload_python_packages.py`
+   - Added test workflow call with `package_find_links_url`
+   - Removed inline sanity check (testing on GPU machines)
+   - Commit `ed9b03ae` on branch `users/scotttodd/python-package-test`
 7. [ ] **Test Windows workflow** in CI
 8. [ ] **Revamp Linux workflow** (while Windows tests run)
    - Run entire job under container image (like `build_portable_linux_artifacts.yml`)
@@ -566,10 +600,9 @@ credentials aren't available.
    - Remove `linux_portable_build.py --image=... --build-python-only` pattern
    - This ensures AWS CLI and credentials are available for upload step
 9. [ ] Test end-to-end with CI-built wheels (both platforms)
-10. [ ] **File tracking issue: "Run PyTorch builds and tests on pull requests"**
-    - High-level step-by-step requirements
-    - Highlight the hard problems being solved (without fine details)
-    - Let developers follow progress and understand the roadmap
+10. [x] **File tracking issue** - **Issue #3177**
+    - Covers ROCm Python, PyTorch, JAX, native Linux packages
+    - Documents CI/CD divergence and unification plan
 
 ## Decisions Made
 
