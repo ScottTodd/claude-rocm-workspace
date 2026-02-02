@@ -655,6 +655,24 @@ See: https://github.com/ROCm/TheRock/pull/2877#discussion_r2748337856
   - Build workflows use CPU runners; testing needs GPU runners
   - Separate workflow enables testing wheels from any source (CI, nightly, dev)
 
+### 2026-02-02 - PR #3182 Results and Follow-up
+
+**PR #3182 results look okay overall.** However, one issue needs resolution before landing:
+
+**Issue:** Linux::gfx1151 run of `rocm-sdk test` hit a 6-hour timeout.
+- Logs: https://github.com/ROCm/TheRock/actions/runs/21533668625/job/62060067637?pr=3182
+
+**Follow-up items:**
+
+1. **Add timeouts to `test_rocm_wheels.yml`:**
+   - Job-level timeout: 15-30 minutes (catches hung downloads or any overall hang)
+   - Step-level timeout on "Run rocm-sdk sanity tests" step: 3-5 minutes (catches hung tests)
+
+2. **Investigate gfx1151 test failures:**
+   - Determine why gfx1151 on Linux is not passing/hanging
+   - Likely need to xfail/skip some tests to make progress
+   - May need a new issue to track gfx1151-specific problems
+
 ## Open Questions
 
 - Should test workflow run on PRs or only after merge?
