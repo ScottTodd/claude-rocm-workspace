@@ -50,6 +50,7 @@ The desired workflow:
 - **PR #3119:** Fine-grained test coverage improvements
 - **PR #3093:** `find_artifacts_for_commit.py` - auto-discover latest CI artifacts (from `artifacts-for-commit` task)
 - **PR #3136:** `upload_python_packages.py` script and documentation (in review)
+- **PR #3214:** Container migration for Linux Python packages workflow (in review)
 - **Task:** `run-outputs-layout.md` - defines S3 layout structure
 - **Workflow:** `test_pytorch_wheels.yml` - pattern for testing wheels
 - **Workflow:** `release_portable_linux_packages.yml` - has S3 upload steps to reference
@@ -671,6 +672,12 @@ See: https://github.com/ROCm/TheRock/pull/2877#discussion_r2748337856
 2. **Investigate gfx1151 test failures:**
    - Determine why gfx1151 on Linux is not passing/hanging
    - Likely need to xfail/skip some tests to make progress
+
+**PR #3214 submitted:** Extracted container migration from PR #3182.
+- Linux workflow now runs all steps in manylinux container (not just build step)
+- Removes use of `linux_portable_build.py` from this workflow
+- Prepares for S3 upload steps that need AWS CLI available
+- Branch: `users/scotttodd/python-packages-container`
    - May need a new issue to track gfx1151-specific problems
 
 ## Open Questions
