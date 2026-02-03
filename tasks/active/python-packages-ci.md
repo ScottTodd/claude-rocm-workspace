@@ -51,6 +51,7 @@ The desired workflow:
 - **PR #3093:** `find_artifacts_for_commit.py` - auto-discover latest CI artifacts (from `artifacts-for-commit` task)
 - **PR #3136:** `upload_python_packages.py` script and documentation (in review)
 - **PR #3214:** Container migration for Linux Python packages workflow (in review)
+- **PR #3233:** Add timeouts to `test_rocm_wheels.yml` (in review)
 - **Task:** `run-outputs-layout.md` - defines S3 layout structure
 - **Workflow:** `test_pytorch_wheels.yml` - pattern for testing wheels
 - **Workflow:** `release_portable_linux_packages.yml` - has S3 upload steps to reference
@@ -665,9 +666,9 @@ See: https://github.com/ROCm/TheRock/pull/2877#discussion_r2748337856
 
 **Follow-up items:**
 
-1. **Add timeouts to `test_rocm_wheels.yml`:**
-   - Job-level timeout: 15-30 minutes (catches hung downloads or any overall hang)
-   - Step-level timeout on "Run rocm-sdk sanity tests" step: 3-5 minutes (catches hung tests)
+1. ~~**Add timeouts to `test_rocm_wheels.yml`:**~~ **Done - PR #3233**
+   - Job-level timeout: 30 minutes (catches hung downloads or any overall hang)
+   - Step-level timeout on "Run rocm-sdk sanity tests" step: 5 minutes (catches hung tests)
 
 2. **Investigate gfx1151 test failures:**
    - Determine why gfx1151 on Linux is not passing/hanging
@@ -679,6 +680,13 @@ See: https://github.com/ROCm/TheRock/pull/2877#discussion_r2748337856
 - Prepares for S3 upload steps that need AWS CLI available
 - Branch: `users/scotttodd/python-packages-container`
    - May need a new issue to track gfx1151-specific problems
+
+### 2026-02-03 - Added Timeouts to Test Workflow
+
+**PR #3233 submitted:** Add timeouts to `test_rocm_wheels.yml`.
+- Job-level timeout: 30 minutes (catches hung downloads or overall hang)
+- Step-level timeout on `rocm-sdk test` step: 5 minutes (catches hung tests quickly)
+- Prevents 6-hour timeouts like seen with gfx1151 in PR #3182
 
 ## Open Questions
 
