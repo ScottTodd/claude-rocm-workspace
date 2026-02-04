@@ -52,6 +52,7 @@ The desired workflow:
 - **PR #3136:** `upload_python_packages.py` script and documentation (in review)
 - **PR #3214:** Container migration for Linux Python packages workflow (in review)
 - **PR #3233:** Add timeouts to `test_rocm_wheels.yml` (in review)
+- **PR #3242:** setup_venv.py refactoring - `--find-links-url`, `--pre`, improved tests (in review)
 - **Task:** `run-outputs-layout.md` - defines S3 layout structure
 - **Workflow:** `test_pytorch_wheels.yml` - pattern for testing wheels
 - **Workflow:** `release_portable_linux_packages.yml` - has S3 upload steps to reference
@@ -687,6 +688,41 @@ See: https://github.com/ROCm/TheRock/pull/2877#discussion_r2748337856
 - Job-level timeout: 30 minutes (catches hung downloads or overall hang)
 - Step-level timeout on `rocm-sdk test` step: 5 minutes (catches hung tests quickly)
 - Prevents 6-hour timeouts like seen with gfx1151 in PR #3182
+
+### 2026-02-03 - setup_venv.py Refactoring
+
+**Branch:** `setup-venv-find-links`
+**PR:** https://github.com/ROCm/TheRock/pull/3242
+
+Refactored `setup_venv.py` to improve testability and add new functionality (12 commits):
+
+1. **`--find-links-url` support** - Install from flat pip indexes (S3 uploads)
+2. **Explicit `--pre` and `--disable-cache` flags**
+   - pip and uv use different syntax (`--pre` vs `--prerelease=allow`, `--no-cache-dir` vs `--no-cache`)
+   - Script translates flags appropriately based on `--use-uv` setting
+   - Initially tried `--extra-pip-args` but reverted due to pip/uv flag differences
+3. **Whitespace delimiter for `--packages`** - Fixes conflict with pip extras syntax (`rocm[libraries,devel]`)
+4. **Extracted `install_packages_into_venv()`** - Testable function with explicit parameters
+5. **Simplified `_scrape_rocm_index_subdirs()`** - Returns union of all subdirs as `set[str] | None`
+6. **Added assert for `find_venv_python_exe()`** - Fail fast if venv python not found
+7. **Added unit tests** - 13 tests covering pip/uv paths, flags, multiple packages
+   - Tests mock `find_venv_python_exe` and `run_command` to test command generation
+
+**Manual testing commands:**
+
+```bash
+# Test with uv
+python D:\projects\TheRock\build_tools/setup_venv.py test_uv.venv \
+  --packages "rocm[libraries]==7.12.0.dev0" \
+  --find-links=https://therock-artifacts-testing.s3.amazonaws.com/21440027240-windows/python/gfx110X-all/index.html \
+  --clean --use-uv --pre
+
+# Test with pip
+python D:\projects\TheRock\build_tools/setup_venv.py test_pip.venv \
+  --packages "rocm[libraries]==7.12.0.dev0" \
+  --find-links=https://therock-artifacts-testing.s3.amazonaws.com/21440027240-windows/python/gfx110X-all/index.html \
+  --clean --pre
+```
 
 ## Open Questions
 
