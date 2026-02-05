@@ -49,10 +49,11 @@ The desired workflow:
 - **PR #3116:** Workaround for test failures
 - **PR #3119:** Fine-grained test coverage improvements
 - **PR #3093:** `find_artifacts_for_commit.py` - auto-discover latest CI artifacts (from `artifacts-for-commit` task)
-- **PR #3136:** `upload_python_packages.py` script and documentation (in review)
-- **PR #3214:** Container migration for Linux Python packages workflow (in review)
-- **PR #3233:** Add timeouts to `test_rocm_wheels.yml` (in review)
-- **PR #3242:** setup_venv.py refactoring - `--find-links-url`, `--pre`, improved tests (in review)
+- **PR #3136:** `upload_python_packages.py` script and documentation (merged)
+- **PR #3214:** Container migration for Linux Python packages workflow (merged)
+- **PR #3233:** Add timeouts to `test_rocm_wheels.yml` (merged)
+- **PR #3242:** setup_venv.py refactoring - `--find-links`, `--pre`, improved tests (in review)
+- **PR #3261:** Upload and test Python packages in CI workflows (draft, stacked on #3242)
 - **Task:** `run-outputs-layout.md` - defines S3 layout structure
 - **Workflow:** `test_pytorch_wheels.yml` - pattern for testing wheels
 - **Workflow:** `release_portable_linux_packages.yml` - has S3 upload steps to reference
@@ -608,14 +609,14 @@ See: https://github.com/ROCm/TheRock/pull/2877#discussion_r2748337856
 
 1. [x] Create task file
 2. [x] Create test workflow (`test_rocm_wheels.yml`) - **PR #3099** merged
-3. [x] Create `upload_python_packages.py` script - **PR #3136** in review
+3. [x] Create `upload_python_packages.py` script - **PR #3136** merged
    - Uses `retrieve_bucket_info()` for bucket selection
    - Generates index with `indexer.py` (replaced piprepo)
    - Uploads to `{run_id}-{platform}/python/{artifact_group}/`
    - Adds GitHub job summary with install instructions
 4. [x] Update `test_rocm_wheels.yml` to accept CI artifact URLs (use `--find-links`)
    - Added `package_find_links_url` input
-   - Updated `setup_venv.py` with `--find-links-url` flag
+   - Updated `setup_venv.py` with `--find-links` flag
 5. [x] Connect `build_portable_linux_python_packages.yml` to `test_rocm_wheels.yml`
    - Initial integration done on branch `users/scotttodd/python-package-test`
    - CI test revealed AWS/Docker issues (see 2026-01-29 notes)
@@ -632,11 +633,11 @@ See: https://github.com/ROCm/TheRock/pull/2877#discussion_r2748337856
    - Call `build_python_packages.py` directly
    - Added AWS credentials configuration
    - Removed unused `MANYLINUX` env var
-9. [ ] **Test end-to-end with CI-built wheels** - **PR #3182** (draft demo, awaiting results)
+9. [ ] **Test end-to-end with CI-built wheels** - **PR #3261** (supersedes #3182)
+   - Stacked on PR #3242 (setup_venv.py refactoring)
    - Builds Python packages for all artifact groups
-   - Tests on GPU runners where available
-   - Will remain as draft; splitting into smaller focused PRs for review
-   - See task list on PR #3182 for sequenced PR plan
+   - Uploads to S3 and tests on GPU runners where available
+   - Needs rebase once #3242 merges
 10. [x] **File tracking issue** - **Issue #3177**
     - Covers ROCm Python, PyTorch, JAX, native Linux packages
     - Documents CI/CD divergence and unification plan
@@ -667,7 +668,7 @@ See: https://github.com/ROCm/TheRock/pull/2877#discussion_r2748337856
 
 **Follow-up items:**
 
-1. ~~**Add timeouts to `test_rocm_wheels.yml`:**~~ **Done - PR #3233**
+1. ~~**Add timeouts to `test_rocm_wheels.yml`:**~~ **Done - PR #3233 (merged)**
    - Job-level timeout: 30 minutes (catches hung downloads or any overall hang)
    - Step-level timeout on "Run rocm-sdk sanity tests" step: 5 minutes (catches hung tests)
 
@@ -675,16 +676,14 @@ See: https://github.com/ROCm/TheRock/pull/2877#discussion_r2748337856
    - Determine why gfx1151 on Linux is not passing/hanging
    - Likely need to xfail/skip some tests to make progress
 
-**PR #3214 submitted:** Extracted container migration from PR #3182.
+**PR #3214 merged:** Extracted container migration from PR #3182.
 - Linux workflow now runs all steps in manylinux container (not just build step)
 - Removes use of `linux_portable_build.py` from this workflow
 - Prepares for S3 upload steps that need AWS CLI available
-- Branch: `users/scotttodd/python-packages-container`
-   - May need a new issue to track gfx1151-specific problems
 
 ### 2026-02-03 - Added Timeouts to Test Workflow
 
-**PR #3233 submitted:** Add timeouts to `test_rocm_wheels.yml`.
+**PR #3233 merged:** Add timeouts to `test_rocm_wheels.yml`.
 - Job-level timeout: 30 minutes (catches hung downloads or overall hang)
 - Step-level timeout on `rocm-sdk test` step: 5 minutes (catches hung tests quickly)
 - Prevents 6-hour timeouts like seen with gfx1151 in PR #3182
@@ -724,6 +723,29 @@ python D:\projects\TheRock\build_tools/setup_venv.py test_pip.venv \
   --clean --pre
 ```
 
+### 2026-02-04 - PRs Merged and E2E Integration
+
+Several PRs merged today:
+- **PR #3214:** Container migration for Linux Python packages workflow
+- **PR #3233:** Add timeouts to `test_rocm_wheels.yml`
+- **PR #3136:** `upload_python_packages.py` script and documentation
+
+**PR #3261 drafted:** Upload and test Python packages in CI workflows.
+- Supersedes draft PR #3182
+- Stacked on PR #3242 (`setup_venv.py` refactoring) - will need rebase once that merges
+- Branch: `users/scotttodd/python-package-test-2`
+
+Changes in PR #3261:
+- Added `repository`/`ref` inputs to Linux and Windows Python package workflows
+- Added AWS credentials configuration and `upload_python_packages.py` upload step
+- Added `generate_target_to_run` and `test_rocm_wheels` jobs to both workflows
+- Added `package_find_links_url` input to `test_rocm_wheels.yml`
+- Renamed `package_index_url` → `package_index_url_base` for clarity
+- Added `gha_set_output` call in `upload_python_packages.py` to set output URL
+- Added `id-token: write` permission to `ci_linux.yml` and `ci_windows.yml`
+
+Remaining in review: PR #3242 (`setup_venv.py` refactoring).
+
 ## Open Questions
 
 - Should test workflow run on PRs or only after merge?
@@ -731,3 +753,11 @@ python D:\projects\TheRock\build_tools/setup_venv.py test_pip.venv \
 - Which deps to include in base index? Same as nightly, or a subset?
 - IAM permissions for CI artifacts bucket - does existing role work or need new one?
 - Lifecycle policies for CI uploads - how long to retain per-run packages?
+
+## Future Work
+
+- **Pass `test_runs_on` through ci.yml:** Currently each Python packages workflow has its own
+  `generate_target_to_run` job. This duplicates work already done in ci.yml's `setup` job.
+  Consider adding `test_runs_on` as an optional input - when provided (from ci.yml), skip the
+  generate job; when not provided (standalone/release triggers), compute it locally. This mirrors
+  the `artifact_run_id` pattern.
