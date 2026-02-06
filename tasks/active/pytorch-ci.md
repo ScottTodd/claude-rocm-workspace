@@ -87,146 +87,423 @@ build_tools/setup_venv.py
 docs/development/github_actions_debugging.md
 ```
 
-## Design Considerations
+## Design
 
-### Key Challenge: ROCm Package Source
+### Architecture: "Build only builds, test only tests, release only releases"
 
-Release workflows install ROCm from a cloudfront URL (`--index-url`). CI needs to install ROCm from the same run's artifacts (`--find-links`).
+**Decision:** Option B — extend existing workflows, with clear responsibility separation.
 
-**`build_prod_wheels.py` currently uses `--install-rocm` with `--index-url`.**
-Need to investigate whether it can accept `--find-links` for ROCm installation,
-or whether we need to pre-install ROCm packages before invoking it.
+The key principle: each workflow has one job.
 
-### Option A: Separate CI Workflow
+| Workflow | Responsibility |
+|----------|---------------|
+| `build_portable_linux_pytorch_wheels.yml` | Build PyTorch wheels + upload to artifacts bucket |
+| `test_pytorch_wheels.yml` | Test PyTorch wheels on GPU runners |
+| `release_portable_linux_pytorch_wheels.yml` | Matrix orchestration + staging copy + test + promote |
+| `ci_linux.yml` | CI orchestration: build → test (no promotion) |
 
-Create a new `build_ci_pytorch_wheels.yml` that accepts `rocm_package_find_links_url` as input, builds PyTorch, and uploads to CI artifacts.
+This means moving `generate_target_to_run`, `test_pytorch_wheels`, and
+`upload_pytorch_wheels` **out of** the build workflow and **into** the release workflow.
 
-**Pros:** Clean separation, CI-specific logic doesn't pollute release workflow.
-**Cons:** Code duplication between CI and release build workflows; divergence risk (the very thing we're trying to fix).
+### Current vs Target Workflow Structure
 
-### Option B: Extend Existing Build Workflow
+**Current** (`build_portable_linux_pytorch_wheels.yml` does everything):
+```
+build_portable_linux_pytorch_wheels.yml:
+  build_pytorch_wheels        # build + upload to staging
+  generate_target_to_run      # determine test runner
+  test_pytorch_wheels         # test from staging
+  upload_pytorch_wheels       # promote staging → release
 
-Add CI-mode inputs to `build_portable_linux_pytorch_wheels.yml` so it can source ROCm packages from either a release index (`--index-url`) or CI artifacts (`--find-links`).
+release_portable_linux_pytorch_wheels.yml:
+  release (matrix wrapper)    # calls build workflow for each python × pytorch combo
+```
 
-**Pros:** Single source of truth for how PyTorch is built; release and CI share the same code path.
-**Cons:** More complex workflow with conditional logic; risk of accidentally breaking release workflow.
+**Target** (clean separation):
+```
+build_portable_linux_pytorch_wheels.yml:
+  build_pytorch_wheels        # build + upload to CI artifacts bucket
+  outputs: package_find_links_url, torch_version, etc.
 
-### Option C: Hybrid — Shared Composite Action + Separate Orchestration
+release_portable_linux_pytorch_wheels.yml:
+  build (matrix wrapper)      # calls build workflow for each python × pytorch combo
+  copy_to_staging             # copy from artifacts bucket to release staging
+  generate_target_to_run      # determine test runner
+  test_pytorch_wheels         # test from staging URL
+  promote_to_release          # promote staging → release (based on policy)
 
-Extract the core build/upload steps into a reusable composite action or shared workflow fragment. Both CI and release workflows call the same building block but with different inputs.
+ci_linux.yml:
+  ...existing jobs...
+  build_pytorch_wheels        # calls build workflow (gets package_find_links_url)
+  test_pytorch_wheels         # calls test workflow (using find-links URL)
+```
 
-**Pros:** Shared code, clean separation of orchestration concerns.
-**Cons:** Composite actions have limitations (no `container:` support); may need to use reusable workflow instead.
+### Changes to `build_portable_linux_pytorch_wheels.yml`
 
-### Recommendation
+**Remove these jobs:**
+- `generate_target_to_run`
+- `test_pytorch_wheels`
+- `upload_pytorch_wheels`
 
-Leaning toward **Option B** — the user's stated goal is that CI and release should share building blocks and that CI passing should give confidence in release. This argues for making the build workflow flexible enough to serve both purposes, with the release workflow being a thin matrix wrapper around it.
+**Remove these steps from `build_pytorch_wheels` job:**
+- "Upload wheels to S3 staging" (raw `aws s3 cp` to release bucket)
+- "(Re-)Generate Python package release index for staging" (`manage.py`)
 
-**Open question for user:** What's the preferred approach? Option B seems aligned with the stated goal of "configurable CI" but adds complexity to the existing release workflow.
+**Add these steps to `build_pytorch_wheels` job:**
+- "Upload Python packages" using `upload_python_packages.py` (same as ROCm packages)
+  - Uploads to `therock-ci-artifacts/{run_id}-{platform}/python/{artifact_group}/`
+  - Generates flat `index.html` via `indexer.py`
+  - Sets `package_find_links_url` output
 
-### S3 Layout for PyTorch CI Wheels
+**Add/modify inputs:**
+- Add `rocm_package_find_links_url` (optional) — CI provides this; release provides `cloudfront_url`
+- Keep `cloudfront_url` for release workflow compatibility
+- Remove `s3_subdir`, `s3_staging_subdir`, `cloudfront_staging_url` (release-only concerns)
+- Keep `release_type` for now (used for IAM role selection — may need refactoring)
 
-Following the pattern from python-packages-ci:
+**Add workflow outputs:**
+```yaml
+outputs:
+  package_find_links_url:
+    value: ${{ jobs.build_pytorch_wheels.outputs.package_find_links_url }}
+  torch_version:
+    value: ${{ jobs.build_pytorch_wheels.outputs.torch_version }}
+  torchaudio_version: ...
+  torchvision_version: ...
+  triton_version: ...
+```
+
+**ROCm installation logic:**
+```bash
+# CI mode (find-links):
+./external-builds/pytorch/build_prod_wheels.py build \
+  --install-rocm \
+  --find-links "${{ inputs.rocm_package_find_links_url }}" \
+  --clean --output-dir ...
+
+# Release mode (index-url):
+./external-builds/pytorch/build_prod_wheels.py build \
+  --install-rocm \
+  --index-url "${{ inputs.cloudfront_url }}/${{ inputs.amdgpu_family }}/" \
+  --clean --output-dir ...
+```
+
+### Changes to `build_prod_wheels.py`
+
+Add `--find-links` argument to `add_common()`:
+```python
+p.add_argument("--find-links", help="URL for pip --find-links (flat index)")
+```
+
+In `do_install_rocm()`, add after `--index-url` handling:
+```python
+if args.find_links:
+    pip_args.extend(["--find-links", args.find_links])
+```
+
+When `--find-links` is used without `--index-url`, pip will fall through to PyPI
+for dependencies. This is fine because the ROCm packages in the find-links index
+are self-contained with their deps.
+
+### Changes to `release_portable_linux_pytorch_wheels.yml`
+
+Currently a thin matrix wrapper. Needs to become a multi-job workflow:
+
+```yaml
+jobs:
+  build:
+    # Matrix over python_version × pytorch_git_ref (existing)
+    uses: ./.github/workflows/build_portable_linux_pytorch_wheels.yml
+    with:
+      cloudfront_url: ${{ inputs.cloudfront_url }}
+      # ... same inputs as now, minus staging/promote concerns
+    # Gets back: package_find_links_url, torch_version, etc.
+
+  copy_to_staging:
+    needs: [build]
+    # Copy wheels from CI artifacts bucket to release staging bucket
+    # aws s3 cp from artifacts → staging
+
+  generate_target_to_run:
+    # Same as current job in build workflow
+
+  test_pytorch_wheels:
+    needs: [copy_to_staging, generate_target_to_run]
+    uses: ./.github/workflows/test_pytorch_wheels.yml
+    with:
+      package_index_url: ${{ inputs.cloudfront_staging_url }}
+      # Uses staging URL (PEP-503) not find-links
+
+  promote_to_release:
+    needs: [build, test_pytorch_wheels, generate_target_to_run]
+    # Same promote_wheels_based_on_policy.py logic as current upload_pytorch_wheels job
+```
+
+**Challenge:** The release workflow currently uses `strategy.matrix` which creates
+independent instances of the called workflow. If we need multi-job orchestration
+(build → copy → test → promote) per matrix entry, we may need to restructure.
+
+**Options:**
+1. Make `release_portable_linux_pytorch_wheels.yml` call a new
+   `release_single_pytorch_wheels.yml` that handles one (python, pytorch_ref) combo
+2. Keep the matrix in the build call, then use a separate job to iterate over results
+3. Move orchestration into a single job with sequential steps
+
+This needs more investigation. For MVP, we can keep the release workflow calling the
+build workflow as-is and add staging/promote as separate follow-up jobs.
+
+### S3 Layout: Shared `python/` Directory
+
+**Decision:** Upload both ROCm and PyTorch packages to the same `python/` subdirectory.
 
 ```
 s3://therock-ci-artifacts/
 └── {run_id}-{platform}/
-    ├── python/{artifact_group}/        # ROCm packages (from python-packages-ci)
-    │   ├── *.whl
-    │   └── index.html
-    └── pytorch/{artifact_group}/       # PyTorch packages (NEW)
-        ├── torch-*.whl
+    └── python/{artifact_group}/
+        ├── rocm_sdk_core-*.whl         # ROCm packages
+        ├── rocm_sdk_devel-*.whl
+        ├── rocm_sdk_libraries_*.whl
+        ├── torch-*.whl                 # PyTorch packages
         ├── torchvision-*.whl
         ├── torchaudio-*.whl
-        ├── triton-*.whl               # Linux only
-        └── index.html                 # flat index for --find-links
+        ├── triton-*.whl                # Linux only
+        └── index.html                  # flat index listing ALL packages
 ```
 
-### Test Workflow Compatibility
+**Benefit:** Single `--find-links` URL covers both ROCm and PyTorch for test install.
 
-`test_pytorch_wheels.yml` currently expects `package_index_url` (PEP-503 base URL). For CI:
-- Need to support `package_find_links_url` as alternative input
-- `setup_venv.py` already has `--find-links-url` support (from PR #3242)
-- Both ROCm and PyTorch packages need to be findable during test install:
-  - ROCm packages: from CI `python/{artifact_group}/` path
-  - PyTorch packages: from CI `pytorch/{artifact_group}/` path
-  - May need multiple `--find-links` URLs, or a combined index
+**Challenge:** `upload_python_packages.py` generates `index.html` from local
+`--input-packages-dir`. When PyTorch uploads second, it won't know about
+the ROCm packages already in S3. Options:
 
-### CI Workflow Orchestration
+1. **Regenerate from S3:** Have the upload script list existing S3 objects and
+   include them in the generated index. The `indexer.py` already generates from
+   directory listings — could adapt to list S3 contents via `aws s3 ls`.
+2. **Append mode:** Download existing `index.html`, parse it, add new entries.
+3. **Upload all at once:** Have the PyTorch build step also download the ROCm
+   packages (or at least their filenames) to include in index generation.
 
-Proposed job chain in `ci_linux.yml`:
+Option 1 is cleanest. Need to check if `upload_python_packages.py` can be extended.
 
+### Changes to `test_pytorch_wheels.yml`
+
+Add `package_find_links_url` as an alternative to `package_index_url`:
+
+```yaml
+inputs:
+  package_index_url:
+    type: string
+    default: ""  # Used by release (PEP-503)
+  package_find_links_url:
+    type: string
+    default: ""  # Used by CI (flat index)
 ```
-build_portable_linux_artifacts
-  ↓
-build_portable_linux_python_packages → outputs: rocm_package_find_links_url
-  ↓
-test_rocm_wheels (existing)
-  ↓
-build_pytorch_wheels → outputs: pytorch_package_find_links_url, torch_version
-  ↓
-test_pytorch_wheels
+
+Update the "Set up virtual environment" step:
+```bash
+# CI mode:
+python build_tools/setup_venv.py ${VENV_DIR} \
+  --packages torch==${{ inputs.torch_version }} \
+  --find-links-url=${{ inputs.package_find_links_url }} \
+  --activate-in-future-github-actions-steps
+
+# Release mode:
+python build_tools/setup_venv.py ${VENV_DIR} \
+  --packages torch==${{ inputs.torch_version }} \
+  --index-url=${{ inputs.package_index_url }} \
+  --index-subdir=${{ inputs.amdgpu_family }} \
+  --activate-in-future-github-actions-steps
 ```
 
-### Configurability
+With the shared `python/` directory, a single `--find-links` URL provides
+both ROCm and PyTorch packages, so torch's dependency on rocm-sdk is resolved
+from the same index.
 
-The CI workflow should be configurable for:
-- `pytorch_git_ref` — which PyTorch branch to build (nightly, release/2.7, etc.)
-- `python_version` — which Python version(s) to build for
-- Whether to build PyTorch at all (opt-in per run or per-PR)
-- Which components (torch only vs torch+audio+vision+triton)
+### CI Workflow Orchestration in `ci_linux.yml`
+
+```yaml
+build_pytorch_wheels:
+  needs: [build_portable_linux_python_packages]
+  name: Build PyTorch
+  if: >-
+    ${{
+      !failure() &&
+      !cancelled() &&
+      (
+        inputs.use_prebuilt_artifacts == 'false' ||
+        inputs.use_prebuilt_artifacts == 'true'
+      ) &&
+      inputs.expect_failure == false &&
+      inputs.build_pytorch == true
+    }}
+  uses: ./.github/workflows/build_portable_linux_pytorch_wheels.yml
+  with:
+    amdgpu_family: ${{ inputs.artifact_group }}
+    python_version: "3.12"
+    pytorch_git_ref: "nightly"
+    rocm_package_find_links_url: ${{ needs.build_portable_linux_python_packages.outputs.package_find_links_url }}
+  permissions:
+    contents: read
+    id-token: write
+
+test_pytorch_wheels:
+  needs: [build_pytorch_wheels]
+  name: Test PyTorch
+  if: >-
+    ${{
+      !failure() &&
+      !cancelled() &&
+      inputs.expect_failure == false &&
+      inputs.test_runs_on != ''
+    }}
+  uses: ./.github/workflows/test_pytorch_wheels.yml
+  with:
+    amdgpu_family: ${{ inputs.artifact_group }}
+    test_runs_on: ${{ inputs.test_runs_on }}
+    package_find_links_url: ${{ needs.build_pytorch_wheels.outputs.package_find_links_url }}
+    torch_version: ${{ needs.build_pytorch_wheels.outputs.torch_version }}
+    pytorch_git_ref: "nightly"
+    python_version: "3.12"
+```
+
+### Configurability via `configure_ci.py`
+
+Add a `build_pytorch` output that controls whether CI builds PyTorch:
+
+**Default behavior by trigger type:**
+
+| Trigger | `build_pytorch` |
+|---------|----------------|
+| `pull_request` | `false` (opt-in via label) |
+| `push` (long-lived branch) | `true` |
+| `schedule` (nightly) | `true` |
+| `workflow_dispatch` | configurable input |
+
+**PR label opt-in:** Add a `build:pytorch` label. When present, `configure_ci.py`
+sets `build_pytorch=true`.
+
+**CI defaults (narrow scope):**
+- One Python version: `3.12`
+- One or two PyTorch refs: `nightly` (and optionally latest stable, e.g. `release/2.10`)
+- Full matrix is for release workflows only
+
+**New inputs to `ci_linux.yml`:**
+```yaml
+inputs:
+  build_pytorch:
+    type: boolean
+    default: false
+  pytorch_git_ref:
+    type: string
+    default: "nightly"
+  pytorch_python_version:
+    type: string
+    default: "3.12"
+```
+
+**New outputs from `configure_ci.py`:**
+```python
+output["build_pytorch"] = json.dumps(build_pytorch)
+```
+
+### Windows Support
+
+Same pattern applies to `build_windows_pytorch_wheels.yml` and `ci_windows.yml`.
+Key differences:
+- No triton wheel on Windows
+- Uses `cmd` shell for MSVC setup
+- Different runner (`azure-windows-scale-rocm`)
+- Source checkout to `B:/src` (shorter Windows paths)
 
 ### Documentation Updates
 
-- `docs/development/github_actions_debugging.md` — "Testing PyTorch release workflows" section needs updating to reflect that CI can now validate most changes, and when you should still use the release workflow
-- Potentially add a "CI workflow reference" section showing the full CI pipeline
+**`docs/development/github_actions_debugging.md`:**
+- Update "Testing PyTorch release workflows" section to note that CI now
+  validates PyTorch builds and most changes can be tested via CI
+- Document when you still need the release workflow (full matrix, promotion)
+- Add section on using the `build:pytorch` label for PR-level validation
 
 ## Investigation Notes
 
 ### 2026-02-06 - Initial Analysis
 
-**Dependency chain analysis:**
-- PyTorch build needs ROCm packages → must wait for `build_portable_linux_python_packages` to complete
-- PyTorch test needs both ROCm and PyTorch packages + GPU runner
-- Total chain: artifacts → rocm packages → pytorch wheels → pytorch tests
-- This is a long chain; CI runtime will increase significantly
+**`build_prod_wheels.py` ROCm installation (lines 293-326):**
+- `do_install_rocm()` builds a pip command with `--index-url` and `--force-reinstall`
+- Adding `--find-links` is straightforward — just add to `pip_args` when provided
+- The `add_common()` function (line 945) adds `--index-url` to argparse
+- Need to add `--find-links` there too
+- Both `--index-url` and `--find-links` can be used together (pip supports this)
+- With `--find-links` only (no `--index-url`), pip falls through to PyPI for deps
 
-**`build_prod_wheels.py` ROCm installation:**
-- Uses `--install-rocm` flag which triggers `pip install` from `--index-url`
-- Need to check if it can accept `--find-links` instead, or if we pre-install
+**`test_pytorch_wheels.yml` (line 130-136):**
+- Uses `setup_venv.py` with `--index-url` and `--index-subdir`
+- `setup_venv.py` already supports `--find-links-url` (added in PR #3242)
+- Need to make the workflow inputs flexible to accept either URL type
 
-**`test_pytorch_wheels.yml` compatibility:**
-- Currently uses `package_index_url` (PEP-503 `--index-url` with `--index-subdir`)
-- CI artifacts use flat `--find-links` format
-- `setup_venv.py` already supports `--find-links-url` (PR #3242)
-- Need to add `package_find_links_url` input to `test_pytorch_wheels.yml`
-- For testing, both ROCm and PyTorch packages need to be accessible
+**`upload_python_packages.py` and shared directory:**
+- Currently generates `index.html` from local `--input-packages-dir` contents only
+- For shared directory, second upload (PyTorch) needs to regenerate index
+  including already-uploaded ROCm packages
+- Need to extend script to list S3 directory contents when regenerating index,
+  OR pass multiple local directories, OR download existing index and merge
 
-**Release vs CI workflow divergence points:**
-- ROCm package source: cloudfront (release) vs S3 CI artifacts (CI)
-- S3 bucket: `therock-{release_type}-python` (release) vs `therock-ci-artifacts` (CI)
-- Index format: PEP-503 with `manage.py` (release) vs flat with `indexer.py` (CI)
-- Promotion: staging→release flow (release) vs none (CI)
-- Orchestration: inline in build workflow (release) vs ci_linux.yml (CI)
+**`configure_ci.py` extension points:**
+- Currently outputs: `linux_variants`, `linux_test_labels`, `windows_variants`,
+  `windows_test_labels`, `enable_build_jobs`, `test_type`
+- PR labels already drive target selection (e.g., `gfx*` patterns)
+- Adding `build:pytorch` label follows the existing label-based pattern
+- Need to add `build_pytorch` to output dict and `gha_set_output()`
+
+**Release workflow restructuring challenge:**
+- `release_portable_linux_pytorch_wheels.yml` uses `strategy.matrix` to call
+  the build workflow — this creates independent instances
+- Moving test/promote into the release workflow means we need multi-job
+  orchestration per matrix entry
+- May need a "release single" intermediate workflow that handles one combo
+- Alternative: keep test/promote in build workflow for release mode only (conditional)
+  — but this contradicts the clean separation principle
+
+## Decisions Made
+
+- **Option B:** Extend existing build workflow for both CI and release
+- **Build workflow responsibility:** Build + upload to artifacts bucket only
+- **Release workflow responsibility:** Matrix + staging + test + promote
+- **CI workflow responsibility:** Build + test (no promotion)
+- **Shared `python/` directory:** ROCm and PyTorch packages share the same S3
+  subdirectory and `index.html`, simplifying `--find-links` URL to a single URL
+- **CI scope defaults:** One Python version (3.12), 1-2 PyTorch refs (nightly + maybe latest stable)
+- **CI opt-in:** `build:pytorch` PR label; always-on for postsubmit/nightly
+- **`build_prod_wheels.py`:** Add `--find-links` flag to `add_common()` and
+  use in `do_install_rocm()` alongside or instead of `--index-url`
 
 ## Next Steps
 
-1. [ ] Deep-dive into `build_prod_wheels.py` to understand ROCm package installation
-2. [ ] Decide on Option A vs B vs C (discuss with user)
-3. [ ] Prototype changes to build workflow to accept CI artifact URLs
-4. [ ] Update `test_pytorch_wheels.yml` to accept `--find-links` input
-5. [ ] Integrate pytorch build job into `ci_linux.yml`
-6. [ ] Integrate pytorch test job into `ci_linux.yml`
-7. [ ] Repeat for Windows (`ci_windows.yml`)
-8. [ ] Update documentation
-9. [ ] End-to-end CI test run
-10. [ ] Review and iterate
+1. [ ] Add `--find-links` to `build_prod_wheels.py` (`add_common()` + `do_install_rocm()`)
+2. [ ] Refactor `build_portable_linux_pytorch_wheels.yml`:
+   - Remove `generate_target_to_run`, `test_pytorch_wheels`, `upload_pytorch_wheels` jobs
+   - Remove staging upload steps from `build_pytorch_wheels` job
+   - Add `upload_python_packages.py` step
+   - Add `rocm_package_find_links_url` input
+   - Add workflow-level outputs
+3. [ ] Extend `upload_python_packages.py` to handle shared directory (regenerate
+   index including existing S3 objects)
+4. [ ] Update `test_pytorch_wheels.yml` to accept `package_find_links_url` input
+5. [ ] Refactor `release_portable_linux_pytorch_wheels.yml` to include staging +
+   test + promote (moved from build workflow)
+6. [ ] Add `build_pytorch` output to `configure_ci.py` with label support
+7. [ ] Add `build_pytorch_wheels` and `test_pytorch_wheels` jobs to `ci_linux.yml`
+8. [ ] Repeat for Windows (`build_windows_pytorch_wheels.yml`, `ci_windows.yml`)
+9. [ ] Update `docs/development/github_actions_debugging.md`
+10. [ ] End-to-end CI test run
+11. [ ] Review and iterate
 
 ## Open Questions
 
-- **Option A vs B vs C?** How much should we share between CI and release workflows?
-- **CI runtime impact?** PyTorch builds are expensive. Should this be opt-in per PR?
-- **Python version matrix in CI?** Release builds all of 3.11/3.12/3.13. CI might only need one.
-- **PyTorch ref in CI?** Should CI default to `nightly` or track a specific release branch?
-- **Combined index?** How to make both ROCm and PyTorch packages findable during test install?
-- **PR #3261 status?** This task is blocked until python-packages-ci lands.
+- **Release workflow matrix restructuring:** How to handle multi-job orchestration
+  per matrix entry? Need intermediate "release single" workflow, or conditional
+  logic in build workflow for release mode?
+- **CI runtime impact:** PyTorch builds are expensive. Build caching (separate task)
+  will help, but for now, opt-in via label + always-on for postsubmit keeps costs down.
+- **Shared index regeneration:** Which approach for `upload_python_packages.py`?
+  S3 listing seems cleanest but adds AWS API dependency to index generation.
+- **PR #3261 status:** This task is blocked until python-packages-ci lands.
