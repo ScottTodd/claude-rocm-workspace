@@ -659,11 +659,16 @@ numbered item can be a separate PR.
 **Changes:**
 - New workflow, modeled on `build_portable_linux_pytorch_wheels.yml` build job
 - Uses `--find-links` for ROCm packages (from PR 1)
-- Uploads to CI artifacts bucket via `upload_python_packages.py`
-- Single job, no test/promote
+- Builds torch only (no vision/audio/triton)
+- Build + sanity check only, no S3 upload (deferred pending index generation design)
 
-**Testing:** Trigger via `workflow_dispatch` on a test branch with a known
-`rocm_package_find_links_url` from a recent CI run.
+**Testing:** Testing via `workflow_dispatch` on ScottTodd/TheRock fork to avoid
+polluting the upstream workflow/run history while prototyping:
+- Workflow: https://github.com/ScottTodd/TheRock/actions/workflows/build_portable_linux_pytorch_wheels_ci.yml
+- ROCm packages from CI run: https://github.com/ROCm/TheRock/actions/runs/21733299154?pr=3261
+- find-links index: `https://therock-ci-artifacts.s3.amazonaws.com/21733299154-linux/python/gfx94X-dcgpu/index.html`
+- rocm_version: `7.12.0.dev0+7282a0974b9c29519265ce590c284544938d36e4`
+- Using slow GitHub-hosted runner on fork; will use larger runners once PR is pushed upstream.
 
 ### PR 3: Add `build_pytorch` to `configure_ci.py` + wire into `ci_linux.yml`
 
