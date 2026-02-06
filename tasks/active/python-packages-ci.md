@@ -17,12 +17,30 @@ Build and test ROCm Python packages as part of CI, not just during PyTorch relea
 
 ## Goals
 
-- [ ] Upload Python packages from `build_portable_linux_python_packages.yml` to S3
-- [ ] Upload Python packages from `build_windows_python_packages.yml` to S3
-- [ ] Create pip-compatible index for each workflow run
+- [x] Upload Python packages from `build_portable_linux_python_packages.yml` to S3
+- [x] Upload Python packages from `build_windows_python_packages.yml` to S3
+- [x] Create pip-compatible index for each workflow run
 - [x] Add `test_rocm_wheels.yml` workflow to test packages with `rocm-sdk test`
 - [ ] (Future) Extend `setup_venv.py` to install from workflow run S3 paths
-- [ ] (Future) Trigger dev PyTorch builds and tests
+- [ ] (Future) Trigger dev PyTorch builds and tests → **See follow-up task**
+
+## Follow-up: PyTorch Python Packages in CI
+
+Build and test PyTorch Python packages using the ROCm Python packages as part of CI.
+This extends the pattern established here to the PyTorch wheel builds.
+
+**Scope:**
+- Build PyTorch wheels using freshly-built ROCm packages (from same CI run)
+- Upload PyTorch wheels to S3
+- Test PyTorch wheels on GPU runners
+
+**Design considerations:**
+- PyTorch build depends on ROCm packages → need to chain workflows
+- Existing `build_portable_linux_pytorch_wheels.yml` builds from nightly/release index
+- Need to support building from CI artifacts URL (`--find-links`)
+- Test workflow: `test_pytorch_wheels.yml` already exists
+
+This will be tracked as a separate task.
 
 ## Context
 
@@ -52,8 +70,8 @@ The desired workflow:
 - **PR #3136:** `upload_python_packages.py` script and documentation (merged)
 - **PR #3214:** Container migration for Linux Python packages workflow (merged)
 - **PR #3233:** Add timeouts to `test_rocm_wheels.yml` (merged)
-- **PR #3242:** setup_venv.py refactoring - `--find-links`, `--pre`, improved tests (in review)
-- **PR #3261:** Upload and test Python packages in CI workflows (draft, stacked on #3242)
+- **PR #3242:** setup_venv.py refactoring - `--find-links`, `--pre`, improved tests (merged)
+- **PR #3261:** Upload and test Python packages in CI workflows (in review, rebased on main)
 - **Task:** `run-outputs-layout.md` - defines S3 layout structure
 - **Workflow:** `test_pytorch_wheels.yml` - pattern for testing wheels
 - **Workflow:** `release_portable_linux_packages.yml` - has S3 upload steps to reference
@@ -746,6 +764,32 @@ Changes in PR #3261:
 
 Remaining in review: PR #3242 (`setup_venv.py` refactoring).
 
+### 2026-02-05 - PR #3242 Merged, Workflow Refactoring
+
+**PR #3242 merged.** Rebased PR #3261 onto main.
+
+**Reviewer feedback on PR #3261:** Move `test_rocm_wheels` orchestration from the Python package
+build workflows to `ci_linux.yml` / `ci_windows.yml`. This matches how `build_portable_linux_artifacts`
+and `test_linux_artifacts` are already sequenced.
+
+**Changes made:**
+1. Removed `generate_target_to_run` and `test_rocm_wheels` jobs from both Python package build workflows
+2. Added workflow-level `outputs:` to expose `package_find_links_url` from build workflows
+3. Added `test_rocm_wheels` job to `ci_linux.yml` and `ci_windows.yml`
+4. Used `inputs.test_runs_on` (already available from setup.yml) instead of separate `generate_target_to_run`
+
+**Benefits:**
+- Eliminates redundant `generate_target_to_run` job (test_runs_on already computed in setup.yml)
+- Consistent pattern with existing artifact build/test orchestration
+- Build workflows focus on building, CI workflows handle orchestration
+
+**Condition analysis:** Reviewed all `if` conditions in ci_linux/ci_windows. Added
+`use_prebuilt_artifacts` check to `test_rocm_wheels` for consistency with other jobs
+(guards against edge cases where input is undefined).
+
+**Task status:** Once PR #3261 merges, this task is complete. Follow-up work identified:
+build and test PyTorch packages in CI using the same pattern.
+
 ## Open Questions
 
 - Should test workflow run on PRs or only after merge?
@@ -756,8 +800,9 @@ Remaining in review: PR #3242 (`setup_venv.py` refactoring).
 
 ## Future Work
 
-- **Pass `test_runs_on` through ci.yml:** Currently each Python packages workflow has its own
-  `generate_target_to_run` job. This duplicates work already done in ci.yml's `setup` job.
-  Consider adding `test_runs_on` as an optional input - when provided (from ci.yml), skip the
-  generate job; when not provided (standalone/release triggers), compute it locally. This mirrors
-  the `artifact_run_id` pattern.
+- ~~**Pass `test_runs_on` through ci.yml:**~~ **Done (2026-02-05).** Moved `test_rocm_wheels`
+  orchestration to `ci_linux.yml` / `ci_windows.yml` where `test_runs_on` is already available.
+  Removed redundant `generate_target_to_run` jobs from Python package build workflows.
+
+- **PyTorch packages in CI:** Build and test PyTorch wheels using CI-built ROCm packages.
+  See "Follow-up: PyTorch Python Packages in CI" section above.
