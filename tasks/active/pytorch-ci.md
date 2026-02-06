@@ -8,7 +8,8 @@ repositories:
 **Status:** Not started
 **Priority:** P1 (High)
 **Started:** 2026-02-06
-**Issue:** https://github.com/ROCm/TheRock/issues/3177
+**Issue:** https://github.com/ROCm/TheRock/issues/3291
+**Parent issue:** https://github.com/ROCm/TheRock/issues/3177
 **Depends on:** `python-packages-ci` (PR #3261)
 
 ## Overview
@@ -75,7 +76,10 @@ This task extends that chain: after ROCm packages are built and uploaded, build 
 ### Related Work
 
 - **Task:** `python-packages-ci` — established CI pattern for ROCm packages (PR #3261)
-- **Issue #3177:** Tracking issue for expanding CI workflows (ROCm Python, PyTorch, JAX, native Linux)
+- **Issue #3291:** This task's tracking issue
+- **Issue #3177:** Parent tracking issue for expanding CI workflows (ROCm Python, PyTorch, JAX, native Linux)
+- **Issue #1236:** Release workflows do not freeze commits (version precomputation)
+- **Issue #2156:** Test failures / narrower test set needed for CI-level pytorch testing
 - **Workflow:** `build_portable_linux_pytorch_wheels.yml` — existing release build workflow
 - **Workflow:** `build_windows_pytorch_wheels.yml` — Windows equivalent
 - **Workflow:** `test_pytorch_wheels.yml` — existing test workflow
@@ -390,10 +394,13 @@ s3://therock-ci-artifacts/
 
 **Benefit:** Single `--find-links` URL covers both ROCm and PyTorch for test install.
 
-**Index generation:** In Phase 1, we just upload packages (no index generation
-needed for build-only). In Phase 2, server-side AWS Lambda will generate
-`index.html` automatically for all files in the directory, eliminating
-client-side race conditions and simplifying the upload scripts.
+**Index generation:** In Phase 1, we upload packages to the CI artifacts bucket.
+If we limit to a single PyTorch+Python version, we could generate the index
+locally from a directory containing both ROCm and PyTorch packages (option 1
+from #3291), which might enable testing sooner. For multiple parallel uploads
+(multiple pytorch versions), we'd need server-side index generation (option 3).
+In Phase 2, server-side AWS Lambda will generate `index.html` automatically
+for all files in the directory, eliminating client-side race conditions.
 
 ### Changes to `test_pytorch_wheels.yml` (Phase 2)
 
@@ -426,7 +433,7 @@ build_portable_linux_pytorch_wheels_ci:
   with:
     amdgpu_family: ${{ inputs.artifact_group }}
     python_version: "3.12"
-    pytorch_git_ref: "nightly"
+    pytorch_git_ref: "release/2.10"
     rocm_package_find_links_url: ${{ needs.build_portable_linux_python_packages.outputs.package_find_links_url }}
     rocm_version: ${{ inputs.rocm_package_version }}
   permissions:
@@ -453,9 +460,12 @@ Add a `build_pytorch` output that controls whether CI builds PyTorch:
 sets `build_pytorch=true`.
 
 **CI defaults (narrow scope):**
-- One Python version: `3.12`
-- One or two PyTorch refs: `nightly` (and optionally latest stable, e.g. `release/2.10`)
-- Full matrix is for release workflows only
+- One Python version: `3.12` (or `3.13`)
+- Latest stable PyTorch: `release/2.10` (or `release/2.9`)
+- NOT nightly — nightly can break from upstream PyTorch changes outside our
+  control, making it unsuitable as a blocking CI signal on our PRs. Stable
+  release branches are much more predictable.
+- Full matrix (multiple python versions × multiple pytorch refs) is for release workflows only
 
 **New inputs to `ci_linux.yml`:**
 ```yaml
@@ -546,7 +556,9 @@ Key differences:
 - **CI workflow responsibility:** Phase 1 = build only; Phase 2 = build + test
 - **Shared `python/` directory:** ROCm and PyTorch packages share the same S3
   subdirectory. Server-side Lambda will generate `index.html` (Phase 2).
-- **CI scope defaults:** One Python version (3.12), 1-2 PyTorch refs (nightly + maybe latest stable)
+- **CI scope defaults:** One Python version (3.12 or 3.13), latest stable
+  PyTorch (release/2.10 or release/2.9). Not nightly — upstream breakage
+  would create false negatives on our PRs.
 - **CI opt-in:** `build:pytorch` PR label; always-on for postsubmit/nightly
 - **`build_prod_wheels.py`:** Add `--find-links` flag to `add_common()` and
   use in `do_install_rocm()` alongside or instead of `--index-url`
@@ -627,11 +639,16 @@ the pytorch build job runs and completes after ROCm packages are built.
 - Document the `build:pytorch` label
 - Document when you still need the full release workflow
 
-### Phase 2 (future)
+### Phase 2 (future — still in TheRock)
 
-- Test PyTorch in CI (after server-side index generation)
+- Test PyTorch in CI (after server-side index generation, or option 1 for single version)
+  - Will need a narrower test set than nightly runs (see #2156)
 - Restructure release workflow (after version precomputation, #1236)
 - Converge CI and release onto a single build-only workflow
+
+### Phase 3 (future — cross-repo)
+
+- Enable triggering pytorch CI builds from rocm-libraries and rocm-systems repos (#3177)
 
 ## Open Questions
 
