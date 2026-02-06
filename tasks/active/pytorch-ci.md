@@ -715,6 +715,23 @@ the pytorch build job runs and completes after ROCm packages are built.
 
 - Enable triggering pytorch CI builds from rocm-libraries and rocm-systems repos (#3177)
 
+## Side Tasks
+
+- **Collapse Python version selection into one script:** The "Select Python
+  version" and "Add selected Python version to PATH" steps are duplicated
+  across 5 workflows (`build_portable_linux_pytorch_wheels.yml`,
+  `build_windows_pytorch_wheels.yml`, `build_linux_jax_wheels.yml`,
+  `copy_release.yml`, and our new CI workflow). Could be a single script call
+  that writes to `GITHUB_PATH` itself using `gha_add_to_path()` from
+  `build_tools/github_actions/github_actions_utils.py`. Note: both Linux and
+  Windows workflows use `CP_VERSION` for wheel filename construction in their
+  upload steps — further motivation to move upload logic into scripts and
+  precompute versions/filenames rather than building them in YAML. The
+  consolidation of the PATH-setting steps only applies to the Linux manylinux
+  pattern (selecting from `/opt/python/{cp_version}/bin`); Windows uses
+  `actions/setup-python` to select the build Python, though it could share the
+  `cp_version` computation.
+
 ## Open Questions
 
 - **CI runtime impact:** PyTorch builds are expensive. Build caching (separate task)
