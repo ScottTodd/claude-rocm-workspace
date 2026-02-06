@@ -631,7 +631,7 @@ scripts, different trust boundaries.
 Concrete plan to get the minimum viable "build pytorch on CI" working. Each
 numbered item can be a separate PR.
 
-### PR 1: Add `--find-links` to `build_prod_wheels.py`
+### PR 1: Add `--find-links` to `build_prod_wheels.py` — [#3293](https://github.com/ROCm/TheRock/pull/3293) ✅
 
 **Files changed:**
 - `external-builds/pytorch/build_prod_wheels.py`
@@ -642,6 +642,14 @@ numbered item can be a separate PR.
 - Small, self-contained, easy to review
 
 **Testing:** Unit test or manual test with a known find-links URL.
+
+### PR 1b: Fix pip cache package name — [#3294](https://github.com/ROCm/TheRock/pull/3294)
+
+**Files changed:**
+- `external-builds/pytorch/build_prod_wheels.py`
+
+**Changes:**
+- Fix incorrect package name in `pip cache remove` command (bug found during PR 1 testing)
 
 ### PR 2: Create `build_portable_linux_pytorch_wheels_ci.yml`
 
