@@ -569,6 +569,63 @@ Key differences:
   release workflow is restructured to separate build/test/promote (after #1236),
   both CI and release can share a single build-only workflow.
 
+## Alternatives Considered
+
+### CI as "dev release" — every CI run uploads to a shared release-like bucket
+
+**Idea:** Make CI workflows run a "dev release" that uploads to e.g.
+`therock-dev-python`, bringing CI and release workflows much closer together
+(potentially sharing the same workflow YAML).
+
+**Why it's appealing:**
+- Reduces code duplication between CI and release workflows
+- CI would exercise the actual release path, catching release-specific issues
+- `pip install rocm==7.10.0.dev0+abcdef` from a dev index for an arbitrary
+  commit would be useful for some developer and tooling workflows
+
+**Why we rejected it:**
+
+1. **Security boundary.** CI jobs include runs from developer forks on
+   potentially unreviewed code. A strong separation between development
+   artifacts and release artifacts is good security practice. Dev releases are
+   already triggered manually (more controlled), and we're trying to *reduce*
+   that manual triggering — keeping "dev releases" focused on testing the
+   release process itself, not validating routine source changes.
+
+2. **Build scope mismatch.** Release builds typically build the full project
+   stack with a release-specific build cache. CI builds can build subsets of
+   the stack and use more permissive, broadly shared build caches. These are
+   fundamentally different build profiles that shouldn't share an output bucket.
+
+3. **Volume and cost.** CI runs on every PR push, potentially dozens of times
+   per day. Uploading full wheel sets to a persistent release-like bucket on
+   every run creates significant storage churn. Release uploads are infrequent
+   and deliberate — different lifecycle for artifact retention and cleanup.
+
+4. **Versioning.** CI builds from different PRs targeting the same base could
+   produce wheels with the same version string but different contents. The
+   `dev0+{commit_hash}` suffix from `compute_rocm_package_version.py` should
+   avoid most collisions, but the semantics are wrong — a "release" artifact
+   (even dev) implies intentional publication, while CI artifacts are transient
+   validation byproducts.
+
+5. **Signal clarity.** A package in `therock-dev-python` carries implicit
+   meaning: "someone intentionally published this for external consumption."
+   CI artifacts don't carry that intent. Mixing them muddies the signal for
+   anyone consuming from that bucket.
+
+**Notes on version collision:** `compute_rocm_package_version.py` includes a
+git commit hash in dev versions (e.g. `7.10.0.dev0+abcdef`), which should be
+sufficient to avoid most collisions across workflow runs. And having
+`pip install rocm==7.10.0.dev0+abcdef` work for arbitrary commits would
+genuinely be useful. But this can be achieved through existing tooling like
+`setup_venv.py` and `build_tools/find_artifacts_for_commit.py` without
+conflating CI artifacts with release artifacts.
+
+**Bottom line:** Share code at the script level, not the bucket or workflow
+level. CI validates the build; release validates the distribution. Same
+scripts, different trust boundaries.
+
 ## MVP Plan: Build PyTorch on CI
 
 Concrete plan to get the minimum viable "build pytorch on CI" working. Each
