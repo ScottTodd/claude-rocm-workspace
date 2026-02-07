@@ -5,7 +5,7 @@ repositories:
 
 # Build and Test PyTorch Python Packages in CI
 
-**Status:** Not started
+**Status:** In progress — PR 2 up for review
 **Priority:** P1 (High)
 **Started:** 2026-02-06
 **Issue:** https://github.com/ROCm/TheRock/issues/3291
@@ -651,24 +651,36 @@ numbered item can be a separate PR.
 **Changes:**
 - Fix incorrect package name in `pip cache remove` command (bug found during PR 1 testing)
 
-### PR 2: Create `build_portable_linux_pytorch_wheels_ci.yml`
+### PR 2: Create CI workflow + wire into ci_linux.yml — [#3303](https://github.com/ROCm/TheRock/pull/3303) (draft)
 
 **Files changed:**
 - `.github/workflows/build_portable_linux_pytorch_wheels_ci.yml` (NEW)
+- `.github/workflows/ci_linux.yml`
 
 **Changes:**
-- New workflow, modeled on `build_portable_linux_pytorch_wheels.yml` build job
+- New CI workflow, modeled on release build workflow's build job
 - Uses `--find-links` for ROCm packages (from PR 1)
 - Builds torch only (no vision/audio/triton)
 - Build + sanity check only, no S3 upload (deferred pending index generation design)
+- Wired into ci_linux.yml after build_portable_linux_python_packages
+- Runs unconditionally (no configure_ci.py gating yet)
+- Explicit python_version="3.12" and pytorch_git_ref="release/2.10"
 
-**Testing:** Testing via `workflow_dispatch` on ScottTodd/TheRock fork to avoid
-polluting the upstream workflow/run history while prototyping:
-- Workflow: https://github.com/ScottTodd/TheRock/actions/workflows/build_portable_linux_pytorch_wheels_ci.yml
-- ROCm packages from CI run: https://github.com/ROCm/TheRock/actions/runs/21733299154?pr=3261
-- find-links index: `https://therock-ci-artifacts.s3.amazonaws.com/21733299154-linux/python/gfx94X-dcgpu/index.html`
-- rocm_version: `7.12.0.dev0+7282a0974b9c29519265ce590c284544938d36e4`
-- Using slow GitHub-hosted runner on fork; will use larger runners once PR is pushed upstream.
+**Testing:**
+- Fork test (ScottTodd/TheRock, run 21767399195): setup steps all passed
+  (checkout, Python selection, --find-links, ROCm installation). Build hit
+  ENOSPC on standard GitHub-hosted runner — expected.
+- Upstream test — known-bad (run 21768200125): **FAILED as expected.** Same
+  rocprim compilation error from #3042: `rocprim::is_floating_point<__half>::value
+  was not satisfied`. Confirms this CI job would have caught the break pre-merge.
+- Upstream test — known-good: retriggered after concurrency conflict, pending.
+
+**Notes:**
+- Concurrency group (`workflow-sha`) means two workflow_dispatch runs on the
+  same branch cancel each other. Had to run known-bad and known-good
+  sequentially. Could encode inputs in concurrency group but that's separate.
+- Branch is based on `users/scotttodd/python-package-test-2` with the
+  `--find-links` commit cherry-picked. PR depends on #3261 and #3293.
 
 ### PR 3: Add `build_pytorch` to `configure_ci.py` + wire into `ci_linux.yml`
 
