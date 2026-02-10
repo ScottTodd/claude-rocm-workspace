@@ -425,7 +425,6 @@ build_portable_linux_pytorch_wheels_ci:
         inputs.use_prebuilt_artifacts == 'false' ||
         inputs.use_prebuilt_artifacts == 'true'
       ) &&
-      inputs.expect_failure == false &&
       inputs.build_pytorch == true
     }}
   uses: ./.github/workflows/build_portable_linux_pytorch_wheels_ci.yml
@@ -443,21 +442,24 @@ build_portable_linux_pytorch_wheels_ci:
 # Phase 2: add test_pytorch_wheels job here (after server-side index generation)
 ```
 
+No `inputs.expect_failure` check here. `build_pytorch` is the sole gate — a
+positive selection set by `configure_ci.py`. Families with known pytorch build
+failures aren't selected, so there's no need to also check `expect_failure`.
+
 ### Configurability via `configure_ci.py`
 
-Add a `build_pytorch` output that controls whether CI builds PyTorch:
+**PR 2 (minimal):** `configure_ci.py` adds a per-variant `build_pytorch` field,
+initially just `not expect_pytorch_failure`. This prevents nightly from
+scheduling pytorch builds for known-broken families.
 
-**Default behavior by trigger type:**
+**PR 3 (follow-up):** Per-trigger narrowing and label support:
 
-| Trigger | `build_pytorch` |
-|---------|----------------|
-| `pull_request` | `false` (opt-in via label) |
-| `push` (long-lived branch) | `true` |
-| `schedule` (nightly) | `true` |
-| `workflow_dispatch` | configurable input |
-
-**PR label opt-in:** Add a `build:pytorch` label. When present, `configure_ci.py`
-sets `build_pytorch=true`.
+| Trigger | Which families get `build_pytorch: true` |
+|---------|----------------------------------------|
+| `pull_request` | None by default. `build:pytorch` label → gfx94x only |
+| `push` (long-lived branch) | gfx94x only |
+| `schedule` (nightly) | All non-broken families |
+| `workflow_dispatch` | Configurable; defaults to all non-broken families |
 
 **CI defaults (narrow scope):**
 - One Python version: `3.12` (or `3.13`)
@@ -465,26 +467,24 @@ sets `build_pytorch=true`.
 - NOT nightly — nightly can break from upstream PyTorch changes outside our
   control, making it unsuitable as a blocking CI signal on our PRs. Stable
   release branches are much more predictable.
-- Full matrix (multiple python versions × multiple pytorch refs) is for release workflows only
+- Full matrix (multiple python versions × multiple pytorch refs) is for release
+  workflows only
 
-**New inputs to `ci_linux.yml`:**
+**New input on `ci_linux.yml` / `ci_windows.yml`:**
 ```yaml
 inputs:
   build_pytorch:
     type: boolean
     default: false
-  pytorch_git_ref:
-    type: string
-    default: "nightly"
-  pytorch_python_version:
-    type: string
-    default: "3.12"
 ```
 
-**New outputs from `configure_ci.py`:**
-```python
-output["build_pytorch"] = json.dumps(build_pytorch)
+**Callers (`ci.yml`, `ci_nightly.yml`) pass it through:**
+```yaml
+build_pytorch: ${{ matrix.variant.build_pytorch == true }}
 ```
+
+Python version and pytorch ref are hardcoded in the `ci_linux.yml` job for now.
+Configurability can be added later if needed.
 
 ### Windows Support
 
@@ -533,7 +533,39 @@ Key differences:
   `windows_test_labels`, `enable_build_jobs`, `test_type`
 - PR labels already drive target selection (e.g., `gfx*` patterns)
 - Adding `build:pytorch` label follows the existing label-based pattern
-- Need to add `build_pytorch` to output dict and `gha_set_output()`
+- `build_pytorch` goes into the per-variant matrix row (not a top-level output),
+  since it varies per family. Callers pass it through to ci_linux/ci_windows.
+- `expect_pytorch_failure` is read from `amdgpu_family_matrix.py` per-family
+  and inverted into `build_pytorch` — positive selection, not negative filtering
+
+### 2026-02-10 - `expect_pytorch_failure` plumbing analysis
+
+**How it works in release workflows:**
+- `amdgpu_family_matrix.py` defines `expect_pytorch_failure: True` per family/platform
+- `fetch_package_targets.py` extracts it into the `package_targets` JSON output
+- Release workflows (`release_portable_linux_packages.yml:322`,
+  `release_windows_packages.yml:340`) use it as a step-level `if` to skip
+  the "Trigger building PyTorch wheels" step
+
+**Families with `expect_pytorch_failure: True`:**
+- `gfx90x` / windows — #1927: `std::memcpy` in device code (HIP compiler)
+- `gfx101x` / linux — #1926: CK bgemm missing `CK_BUFFER_RESOURCE_3RD_DWORD`
+- `gfx101x` / windows — #1925: aotriton rejects unrecognized arch strings
+
+All three issues are still open (2026-02-10). #1926 and #1927 need upstream
+fixes (CK team, ROCm system headers). #1925 could be worked around by adding
+gfx101X to the `AOTRITON_UNSUPPORTED_ARCHS` list in `build_prod_wheels.py`
+(lines 705, 766) — same pattern as PR #3164 used for gfx103X on Windows.
+
+**CI plumbing gap:** `configure_ci.py` does NOT extract `expect_pytorch_failure`.
+The current `ci_linux.yml` pytorch job gates on `expect_failure` as a proxy,
+which works by accident for gfx101x/linux (which has both flags) but not for
+gfx90x/windows (only has `expect_pytorch_failure`).
+
+**Decision:** Use positive selection instead of negative filtering. `configure_ci.py`
+sets `build_pytorch = not expect_pytorch_failure` per variant. The pytorch job
+gates on `inputs.build_pytorch == true`. No need to plumb `expect_pytorch_failure`
+through the CI workflow stack.
 
 **Release workflow restructuring challenge:**
 - `release_portable_linux_pytorch_wheels.yml` uses `strategy.matrix` to call
@@ -559,7 +591,12 @@ Key differences:
 - **CI scope defaults:** One Python version (3.12 or 3.13), latest stable
   PyTorch (release/2.10 or release/2.9). Not nightly — upstream breakage
   would create false negatives on our PRs.
-- **CI opt-in:** `build:pytorch` PR label; always-on for postsubmit/nightly
+- **Positive selection over negative filtering:** `configure_ci.py` sets
+  `build_pytorch` per variant (inverted from `expect_pytorch_failure`). The
+  pytorch job in `ci_linux.yml` gates on `build_pytorch == true` — no need to
+  plumb `expect_pytorch_failure` through the CI workflow stack.
+- **CI opt-in (PR 3):** `build:pytorch` PR label; always-on for postsubmit/nightly.
+  Per-trigger narrowing (gfx94x only on PR/postsubmit) saves CI resources.
 - **`build_prod_wheels.py`:** Add `--find-links` flag to `add_common()` and
   use in `do_install_rocm()` alongside or instead of `--index-url`
 - **Index generation:** Moving to server-side AWS Lambda. Workflows just upload
@@ -643,7 +680,7 @@ numbered item can be a separate PR.
 
 **Testing:** Unit test or manual test with a known find-links URL.
 
-### PR 1b: Fix pip cache package name — [#3294](https://github.com/ROCm/TheRock/pull/3294)
+### PR 1b: Fix pip cache package name — [#3294](https://github.com/ROCm/TheRock/pull/3294) ✅ (merged)
 
 **Files changed:**
 - `external-builds/pytorch/build_prod_wheels.py`
@@ -651,20 +688,41 @@ numbered item can be a separate PR.
 **Changes:**
 - Fix incorrect package name in `pip cache remove` command (bug found during PR 1 testing)
 
-### PR 2: Create CI workflow + wire into ci_linux.yml — [#3303](https://github.com/ROCm/TheRock/pull/3303) (draft)
+### PR 2: CI workflow + configure_ci.py gating — [#3303](https://github.com/ROCm/TheRock/pull/3303) (draft)
 
 **Files changed:**
 - `.github/workflows/build_portable_linux_pytorch_wheels_ci.yml` (NEW)
 - `.github/workflows/ci_linux.yml`
+- `build_tools/github_actions/configure_ci.py`
+- `build_tools/github_actions/tests/configure_ci_test.py`
+- `.github/workflows/ci.yml`
+- `.github/workflows/ci_nightly.yml`
 
 **Changes:**
-- New CI workflow, modeled on release build workflow's build job
+
+*New CI workflow:*
+- `build_portable_linux_pytorch_wheels_ci.yml`, modeled on release build
+  workflow's build job
 - Uses `--find-links` for ROCm packages (from PR 1)
 - Builds torch only (no vision/audio/triton)
-- Build + sanity check only, no S3 upload (deferred pending index generation design)
-- Wired into ci_linux.yml after build_portable_linux_python_packages
-- Runs unconditionally (no configure_ci.py gating yet)
+- Build + sanity check only, no S3 upload (deferred pending index generation)
 - Explicit python_version="3.12" and pytorch_git_ref="release/2.10"
+
+*configure_ci.py — `build_pytorch` per variant:*
+- Both `matrix_generator` and `generate_multi_arch_matrix` compute
+  `build_pytorch = not expect_failure and not expect_pytorch_failure`
+- `format_variants()` in step summary now shows flags (expect_failure, build_pytorch)
+- 3 new unit tests in `configure_ci_test.py` covering the build_pytorch logic
+- No trigger-type logic or label support yet — just respects the existing
+  flags from `amdgpu_family_matrix.py`
+
+*Wiring:*
+- `ci_linux.yml`: new `build_pytorch` boolean input (default false), pytorch
+  job gated on `inputs.build_pytorch == true`
+- `ci.yml` / `ci_nightly.yml`: pass
+  `build_pytorch: ${{ matrix.variant.build_pytorch == true }}`
+- No `inputs.expect_failure` check on the pytorch job — `build_pytorch` is
+  the sole gate (positive selection)
 
 **Testing:**
 - Fork test (ScottTodd/TheRock, run 21767399195): setup steps all passed
@@ -673,7 +731,9 @@ numbered item can be a separate PR.
 - Upstream test — known-bad (run 21768200125): **FAILED as expected.** Same
   rocprim compilation error from #3042: `rocprim::is_floating_point<__half>::value
   was not satisfied`. Confirms this CI job would have caught the break pre-merge.
-- Upstream test — known-good: retriggered after concurrency conflict, pending.
+- gfx101X plumbing test (run 21879372876): pytorch build job correctly
+  skipped for gfx101X (build_pytorch: false due to expect_failure +
+  expect_pytorch_failure). CI Summary green.
 
 **Notes:**
 - Concurrency group (`workflow-sha`) means two workflow_dispatch runs on the
@@ -682,22 +742,22 @@ numbered item can be a separate PR.
 - Branch is based on `users/scotttodd/python-package-test-2` with the
   `--find-links` commit cherry-picked. PR depends on #3261 and #3293.
 
-### PR 3: Add `build_pytorch` to `configure_ci.py` + wire into `ci_linux.yml`
+### PR 3: CI pytorch opt-in labels + per-trigger narrowing
 
 **Files changed:**
 - `build_tools/github_actions/configure_ci.py`
-- `.github/workflows/ci_linux.yml`
-- `.github/workflows/setup.yml` (if needed to pass through `build_pytorch`)
 
 **Changes:**
-- `configure_ci.py`: Add `build_pytorch` output. Default false for PRs
-  (opt-in via `build:pytorch` label), true for postsubmit/nightly.
-- `ci_linux.yml`: Add `build_portable_linux_pytorch_wheels_ci` job
-  after `build_portable_linux_python_packages`, gated on `build_pytorch`.
-- Wire `build_pytorch` input through setup workflow.
+- `build:pytorch` label support for PRs (opt-in)
+- Per-trigger-type defaults:
+  - `pull_request`: false by default, `build:pytorch` label → gfx94x only
+  - `push` (long-lived branch): gfx94x only
+  - `schedule` (nightly): all non-broken families (same as PR 2)
+  - `workflow_dispatch`: configurable
+- Saves CI resources by restricting to 1-2 families on PR/postsubmit
 
 **Testing:** Push to a branch with the `build:pytorch` label. Verify
-the pytorch build job runs and completes after ROCm packages are built.
+the pytorch build job runs for gfx94x only.
 
 ### PR 4: Windows equivalent
 
@@ -748,11 +808,30 @@ the pytorch build job runs and completes after ROCm packages are built.
   pattern (selecting from `/opt/python/{cp_version}/bin`); Windows uses
   `actions/setup-python` to select the build Python, though it could share the
   `cp_version` computation.
+- ~~**Add gfx101X to `AOTRITON_UNSUPPORTED_ARCHS` in `build_prod_wheels.py`**~~ →
+  [PR #3355](https://github.com/ROCm/TheRock/pull/3355) (draft, testing).
+  Deduplicated the list, added gfx101X, version-gated gfx1152/53 enablement
+  for pytorch ≥ 2.11. Test results:
+  - Linux gfx1152: succeeded
+  - Linux gfx1153: succeeded
+  - Windows gfx101X: pytorch build succeeded, later failed on unrelated
+    setuptools issue (#3311)
+  - Linux gfx101X: still blocked by issue #1926 (CK bgemm), unrelated to aotriton
+  - Decision: keep `expect_pytorch_failure` on gfx101x/linux (blocked by #1926),
+    remove from gfx101x/windows (aotriton fix works). Removed `expect_failure`
+    from gfx101x/linux (only `expect_pytorch_failure` needed now).
+- **Converge `configure_ci.py` and `fetch_package_targets.py`:** Both iterate
+  over `amdgpu_family_matrix.py` with similar extraction logic. Shared helpers
+  for family iteration, input sanitization, and field extraction would reduce
+  divergence. `fetch_package_targets.py` could be renamed `configure_release.py`
+  to match the naming pattern. Not blocking for pytorch-ci but would reduce the
+  surface area for bugs like the `expect_pytorch_failure` plumbing gap.
 
 ## Open Questions
 
 - **CI runtime impact:** PyTorch builds are expensive. Build caching (separate task)
-  will help, but for now, opt-in via label + always-on for postsubmit keeps costs down.
+  will help. PR 2 builds for all non-broken families; PR 3 narrows to gfx94x
+  only on PR/postsubmit to save resources.
 - **`rocm_version` input:** The CI build needs `rocm_version` for
   `determine_version.py` to compute the version suffix. This is already available
   as `rocm_package_version` in `ci_linux.yml` inputs — need to confirm it's the
