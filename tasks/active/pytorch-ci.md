@@ -10,7 +10,7 @@ repositories:
 **Started:** 2026-02-06
 **Issue:** https://github.com/ROCm/TheRock/issues/3291
 **Parent issue:** https://github.com/ROCm/TheRock/issues/3177
-**Depends on:** `python-packages-ci` (PR #3261)
+**Depends on:** `python-packages-ci` (PR #3261, merged)
 
 ## Overview
 
@@ -757,5 +757,4 @@ the pytorch build job runs and completes after ROCm packages are built.
   `determine_version.py` to compute the version suffix. This is already available
   as `rocm_package_version` in `ci_linux.yml` inputs — need to confirm it's the
   right format.
-- **PR #3261 status:** PR 2+ are blocked until python-packages-ci lands (need
-  `package_find_links_url` output from the ROCm packages build job).
+- ~~**PR #3261 status:**~~ Merged. PR 2+ are unblocked.

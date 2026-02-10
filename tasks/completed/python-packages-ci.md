@@ -5,7 +5,7 @@ repositories:
 
 # Build and Test ROCm Python Packages in CI
 
-**Status:** In progress
+**Status:** Completed
 **Priority:** P1 (High)
 **Started:** 2026-01-21
 **Issue:** https://github.com/ROCm/TheRock/issues/1559
@@ -651,11 +651,10 @@ See: https://github.com/ROCm/TheRock/pull/2877#discussion_r2748337856
    - Call `build_python_packages.py` directly
    - Added AWS credentials configuration
    - Removed unused `MANYLINUX` env var
-9. [ ] **Test end-to-end with CI-built wheels** - **PR #3261** (supersedes #3182)
+9. [x] **Test end-to-end with CI-built wheels** - **PR #3261** (merged)
    - Stacked on PR #3242 (setup_venv.py refactoring)
    - Builds Python packages for all artifact groups
    - Uploads to S3 and tests on GPU runners where available
-   - Needs rebase once #3242 merges
 10. [x] **File tracking issue** - **Issue #3177**
     - Covers ROCm Python, PyTorch, JAX, native Linux packages
     - Documents CI/CD divergence and unification plan
