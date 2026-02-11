@@ -5,7 +5,7 @@ repositories:
 
 # Build and Test PyTorch Python Packages in CI
 
-**Status:** In progress — PR 2 up for review
+**Status:** In progress — Phase 1 complete (all PRs merged)
 **Priority:** P1 (High)
 **Started:** 2026-02-06
 **Issue:** https://github.com/ROCm/TheRock/issues/3291
@@ -22,10 +22,10 @@ Build and test PyTorch wheels as part of CI, not just during scheduled release w
 
 ## Goals
 
-- [ ] Build PyTorch wheels in CI using ROCm packages from the same CI run
+- [x] Build PyTorch wheels in CI using ROCm packages from the same CI run
 - [ ] Upload PyTorch wheels to S3 CI artifacts bucket
 - [ ] Test PyTorch wheels on GPU runners
-- [ ] Integrate into `ci_linux.yml` orchestration
+- [x] Integrate into `ci_linux.yml` orchestration
 - [ ] Integrate into `ci_windows.yml` orchestration
 - [ ] Make CI workflow configurable (pytorch_git_ref, python_version, etc.)
 - [ ] Update documentation (github_actions_debugging.md, etc.)
@@ -668,27 +668,18 @@ scripts, different trust boundaries.
 Concrete plan to get the minimum viable "build pytorch on CI" working. Each
 numbered item can be a separate PR.
 
-### PR 1: Add `--find-links` to `build_prod_wheels.py` — [#3293](https://github.com/ROCm/TheRock/pull/3293) ✅
-
-**Files changed:**
-- `external-builds/pytorch/build_prod_wheels.py`
+### PR 1: Add `--find-links` to `build_prod_wheels.py` — [#3293](https://github.com/ROCm/TheRock/pull/3293) ✅ (merged)
 
 **Changes:**
 - Add `--find-links` to `add_common()` argparse
 - Use in `do_install_rocm()`: `pip_args.extend(["--find-links", args.find_links])`
-- Small, self-contained, easy to review
-
-**Testing:** Unit test or manual test with a known find-links URL.
 
 ### PR 1b: Fix pip cache package name — [#3294](https://github.com/ROCm/TheRock/pull/3294) ✅ (merged)
-
-**Files changed:**
-- `external-builds/pytorch/build_prod_wheels.py`
 
 **Changes:**
 - Fix incorrect package name in `pip cache remove` command (bug found during PR 1 testing)
 
-### PR 2: CI workflow + configure_ci.py gating — [#3303](https://github.com/ROCm/TheRock/pull/3303) (draft)
+### PR 2: CI workflow + configure_ci.py gating — [#3303](https://github.com/ROCm/TheRock/pull/3303) ✅ (merged)
 
 **Files changed:**
 - `.github/workflows/build_portable_linux_pytorch_wheels_ci.yml` (NEW)
@@ -724,73 +715,50 @@ numbered item can be a separate PR.
 - No `inputs.expect_failure` check on the pytorch job — `build_pytorch` is
   the sole gate (positive selection)
 
-**Testing:**
-- Fork test (ScottTodd/TheRock, run 21767399195): setup steps all passed
-  (checkout, Python selection, --find-links, ROCm installation). Build hit
-  ENOSPC on standard GitHub-hosted runner — expected.
-- Upstream test — known-bad (run 21768200125): **FAILED as expected.** Same
-  rocprim compilation error from #3042: `rocprim::is_floating_point<__half>::value
-  was not satisfied`. Confirms this CI job would have caught the break pre-merge.
-- gfx101X plumbing test (run 21879372876): pytorch build job correctly
-  skipped for gfx101X (build_pytorch: false due to expect_failure +
-  expect_pytorch_failure). CI Summary green.
-
-**Notes:**
-- Concurrency group (`workflow-sha`) means two workflow_dispatch runs on the
-  same branch cancel each other. Had to run known-bad and known-good
-  sequentially. Could encode inputs in concurrency group but that's separate.
-- Branch is based on `users/scotttodd/python-package-test-2` with the
-  `--find-links` commit cherry-picked. PR depends on #3261 and #3293.
-
-### PR 3: CI pytorch opt-in labels + per-trigger narrowing
-
-**Files changed:**
-- `build_tools/github_actions/configure_ci.py`
+### PR 2a: Remove /tmp/pipcache from build workflows — [#3378](https://github.com/ROCm/TheRock/pull/3378) ✅ (merged)
 
 **Changes:**
+- Made `pip cache remove` fail gracefully (try/except) in `build_prod_wheels.py`
+- Fixed duplicate `--cache-dir` bug in `do_install_rocm()`
+- Removed `mkdir -p /tmp/pipcache` and `--pip-cache-dir` from workflow YAML
+
+### PR 2b: Run CI on external-builds/ changes — [#3380](https://github.com/ROCm/TheRock/pull/3380) ✅ (merged)
+
+**Changes:**
+- Removed `external-builds/pytorch/` from CI path exclusions so pytorch
+  script changes trigger CI pytorch builds
+
+### Phase 2: CI pytorch opt-in labels + per-trigger narrowing
+
 - `build:pytorch` label support for PRs (opt-in)
 - Per-trigger-type defaults:
   - `pull_request`: false by default, `build:pytorch` label → gfx94x only
   - `push` (long-lived branch): gfx94x only
-  - `schedule` (nightly): all non-broken families (same as PR 2)
+  - `schedule` (nightly): all non-broken families
   - `workflow_dispatch`: configurable
 - Saves CI resources by restricting to 1-2 families on PR/postsubmit
 
-**Testing:** Push to a branch with the `build:pytorch` label. Verify
-the pytorch build job runs for gfx94x only.
+### Phase 3: Windows equivalent
 
-### PR 4: Windows equivalent
+- New `build_windows_pytorch_wheels_ci.yml` mirroring Linux CI workflow
+- Wire into `ci_windows.yml` with same `build_pytorch` gating
 
-**Files changed:**
-- `.github/workflows/build_windows_pytorch_wheels_ci.yml` (NEW)
-- `.github/workflows/ci_windows.yml`
+### Phase 4: Test PyTorch in CI
 
-**Changes:**
-- Same pattern as Linux but mirroring `build_windows_pytorch_wheels.yml`:
-  cmd shell, MSVC, no triton, `B:/src` paths, etc.
-- Wire into `ci_windows.yml` with same `build_pytorch` gating.
-
-### PR 5: Documentation
-
-**Files changed:**
-- `docs/development/github_actions_debugging.md`
-
-**Changes:**
-- Update "Testing PyTorch release workflows" to note that CI now validates
-  PyTorch builds for most changes
-- Document the `build:pytorch` label
-- Document when you still need the full release workflow
-
-### Phase 2 (future — still in TheRock)
-
-- Test PyTorch in CI (after server-side index generation, or option 1 for single version)
-  - Will need a narrower test set than nightly runs (see #2156)
+- After server-side index generation, or option 1 for single version
+- Will need a narrower test set than nightly runs (see #2156)
 - Restructure release workflow (after version precomputation, #1236)
 - Converge CI and release onto a single build-only workflow
 
-### Phase 3 (future — cross-repo)
+### Phase 5: Cross-repo triggering
 
 - Enable triggering pytorch CI builds from rocm-libraries and rocm-systems repos (#3177)
+
+### Documentation (can happen at any phase)
+
+- Update `docs/development/github_actions_debugging.md`
+- Document the `build:pytorch` label (after Phase 2)
+- Document when you still need the full release workflow
 
 ## Side Tasks
 
@@ -809,17 +777,9 @@ the pytorch build job runs for gfx94x only.
   `actions/setup-python` to select the build Python, though it could share the
   `cp_version` computation.
 - ~~**Add gfx101X to `AOTRITON_UNSUPPORTED_ARCHS` in `build_prod_wheels.py`**~~ →
-  [PR #3355](https://github.com/ROCm/TheRock/pull/3355) (draft, testing).
+  [PR #3355](https://github.com/ROCm/TheRock/pull/3355) ✅ (merged).
   Deduplicated the list, added gfx101X, version-gated gfx1152/53 enablement
-  for pytorch ≥ 2.11. Test results:
-  - Linux gfx1152: succeeded
-  - Linux gfx1153: succeeded
-  - Windows gfx101X: pytorch build succeeded, later failed on unrelated
-    setuptools issue (#3311)
-  - Linux gfx101X: still blocked by issue #1926 (CK bgemm), unrelated to aotriton
-  - Decision: keep `expect_pytorch_failure` on gfx101x/linux (blocked by #1926),
-    remove from gfx101x/windows (aotriton fix works). Removed `expect_failure`
-    from gfx101x/linux (only `expect_pytorch_failure` needed now).
+  for pytorch ≥ 2.11.
 - **Converge `configure_ci.py` and `fetch_package_targets.py`:** Both iterate
   over `amdgpu_family_matrix.py` with similar extraction logic. Shared helpers
   for family iteration, input sanitization, and field extraction would reduce
