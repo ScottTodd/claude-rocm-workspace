@@ -27,6 +27,7 @@ Windows needs the same treatment.
 - [ ] Uncomment and wire up Windows in `multi_arch_ci.yml`
 - [ ] Verify `configure_ci.py` multi-arch output works for Windows variants
 - [ ] End-to-end test via `workflow_dispatch` on a branch
+- [ ] Trim redundant setup steps and align with style guides (both platforms)
 
 ## Context
 
@@ -107,6 +108,8 @@ All supporting scripts are Windows-ready:
 - **`build_windows_artifacts.yml`:** Existing single-arch Windows build (reference for env setup)
 - **Task `pytorch-ci`:** Phase 3 will add PyTorch building to Windows CI — depends on this task's `ci_windows` orchestration
 - **KPack on Windows:** Not yet implemented; `THEROCK_KPACK_SPLIT_ARTIFACTS` is non-functional on Windows
+- **Issue #902:** Migrate ccache backend from GitHub to self-hosted (k8s) — tracks bazel-remote setup
+- **PR #2415:** Draft PR to switch Windows builds to bazel-remote — stalled on config/path issues
 
 ### Directories/Files Involved
 
@@ -166,10 +169,9 @@ steps:
   - uses: actions/setup-python@v6
     with: { python-version: "3.12" }
   - run: pip install -r requirements.txt
-  - run: |  # Chocolatey
-      choco source disable -n=chocolatey
-      choco source add -n=internal -s <proxy>
-      choco install -y ccache ninja strawberryperl awscli pkgconfiglite
+  - run: |  # Install build tools (winget or bake into base image)
+      # ccache, ninja, strawberryperl, pkgconfiglite
+      # (awscli replaced by boto3; choco replaced by winget)
   - uses: iterative/setup-dvc@v2.0.0
   - uses: ilammy/msvc-dev-cmd@v1.13.0
   - run: |  # Git config
@@ -286,6 +288,47 @@ will contain `matrix_per_family_json` and `dist_amdgpu_families` fields when
 - Confirm `windows_variants` output has correct structure
 - Confirm `matrix_per_family_json` has correct Windows test runner labels
 
+### Workflow Cleanup Opportunities
+
+The multi-arch pipeline is a good opportunity to trim setup steps and align
+with the style guides, for both Windows and Linux. Since each stage repeats
+the setup boilerplate, getting it right once matters more.
+
+**Redundant steps in `build_windows_artifacts.yml`:**
+
+The base Windows runner image ([nod-ai/GitHub-ARC-Setup Dockerfile](https://github.com/nod-ai/GitHub-ARC-Setup/blob/main/windows-arc-runner/Dockerfile))
+already includes Python 3.13, DVC 3.62.0, Git, CMake 3.31.0, and VS Build
+Tools 2022 with C++ native desktop workloads. Yet the workflow redundantly:
+
+| Workflow step | Base image | Action needed |
+|--------------|------------|---------------|
+| `actions/setup-python@v6` (3.12) | Python 3.13.7 installed | Remove if 3.13 is acceptable, or keep if 3.12 is specifically needed |
+| `iterative/setup-dvc@v2.0.0` (3.62.0) | DVC 3.62.0 installed | Remove — already in image |
+| `choco install awscli` | — | Remove — replacing awscli usage with boto3 |
+
+**Package manager:** Switch from chocolatey to winget, consistent with what
+we recommend to users in `README.md` and `windows_support.md`. The internal
+choco proxy feed (`http://10.0.167.96:8081/...`) is another thing to eliminate.
+
+**Packages not in base image (candidates for baking in):**
+- `ccache` — used by every build, should be in base image
+- `ninja` (pinned 1.12.1) — used by every build, should be in base image
+- `strawberryperl` — needed for some builds (OpenSSL?)
+- `pkgconfiglite` — needed for pkg-config on Windows
+- ~~`awscli`~~ — replacing with boto3 (Python, already available)
+
+Baking these into the base image would save ~1-2 min of chocolatey install
+time per job, which compounds across multi-arch stages (3 stages x N families).
+
+**Alignment opportunities across both platforms:**
+- Move repeated environment setup into scripts (not composite actions yet —
+  Linux doesn't use them either, do both together or neither)
+- Ensure `setup_ccache.py` is called consistently on both platforms
+- Standardize git config steps (Linux only does `safe.directory` + `fetch.parallel`;
+  Windows adds `core.symlinks` + `core.longpaths`)
+- The `ccache --zero-stats` in health status could be handled by `setup_ccache.py`
+  (it already has `--reset-stats` flag, default true)
+
 ## Open Questions
 
 1. **S3 path disambiguation:** `artifact_manager.py` uses `platform.system().lower()`
@@ -306,13 +349,16 @@ will contain `matrix_per_family_json` and `dist_amdgpu_families` fields when
    new Windows multi-arch pipeline. Don't perpetuate the GitHub Actions cache
    approach.
 
-   **To verify:** Can `azure-windows-scale-rocm` runners reach the
-   bazel-remote service? It's a cluster-internal Kubernetes service
-   (`*.svc.cluster.local`). Linux runners access it from inside containers on
-   the same cluster. Windows runners may be on the same network — needs
-   testing. Not a hard blocker: if the server is unreachable, ccache falls
-   back to local-only caching (the `secondary_storage` is secondary). We'll
-   find out from the first pipeline run.
+   **Network is confirmed reachable.** PR #2415 verified that Windows runners
+   can reach the bazel-remote server (`curl` returns a valid error response,
+   not a connection failure). However, PR #2415 stalled because the remote
+   cache showed 0% hit rate — `setup_ccache.py` config wasn't being applied
+   correctly on Windows, and the `B:\` build path caused ccache log upload
+   issues. That PR is still an open draft.
+
+   For our multi-arch pipeline, we should use `setup_ccache.py` and may need
+   to fix the config/path issues that PR #2415 hit. See #902 and #2415 for
+   full context on the compiler check cache and hit rate investigation.
 
 3. **Build directory:** Use `B:\build` for all stages, same as the existing
    Windows workflow. Shorter paths are needed to stay under Windows MAX_PATH
@@ -412,6 +458,17 @@ have a platform entry. Windows variants already get `matrix_per_family_json`
 and `dist_amdgpu_families` fields. The `build_pytorch` flag is computed but
 not yet consumed by any Windows multi-arch workflow (separate task: pytorch-ci
 Phase 3).
+
+**Windows ccache / bazel-remote status (from #902, #2415):**
+
+- bazel-remote server is accessible from Windows runners (confirmed via `curl`)
+- PR #2415 attempted to call `setup_ccache.py` from the Windows workflow but
+  the remote cache got 0% hit rate — config wasn't being applied correctly
+- The `B:\build` path caused issues with ccache log file paths
+- Compiler check cache has known cross-run invalidation issues on Linux too
+  (bootstrapped clang shared libs change hashes between runs)
+- The bazel-remote server already has Prometheus metrics enabled
+  (`--enable_endpoint_metrics`)
 
 **`artifact_manager.py` S3 path structure:**
 
