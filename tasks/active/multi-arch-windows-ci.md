@@ -404,36 +404,154 @@ follow-up. The Linux pipeline also has repeated setup steps and doesn't use
 composite actions yet — doing it for Windows first would create an asymmetry.
 Better to do it for both platforms together.
 
-## MVP Plan
+## Workstreams
 
-### PR 1: `multi_arch_build_portable_windows.yml` + `multi_arch_ci_windows.yml`
+Three workstreams, intentionally sequenced:
 
-**New files:**
+### Workstream 1: Stand up the pipeline (do first)
+
+Get multi-arch Windows CI running end-to-end. Copy existing patterns from
+`build_windows_artifacts.yml` and `multi_arch_build_portable_linux.yml` — take
+shortcuts, don't try to clean up at this stage. The goal is a working pipeline
+that can be iterated on.
+
+**PR 1: `multi_arch_build_portable_windows.yml` + `multi_arch_ci_windows.yml`**
+
+New files:
 - `.github/workflows/multi_arch_build_portable_windows.yml` — 3-stage build
 - `.github/workflows/multi_arch_ci_windows.yml` — orchestration (build + test)
 
-**Modified files:**
+Modified files:
 - `.github/workflows/multi_arch_ci.yml` — uncomment Windows section, update
   to call `multi_arch_ci_windows.yml`, add to `ci_summary` needs
 
-**Approach:**
+Approach:
 - Port the Linux pipeline structure to Windows
-- Adapt environment setup from `build_windows_artifacts.yml`
+- Copy environment setup from `build_windows_artifacts.yml` as-is (including
+  chocolatey, GitHub Actions cache, etc. — clean up in workstream 2)
 - Use `configure_stage.py` for stage cmake args (same as Linux)
 - Use `artifact_manager.py` for inter-stage artifacts (same as Linux)
-- Keep GitHub Actions cache for ccache (match existing Windows pattern)
-- Disable stages not applicable to Windows (handled automatically by
-  `configure_stage.py` reading `BUILD_TOPOLOGY.toml`)
+- Stages disabled on Windows are handled automatically by `configure_stage.py`
+  reading `BUILD_TOPOLOGY.toml`
 
-**Testing:**
+Testing:
 - `workflow_dispatch` on a branch with `windows_amdgpu_families: gfx110X`
 - Verify each stage completes and artifacts flow between stages
 - Verify test job can fetch final artifacts and run
 
-### PR 2 (optional): DRY up repeated setup steps
+### Workstream 2: Refactor and clean up (interleave with CI wait times)
 
-If the per-stage setup repetition is excessive, extract common Windows
-environment setup into a composite action or shared step template.
+While waiting on multi-hour CI builds from workstream 1, chip away at
+cleanup items. Each can be a separate PR. Applies to both Linux and Windows
+workflows — don't create asymmetry by cleaning up only one platform.
+
+**Candidates (roughly priority order):**
+
+1. **Switch Windows ccache to `setup_ccache.py` + bazel-remote** — biggest
+   impact on build times. Build on PR #2415's findings. Fix config/path
+   issues for `B:\build`.
+
+2. **Replace awscli with boto3** — eliminates a chocolatey dependency and
+   aligns with Python-first tooling.
+
+3. **Switch chocolatey to winget** — consistent with `README.md` and
+   `windows_support.md` recommendations. Eliminates internal choco proxy
+   feed dependency.
+
+4. **Remove redundant setup steps** — DVC already in base image, Python
+   version may not need `actions/setup-python`, etc.
+
+5. **Bake ccache + ninja into base VM image** — saves ~1-2 min per job,
+   compounded across stages. PR to `nod-ai/GitHub-ARC-Setup`.
+
+6. **Move repeated env setup into scripts** — reduce YAML boilerplate.
+   Do for both platforms together. (Composite actions are an option but
+   Linux doesn't use them either — keep parity.)
+
+7. **Standardize git config, ccache stats reset, health checks** — small
+   alignment items across platforms.
+
+### Workstream 3: Broader multi-arch feature work (separate tasks)
+
+Not part of this task, but listed for context on what comes next:
+- KPack integration on Windows
+- Running tests on multi-arch CI
+- Building multi-arch Python packages
+- PyTorch CI on Windows (pytorch-ci Phase 3)
+
+## Local Stage Builds (for debugging CI failures)
+
+Build each stage locally to validate before pushing to CI. Uses
+`configure_stage.py` for cmake args and `artifact_manager.py` with
+`--local-staging-dir` to pass artifacts between stages instead of S3.
+
+```bash
+# Setup
+THEROCK=D:/projects/TheRock
+BUILD=B:/build          # or wherever you want the build dir
+STAGING=B:/staging      # local artifact interchange directory
+FAMILY=gfx1201          # or whichever family you're testing
+
+cd $THEROCK
+
+# List available stages
+python build_tools/configure_stage.py --list-stages
+
+# ── Stage 1: foundation (generic) ──
+python build_tools/fetch_sources.py --stage foundation --jobs 12 --depth 1
+cmake -B $BUILD -S . -GNinja \
+  -DTHEROCK_PACKAGE_VERSION=ADHOCBUILD \
+  -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+  -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+  $(python build_tools/configure_stage.py --stage foundation \
+      --dist-amdgpu-families "$FAMILY" --print --oneline)
+cmake --build $BUILD --target stage-foundation therock-artifacts -- -k 0
+python build_tools/artifact_manager.py push \
+  --stage foundation --build-dir $BUILD \
+  --local-staging-dir $STAGING
+
+# ── Stage 2: compiler-runtime (generic) ──
+python build_tools/artifact_manager.py fetch \
+  --stage compiler-runtime --output-dir $BUILD --bootstrap \
+  --local-staging-dir $STAGING
+python build_tools/fetch_sources.py --stage compiler-runtime --jobs 12 --depth 1
+cmake -B $BUILD -S . -GNinja \
+  -DTHEROCK_PACKAGE_VERSION=ADHOCBUILD \
+  -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+  -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+  $(python build_tools/configure_stage.py --stage compiler-runtime \
+      --dist-amdgpu-families "$FAMILY" --print --oneline)
+cmake --build $BUILD --target stage-compiler-runtime therock-artifacts -- -k 0
+python build_tools/artifact_manager.py push \
+  --stage compiler-runtime --build-dir $BUILD \
+  --local-staging-dir $STAGING
+
+# ── Stage 3: math-libs (per-arch) ──
+python build_tools/artifact_manager.py fetch \
+  --stage math-libs --amdgpu-families $FAMILY --output-dir $BUILD --bootstrap \
+  --local-staging-dir $STAGING
+python build_tools/fetch_sources.py --stage math-libs --jobs 12 --depth 1
+cmake -B $BUILD -S . -GNinja \
+  -DTHEROCK_PACKAGE_VERSION=ADHOCBUILD \
+  -DTHEROCK_AMDGPU_FAMILIES=$FAMILY \
+  -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+  -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+  $(python build_tools/configure_stage.py --stage math-libs \
+      --amdgpu-families $FAMILY --dist-amdgpu-families "$FAMILY" \
+      --print --oneline)
+cmake --build $BUILD --target stage-math-libs therock-artifacts -- -k 0
+python build_tools/artifact_manager.py push \
+  --stage math-libs --build-dir $BUILD \
+  --local-staging-dir $STAGING
+```
+
+**Notes:**
+- `--bootstrap` on fetch extracts artifacts into build dir so cmake finds them
+- `--local-staging-dir` uses local filesystem instead of S3
+- Each stage reconfigures cmake (different `THEROCK_ENABLE_*` flags per stage)
+- On Windows, run from a VS Developer Command Prompt (or after `msvc-dev-cmd`)
+- Inspect what a stage needs/produces: `python build_tools/artifact_manager.py info --stage math-libs --amdgpu-families $FAMILY`
+- Inspect cmake args before running: `python build_tools/configure_stage.py --stage math-libs --amdgpu-families $FAMILY --dist-amdgpu-families "$FAMILY" --print --comments`
 
 ## Investigation Notes
 
@@ -478,9 +596,17 @@ No additional disambiguation needed.
 
 ## Next Steps
 
-1. [ ] Resolve open questions (ccache approach, build directory, kpack)
-2. [ ] Draft `multi_arch_build_portable_windows.yml` (3 stages)
-3. [ ] Draft `multi_arch_ci_windows.yml` (build + test orchestration)
-4. [ ] Update `multi_arch_ci.yml` (uncomment Windows, wire up)
-5. [ ] Test via `workflow_dispatch` on branch
-6. [ ] Review and iterate
+**Workstream 1 (stand up pipeline):**
+1. [ ] Draft `multi_arch_build_portable_windows.yml` (3 stages, copy existing patterns)
+2. [ ] Draft `multi_arch_ci_windows.yml` (build + test orchestration)
+3. [ ] Update `multi_arch_ci.yml` (uncomment Windows, wire up)
+4. [ ] Test via `workflow_dispatch` on branch
+5. [ ] Iterate on CI failures
+
+**Workstream 2 (refactor, interleave with CI waits):**
+6. [ ] Fix `setup_ccache.py` for Windows / `B:\build` paths
+7. [ ] Replace awscli usage with boto3
+8. [ ] Switch chocolatey to winget
+9. [ ] Remove redundant setup steps (DVC, Python, etc.)
+10. [ ] PR to bake ccache + ninja into base VM image
+11. [ ] Move repeated env setup into scripts (both platforms)
