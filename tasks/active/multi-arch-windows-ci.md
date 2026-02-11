@@ -94,7 +94,7 @@ All supporting scripts are Windows-ready:
 | Tools | Pre-installed in container | Chocolatey install (ccache, ninja, perl, awscli, pkgconfiglite) |
 | Python | `/opt/python/cp312-cp312/bin/python` | `actions/setup-python@v6` |
 | Build dir | `build/` (workspace-relative) | `B:\build` (separate drive) |
-| Cache | ccache + S3 (via `setup_ccache.py`) | GitHub Actions cache (`actions/cache`) |
+| Cache | ccache + bazel-remote (via `setup_ccache.py`) | GitHub Actions cache (insufficient — migrate to `setup_ccache.py`) |
 | AWS creds | Container volume mount (`-v /runner/config:/home/awsconfig/`) | Default credential chain + `special-characters-workaround` |
 | Git config | `safe.directory` | `safe.directory` + `core.symlinks` + `core.longpaths` |
 | DVC | Pre-installed in container | `iterative/setup-dvc@v2.0.0` action |
@@ -293,30 +293,38 @@ will contain `matrix_per_family_json` and `dist_amdgpu_families` fields when
    prefixes. Is this sufficient, or do we need explicit `platform` in artifact
    group names?
 
-2. **CCache approach for Windows:** The existing single-arch Windows workflow uses
-   GitHub Actions cache with env vars (`CCACHE_DIR`, `CCACHE_MAXSIZE`). The
-   Linux multi-arch pipeline uses `setup_ccache.py` with S3 backend. Options:
-   - (a) Keep GitHub Actions cache for Windows stages (simpler, proven)
-   - (b) Switch to `setup_ccache.py` with S3 backend (consistent with Linux)
-   - (c) Defer — start with GitHub Actions cache, migrate later
+2. **CCache approach for Windows:** The existing single-arch Windows workflow
+   uses GitHub Actions cache (`actions/cache/restore` + `actions/cache/save`)
+   with `CCACHE_DIR` env var and `CCACHE_MAXSIZE=4000M`. This is insufficient
+   for these builds — limited cache size, low hit rates, and upload/download
+   overhead on every run. The Linux multi-arch pipeline uses `setup_ccache.py`
+   with `github-oss-presubmit` preset, which configures ccache's
+   `secondary_storage` to hit a bazel-remote cache server
+   (`bazelremote-svc.bazelremote-ns.svc.cluster.local:8080`).
 
-   **Recommendation:** Option (a) for now — GitHub Actions cache is proven for
-   Windows builds. Per-stage cache keys would need to include stage name to
-   avoid eviction. Migration to S3 backend can happen separately.
+   **Decision:** Use `setup_ccache.py` with `github-oss-presubmit` for the
+   new Windows multi-arch pipeline. Don't perpetuate the GitHub Actions cache
+   approach.
 
-3. **Build directory:** The existing Windows workflow uses `B:\build` for space.
-   Each stage in the multi-arch pipeline is a separate job, so they each get
-   a fresh runner. Should each stage use `B:\build` too, or is the default
-   workspace sufficient?
+   **To verify:** Can `azure-windows-scale-rocm` runners reach the
+   bazel-remote service? It's a cluster-internal Kubernetes service
+   (`*.svc.cluster.local`). Linux runners access it from inside containers on
+   the same cluster. Windows runners may be on the same network — needs
+   testing. Not a hard blocker: if the server is unreachable, ccache falls
+   back to local-only caching (the `secondary_storage` is secondary). We'll
+   find out from the first pipeline run.
 
-4. **KPack:** `THEROCK_KPACK_SPLIT_ARTIFACTS` is non-functional on Windows.
-   The multi-arch build works without kpack (it just produces combined
-   artifacts). Is this acceptable for initial Windows multi-arch, or is kpack
-   a prerequisite?
+3. **Build directory:** Use `B:\build` for all stages, same as the existing
+   Windows workflow. Shorter paths are needed to stay under Windows MAX_PATH
+   limits. Each stage is a separate job on a fresh runner, so there's no
+   conflict between stages.
 
-5. **Timeout tuning:** Linux stage timeouts range from 120 min (dctools) to
-   480 min (compiler-runtime, math-libs). Windows compile times may differ.
-   Start with Linux values and adjust based on actual runs?
+4. **KPack:** Not a prerequisite. Multi-stage builds without kpack are still
+   useful (same as Linux). Getting CI in place now means build/test coverage
+   is already there when we eventually flip the kpack flag on Windows.
+
+5. **Timeouts:** Use same values as Linux for consistency. Tune later based
+   on actual Windows run times.
 
 ## Alternatives Considered
 
