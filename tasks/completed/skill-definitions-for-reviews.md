@@ -1,9 +1,9 @@
 # Task: Create Skill Definitions for Review Commands
 
-**Status:** Complete
-**Started:** 2026-01-08
-**Last Updated:** 2026-01-12
-**Completed:** 2026-01-12
+- **Status:** Complete
+- **Started:** 2026-01-08
+- **Last Updated:** 2026-01-12
+- **Completed:** 2026-01-12
 
 ---
 

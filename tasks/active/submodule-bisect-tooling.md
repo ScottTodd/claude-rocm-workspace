@@ -5,10 +5,10 @@ repositories:
 
 # Submodule Bisect Tooling
 
-**Status:** In progress
-**Priority:** P1 (High)
-**Started:** 2026-01-09
-**Target:** TBD
+- **Status:** In progress
+- **Priority:** P1 (High)
+- **Started:** 2026-01-09
+- **Target:** TBD
 
 ## Overview
 

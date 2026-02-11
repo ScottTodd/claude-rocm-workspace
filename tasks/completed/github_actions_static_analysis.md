@@ -5,10 +5,10 @@ repositories:
 
 # Static Analysis for GitHub Actions Workflows
 
-**Status:** Completed
-**Priority:** P2 (Medium)
-**Started:** 2026-01-22
-**Completed:** 2026-01-22
+- **Status:** Completed
+- **Priority:** P2 (Medium)
+- **Started:** 2026-01-22
+- **Completed:** 2026-01-22
 
 ## Overview
 

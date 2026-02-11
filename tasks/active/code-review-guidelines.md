@@ -6,9 +6,9 @@ repositories:
 
 # Code Review Guidelines
 
-**Status:** In progress
-**Priority:** P2 (Medium)
-**Started:** 2026-01-12
+- **Status:** In progress
+- **Priority:** P2 (Medium)
+- **Started:** 2026-01-12
 
 ## Overview
 

@@ -5,11 +5,11 @@ repositories:
 
 # Build and Test ROCm Python Packages in CI
 
-**Status:** Completed
-**Priority:** P1 (High)
-**Started:** 2026-01-21
-**Issue:** https://github.com/ROCm/TheRock/issues/1559
-**Branch:** `python-packages-upload`
+- **Status:** Completed
+- **Priority:** P1 (High)
+- **Started:** 2026-01-21
+- **Issue:** https://github.com/ROCm/TheRock/issues/1559
+- **Branch:** `python-packages-upload`
 
 ## Overview
 

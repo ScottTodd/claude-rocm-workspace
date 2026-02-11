@@ -5,11 +5,11 @@ repositories:
 
 # Run Outputs Layout Consolidation
 
-**Status:** In Review
-**Priority:** P2 (Medium)
-**Started:** 2026-01-19
-**Branch:** `run-outputs` (15 commits)
-**PR:** https://github.com/ROCm/TheRock/pull/3000
+- **Status:** In Review
+- **Priority:** P2 (Medium)
+- **Started:** 2026-01-19
+- **Branch:** `run-outputs` (15 commits)
+- **PR:** https://github.com/ROCm/TheRock/pull/3000
 
 ## Overview
 

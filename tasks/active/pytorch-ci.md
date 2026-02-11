@@ -5,12 +5,12 @@ repositories:
 
 # Build and Test PyTorch Python Packages in CI
 
-**Status:** In progress — Phase 1 complete (all PRs merged)
-**Priority:** P1 (High)
-**Started:** 2026-02-06
-**Issue:** https://github.com/ROCm/TheRock/issues/3291
-**Parent issue:** https://github.com/ROCm/TheRock/issues/3177
-**Depends on:** `python-packages-ci` (PR #3261, merged)
+- **Status:** In progress — Phase 1 complete (all PRs merged)
+- **Priority:** P1 (High)
+- **Started:** 2026-02-06
+- **Issue:** https://github.com/ROCm/TheRock/issues/3291
+- **Parent issue:** https://github.com/ROCm/TheRock/issues/3177
+- **Depends on:** `python-packages-ci` (PR #3261, merged)
 
 ## Overview
 

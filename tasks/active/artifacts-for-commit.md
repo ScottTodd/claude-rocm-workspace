@@ -5,10 +5,10 @@ repositories:
 
 # Artifacts for Commit
 
-**Status:** In progress
-**Priority:** P1 (High)
-**Started:** 2026-01-13
-**Target:** TBD
+- **Status:** In progress
+- **Priority:** P1 (High)
+- **Started:** 2026-01-13
+- **Target:** TBD
 
 ## Overview
 

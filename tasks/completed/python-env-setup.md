@@ -5,9 +5,9 @@ repositories:
 
 # Python Environment Setup for Claude Code
 
-**Status:** Complete
-**Priority:** P3 (Low)
-**Started:** 2026-01-15
+- **Status:** Complete
+- **Priority:** P3 (Low)
+- **Started:** 2026-01-15
 
 ## Overview
 

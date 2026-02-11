@@ -6,10 +6,10 @@ repositories:
 
 # Example Task Template
 
-**Status:** Not started | In progress | Blocked | Review | Completed
-**Priority:** P0 (Critical) | P1 (High) | P2 (Medium) | P3 (Low)
-**Started:** YYYY-MM-DD
-**Target:** YYYY-MM-DD
+- **Status:** Not started | In progress | Blocked | Review | Completed
+- **Priority:** P0 (Critical) | P1 (High) | P2 (Medium) | P3 (Low)
+- **Started:** YYYY-MM-DD
+- **Target:** YYYY-MM-DD
 
 ## Overview
 

@@ -5,12 +5,12 @@ repositories:
 
 # Multi-Arch Windows CI Workflows
 
-**Status:** Not started
-**Priority:** P1 (High)
-**Started:** 2026-02-11
-**Issue:** https://github.com/ROCm/TheRock/issues/3325
-**Parent issue:** https://github.com/ROCm/TheRock/issues/3323
-**Depends on:** Linux multi-arch pipeline (already landed)
+- **Status:** Not started
+- **Priority:** P1 (High)
+- **Started:** 2026-02-11
+- **Issue:** https://github.com/ROCm/TheRock/issues/3325
+- **Parent issue:** https://github.com/ROCm/TheRock/issues/3323
+- **Depends on:** Linux multi-arch pipeline (already landed)
 
 ## Overview
 

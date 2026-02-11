@@ -5,10 +5,10 @@ repositories:
 
 # Refactor configure_ci.py for Clarity and Extensibility
 
-**Status:** Not started
-**Priority:** P2 (Medium)
-**Started:** 2025-01-21
-**Target:** TBD
+- **Status:** Not started
+- **Priority:** P2 (Medium)
+- **Started:** 2025-01-21
+- **Target:** TBD
 
 ## Overview
 
