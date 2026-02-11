@@ -1,7 +1,7 @@
 # Measure and Expand Test Coverage for Python Scripts
 
-**Status**: Active
-**Priority**: High
+**Status**: On hold — measurement infrastructure merged, coverage expansion available for others
+**Priority**: Medium
 **Created**: 2026-01-09
 **Related**: `reports/python_audit_build_tools_2026-01-09.md`
 
