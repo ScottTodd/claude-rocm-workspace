@@ -21,7 +21,8 @@ TheRock's `build_tools/` directory contains ~18,000 LOC across 105 Python files 
 
 Before diving deep into implementation, get team buy-in and involvement:
 
-- [ ] **File GitHub issue** proposing coverage measurement for `build_tools/`
+- [x] **File GitHub issue** proposing coverage measurement for `build_tools/`
+  - https://github.com/ROCm/TheRock/issues/3356
   - Reference the audit: `reports/python_audit_build_tools_2026-01-09.md`
   - Propose target metrics (e.g., 60% coverage for critical files)
   - Ask for input on CI integration approach (Codecov vs self-hosted)
@@ -32,93 +33,32 @@ This avoids building infrastructure the team doesn't want or that conflicts with
 
 ---
 
-## Phase 1: Local Coverage Measurement
+## Phase 1: Local Coverage Measurement ✅
 
-### Setup
-
-1. **Add pytest-cov to requirements**
-
-   Add to `../TheRock/requirements-test.txt`:
-   ```
-   pytest-cov==6.0.0
-   ```
-
-2. **Install dependencies**
-   ```bash
-   cd /develop/therock
-   pip install -r requirements-test.txt
-   ```
+**Merged**: PR #3359
 
 ### Running Coverage Locally
 
-**Basic coverage run**:
 ```bash
-cd /develop/therock
-python -m pytest \
-  --cov=build_tools \
-  --cov-report=term-missing \
-  build_tools/tests build_tools/github_actions/tests
+cd TheRock/build_tools
+python -m pytest --cov --cov-report=term-missing --cov-report=html
+# HTML report: ../build/coverage-html/index.html
+# Data file: ../build/.coverage
 ```
 
-**Generate HTML report** (recommended for detailed analysis):
-```bash
-python -m pytest \
-  --cov=build_tools \
-  --cov-report=html:build/coverage-html \
-  --cov-report=term-missing \
-  build_tools/tests build_tools/github_actions/tests
-
-# Then open in browser:
-# file:///develop/therock/build/coverage-html/index.html
-```
-
-**Generate all report formats**:
-```bash
-python -m pytest \
-  --cov=build_tools \
-  --cov-report=term-missing \
-  --cov-report=html:build/coverage-html \
-  --cov-report=xml:build/coverage.xml \
-  build_tools/tests build_tools/github_actions/tests
-```
-
-### Understanding Coverage Output
-
-**Terminal output** (`--cov-report=term-missing`):
-```
-Name                                    Stmts   Miss  Cover   Missing
----------------------------------------------------------------------
-build_tools/artifact_manager.py           234     45    81%   45-52, 78-85
-build_tools/buildctl.py                   156    156     0%   1-328
-build_tools/_therock_utils/artifacts.py    98     12    88%   145-152
----------------------------------------------------------------------
-TOTAL                                    4521   2145    53%
-```
-
-- **Stmts**: Total statements in file
-- **Miss**: Statements not covered by tests
-- **Cover**: Coverage percentage
-- **Missing**: Line numbers without coverage (0% = entire file untested)
-
-**HTML report benefits**:
-- Interactive file browser
-- Red highlighting for uncovered code
-- Green highlighting for covered code
-- Click into any file to see exact coverage
-- Filter by coverage percentage
+Config lives in `build_tools/pyproject.toml`.
 
 ---
 
-## Phase 2: Establish Baseline Metrics
+## Phase 2: Establish Baseline Metrics ✅
 
-### Current State (from audit)
+### Measured Baseline (2026-02-10)
 
-From `reports/python_audit_build_tools_2026-01-09.md`:
-
-- **Total files**: 105
-- **Files with tests**: 17 (16%)
-- **Files without tests**: 88 (84%)
-- **Estimated coverage**: ~25% statement coverage
+- **Total statements**: 5,281
+- **Covered**: 1,919 (36.34%)
+- **Missed**: 3,362
+- **Files with some coverage**: 27
+- **Files at 0%**: 24 (1,968 statements)
 
 ### Files Currently WITH Tests
 
@@ -273,49 +213,18 @@ class TestBuildctl:
 
 ---
 
-## Phase 4: CI/CD Integration (Later Priority)
+## Phase 4: CI/CD Integration ✅
 
-### Update GitHub Actions Workflow
+**Merged**: PR #3359
 
-In `.github/workflows/build_portable_linux_artifacts.yml`, update the test step:
+- `unit_tests.yml` runs `--cov --cov-report=term-missing --cov-report=html`
+- HTML coverage report uploaded as GitHub artifact
+- Also enforces `*_test.py` naming via pre-commit hook
 
-```yaml
-- name: Test build_tools
-  run: |
-    python -m pytest \
-      --cov=build_tools \
-      --cov-report=term-missing \
-      --cov-report=html:build/coverage-html \
-      --cov-report=xml:build/coverage.xml \
-      build_tools/tests build_tools/github_actions/tests
+### Future: Codecov or diff-cover
 
-- name: Upload coverage report
-  if: always()
-  uses: actions/upload-artifact@v4
-  with:
-    name: coverage-report-${{ github.run_id }}
-    path: build/coverage-html/
-```
-
-### Optional: Codecov Integration
-
-For tracking coverage over time:
-
-1. Sign up at https://codecov.io/
-2. Add to workflow:
-   ```yaml
-   - name: Upload to Codecov
-     uses: codecov/codecov-action@v4
-     with:
-       file: build/coverage.xml
-       fail_ci_if_error: false
-   ```
-
-3. Benefits:
-   - Track coverage trends over time
-   - PR comments with coverage changes
-   - Coverage badges for README
-   - Diff coverage (only new code)
+Evaluated `diff-cover` for PR-level diffs — markdown output wasn't useful enough (reverted).
+Codecov would be the right tool for tracking trends and PR comments if the team wants it later.
 
 ---
 
