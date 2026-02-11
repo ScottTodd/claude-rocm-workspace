@@ -1,0 +1,421 @@
+---
+repositories:
+  - therock
+---
+
+# Multi-Arch Windows CI Workflows
+
+**Status:** Not started
+**Priority:** P1 (High)
+**Started:** 2026-02-11
+**Issue:** https://github.com/ROCm/TheRock/issues/3325
+**Parent issue:** https://github.com/ROCm/TheRock/issues/3323
+**Depends on:** Linux multi-arch pipeline (already landed)
+
+## Overview
+
+Create Windows equivalents of the Linux multi-arch CI workflows. The Linux
+pipeline (`multi_arch_build_portable_linux.yml`, `multi_arch_ci_linux.yml`)
+breaks the monolithic build into stages that flow artifacts between jobs via
+S3, enabling per-architecture parallelism for the expensive math-libs stage.
+Windows needs the same treatment.
+
+## Goals
+
+- [ ] Create `multi_arch_build_portable_windows.yml` (staged build pipeline)
+- [ ] Create `multi_arch_ci_windows.yml` (orchestration: build + test)
+- [ ] Uncomment and wire up Windows in `multi_arch_ci.yml`
+- [ ] Verify `configure_ci.py` multi-arch output works for Windows variants
+- [ ] End-to-end test via `workflow_dispatch` on a branch
+
+## Context
+
+### Linux Multi-Arch Pipeline (Reference)
+
+The Linux pipeline splits the build into 7 stages with a DAG dependency structure:
+
+```
+foundation (generic)
+├── compiler-runtime (generic)
+│   ├── math-libs (per-arch)     ← main parallelism point
+│   ├── comm-libs (per-arch)     ← parallel to math-libs
+│   ├── dctools-core (generic)   ← parallel to math-libs
+│   └── profiler-apps (generic)  ← parallel to math-libs
+└── media (generic)              ← parallel to compiler-runtime
+```
+
+Each stage: checkout → fetch inbound artifacts → fetch sources → configure →
+build → push artifacts. Artifacts flow via `artifact_manager.py` + S3.
+
+### Windows Stage Subset
+
+Many stages are disabled on Windows (`disable_platforms = ["windows"]` in
+`BUILD_TOPOLOGY.toml`):
+
+| Stage | Linux | Windows | Why disabled |
+|-------|-------|---------|-------------|
+| foundation | generic | generic | -- |
+| compiler-runtime | generic | generic | -- |
+| math-libs | per-arch | per-arch | -- |
+| comm-libs | per-arch | **disabled** | RCCL disabled on Windows |
+| dctools-core | generic | **disabled** | RDC disabled on Windows |
+| profiler-apps | generic | **disabled** | rocprofiler-systems disabled |
+| media | generic | **disabled** | Mesa/VA-API disabled on Windows |
+
+**Windows pipeline is only 3 stages:**
+
+```
+foundation (generic)
+└── compiler-runtime (generic)
+    └── math-libs (per-arch)
+```
+
+This is significantly simpler than Linux. The DAG is linear until math-libs
+fans out per architecture.
+
+### Supporting Tool Readiness
+
+All supporting scripts are Windows-ready:
+
+| Tool | Windows Status | Notes |
+|------|---------------|-------|
+| `configure_stage.py` | Ready | Platform-agnostic; `BUILD_TOPOLOGY.toml` filters by platform |
+| `artifact_manager.py` | Ready | Uses `platform.system().lower()` for S3 paths |
+| `fetch_sources.py` | Ready | Has `is_windows()` checks, platform-aware submodule filtering |
+| `setup_ccache.py` | Ready | Cross-platform; not currently called in Windows workflows |
+| `health_status.py` | Ready | Extensive Windows-specific toolchain checks |
+
+### Environment Differences from Linux
+
+| Aspect | Linux | Windows |
+|--------|-------|---------|
+| Execution | Container (`manylinux`) | Native runner (`azure-windows-scale-rocm`) |
+| Compiler | gcc/clang in container | MSVC via `ilammy/msvc-dev-cmd` |
+| Tools | Pre-installed in container | Chocolatey install (ccache, ninja, perl, awscli, pkgconfiglite) |
+| Python | `/opt/python/cp312-cp312/bin/python` | `actions/setup-python@v6` |
+| Build dir | `build/` (workspace-relative) | `B:\build` (separate drive) |
+| Cache | ccache + S3 (via `setup_ccache.py`) | GitHub Actions cache (`actions/cache`) |
+| AWS creds | Container volume mount (`-v /runner/config:/home/awsconfig/`) | Default credential chain + `special-characters-workaround` |
+| Git config | `safe.directory` | `safe.directory` + `core.symlinks` + `core.longpaths` |
+| DVC | Pre-installed in container | `iterative/setup-dvc@v2.0.0` action |
+
+### Related Work
+
+- **Linux multi-arch pipeline:** `multi_arch_build_portable_linux.yml` + `multi_arch_ci_linux.yml` (landed)
+- **`multi_arch_ci.yml`:** Top-level entry point (has commented-out Windows section at lines 98-112)
+- **`ci_windows.yml`:** Existing single-arch Windows orchestration (reference for job structure)
+- **`build_windows_artifacts.yml`:** Existing single-arch Windows build (reference for env setup)
+- **Task `pytorch-ci`:** Phase 3 will add PyTorch building to Windows CI — depends on this task's `ci_windows` orchestration
+- **KPack on Windows:** Not yet implemented; `THEROCK_KPACK_SPLIT_ARTIFACTS` is non-functional on Windows
+
+### Directories/Files Involved
+
+```
+# New workflows
+.github/workflows/multi_arch_build_portable_windows.yml  (NEW)
+.github/workflows/multi_arch_ci_windows.yml               (NEW)
+
+# Workflows to modify
+.github/workflows/multi_arch_ci.yml   # Uncomment Windows section
+
+# Reference workflows (templates)
+.github/workflows/multi_arch_build_portable_linux.yml  # Linux staged build
+.github/workflows/multi_arch_ci_linux.yml              # Linux orchestration
+.github/workflows/build_windows_artifacts.yml          # Windows env setup patterns
+.github/workflows/ci_windows.yml                       # Windows orchestration patterns
+
+# Supporting tools (used as-is, already Windows-ready)
+build_tools/configure_stage.py
+build_tools/artifact_manager.py
+build_tools/fetch_sources.py
+build_tools/setup_ccache.py
+build_tools/health_status.py
+BUILD_TOPOLOGY.toml
+```
+
+## Design
+
+### `multi_arch_build_portable_windows.yml` — Staged Build Pipeline
+
+Three jobs in sequence: foundation → compiler-runtime → math-libs (per-arch).
+
+Each job follows the same pattern, adapted from the Linux pipeline but with
+Windows environment setup instead of container setup.
+
+**Inputs** — same as Linux pipeline:
+
+```yaml
+inputs:
+  artifact_group: { type: string }
+  matrix_per_family_json: { type: string }
+  dist_amdgpu_families: { type: string }
+  build_variant_label: { type: string }
+  build_variant_cmake_preset: { type: string }
+  build_variant_suffix: { type: string }
+  expect_failure: { type: boolean }
+  use_prebuilt_artifacts: { type: string }
+  rocm_package_version: { type: string }
+  test_type: { type: string }
+```
+
+**Common steps per job** (Windows-specific env setup):
+
+```yaml
+steps:
+  - uses: actions/checkout@v6
+  - uses: actions/setup-python@v6
+    with: { python-version: "3.12" }
+  - run: pip install -r requirements.txt
+  - run: |  # Chocolatey
+      choco source disable -n=chocolatey
+      choco source add -n=internal -s <proxy>
+      choco install -y ccache ninja strawberryperl awscli pkgconfiglite
+  - uses: iterative/setup-dvc@v2.0.0
+  - uses: ilammy/msvc-dev-cmd@v1.13.0
+  - run: |  # Git config
+      git config --global --add safe.directory $PWD
+      git config --global core.symlinks true
+      git config --global core.longpaths true
+      git config fetch.parallel 10
+  # Then stage-specific: setup_ccache → health_status → AWS creds → fetch artifacts → fetch sources → configure_stage → cmake configure → build → push artifacts
+```
+
+**Per-stage differences:**
+
+| Stage | `needs` | Matrix | `--amdgpu-families` | `--bootstrap` |
+|-------|---------|--------|---------------------|---------------|
+| foundation | (none) | (none) | (none) | (no fetch) |
+| compiler-runtime | foundation | (none) | (none) | yes |
+| math-libs | compiler-runtime | `matrix_per_family_json` | per-family | yes |
+
+### `multi_arch_ci_windows.yml` — Orchestration Layer
+
+Mirrors `multi_arch_ci_linux.yml` structure: build stages → test per-family.
+
+```yaml
+jobs:
+  build_multi_arch_stages:
+    if: inputs.use_prebuilt_artifacts == 'false'
+    uses: ./.github/workflows/multi_arch_build_portable_windows.yml
+    # pass through all inputs
+
+  test_artifacts_per_family:
+    needs: [build_multi_arch_stages]
+    if: >-
+      !failure() && !cancelled() &&
+      (inputs.use_prebuilt_artifacts == 'false' || inputs.use_prebuilt_artifacts == 'true') &&
+      inputs.expect_failure == false
+    strategy:
+      matrix:
+        family_info: ${{ fromJSON(inputs.matrix_per_family_json) }}
+    uses: ./.github/workflows/test_artifacts.yml
+    with:
+      artifact_group: ${{ matrix.family_info.amdgpu_family }}
+      amdgpu_families: ${{ matrix.family_info.amdgpu_family }}
+      test_runs_on: ${{ matrix.family_info.test-runs-on }}
+      # ...
+```
+
+**Inputs** — same as Linux orchestration workflow:
+
+```yaml
+inputs:
+  artifact_group: { type: string }
+  matrix_per_family_json: { type: string }
+  dist_amdgpu_families: { type: string }
+  build_variant_label: { type: string }
+  build_variant_cmake_preset: { type: string }
+  build_variant_suffix: { type: string }
+  test_labels: { type: string }
+  artifact_run_id: { type: string }
+  expect_failure: { type: boolean }
+  use_prebuilt_artifacts: { type: string }
+  rocm_package_version: { type: string }
+  test_type: { type: string }
+```
+
+### `multi_arch_ci.yml` — Uncomment Windows Section
+
+The commented-out block at lines 98-112 references `ci_windows.yml`, but it
+should call `multi_arch_ci_windows.yml` instead (matching the Linux pattern):
+
+```yaml
+windows_build_and_test:
+  name: Windows::${{ matrix.variant.build_variant_label }}
+  needs: setup
+  if: >-
+    ${{
+      needs.setup.outputs.windows_variants != '[]' &&
+      needs.setup.outputs.enable_build_jobs == 'true'
+    }}
+  strategy:
+    fail-fast: false
+    matrix:
+      variant: ${{ fromJSON(needs.setup.outputs.windows_variants) }}
+  uses: ./.github/workflows/multi_arch_ci_windows.yml
+  secrets: inherit
+  with:
+    matrix_per_family_json: ${{ matrix.variant.matrix_per_family_json }}
+    dist_amdgpu_families: ${{ matrix.variant.dist_amdgpu_families }}
+    artifact_group: ${{ matrix.variant.artifact_group }}
+    build_variant_label: ${{ matrix.variant.build_variant_label }}
+    build_variant_suffix: ${{ matrix.variant.build_variant_suffix }}
+    build_variant_cmake_preset: ${{ matrix.variant.build_variant_cmake_preset }}
+    test_labels: ${{ needs.setup.outputs.windows_test_labels }}
+    artifact_run_id: ${{ inputs.artifact_run_id }}
+    expect_failure: ${{ matrix.variant.expect_failure == true }}
+    use_prebuilt_artifacts: ${{ inputs.windows_use_prebuilt_artifacts == true && 'true' || 'false' }}
+    rocm_package_version: ${{ needs.setup.outputs.rocm_package_version }}
+    test_type: ${{ needs.setup.outputs.test_type }}
+  permissions:
+    contents: read
+    id-token: write
+```
+
+Also update `ci_summary` to include `windows_build_and_test` in its `needs`.
+
+### `configure_ci.py` — Verify Multi-Arch Windows Output
+
+`configure_ci.py` already handles Windows in `generate_multi_arch_matrix()` —
+same code path as Linux, filtered by platform. The output `windows_variants`
+will contain `matrix_per_family_json` and `dist_amdgpu_families` fields when
+`multi_arch=true`.
+
+**Verify:**
+- Run `configure_ci.py` with `multi_arch=true` and Windows families
+- Confirm `windows_variants` output has correct structure
+- Confirm `matrix_per_family_json` has correct Windows test runner labels
+
+## Open Questions
+
+1. **S3 path disambiguation:** `artifact_manager.py` uses `platform.system().lower()`
+   for S3 paths, so Linux and Windows artifacts are already in separate S3
+   prefixes. Is this sufficient, or do we need explicit `platform` in artifact
+   group names?
+
+2. **CCache approach for Windows:** The existing single-arch Windows workflow uses
+   GitHub Actions cache with env vars (`CCACHE_DIR`, `CCACHE_MAXSIZE`). The
+   Linux multi-arch pipeline uses `setup_ccache.py` with S3 backend. Options:
+   - (a) Keep GitHub Actions cache for Windows stages (simpler, proven)
+   - (b) Switch to `setup_ccache.py` with S3 backend (consistent with Linux)
+   - (c) Defer — start with GitHub Actions cache, migrate later
+
+   **Recommendation:** Option (a) for now — GitHub Actions cache is proven for
+   Windows builds. Per-stage cache keys would need to include stage name to
+   avoid eviction. Migration to S3 backend can happen separately.
+
+3. **Build directory:** The existing Windows workflow uses `B:\build` for space.
+   Each stage in the multi-arch pipeline is a separate job, so they each get
+   a fresh runner. Should each stage use `B:\build` too, or is the default
+   workspace sufficient?
+
+4. **KPack:** `THEROCK_KPACK_SPLIT_ARTIFACTS` is non-functional on Windows.
+   The multi-arch build works without kpack (it just produces combined
+   artifacts). Is this acceptable for initial Windows multi-arch, or is kpack
+   a prerequisite?
+
+5. **Timeout tuning:** Linux stage timeouts range from 120 min (dctools) to
+   480 min (compiler-runtime, math-libs). Windows compile times may differ.
+   Start with Linux values and adjust based on actual runs?
+
+## Alternatives Considered
+
+### Extend `multi_arch_build_portable_linux.yml` to handle both platforms
+
+**Idea:** Add platform conditionals to the Linux workflow so it handles both
+Linux and Windows in the same file.
+
+**Why rejected:** The per-job environment setup is fundamentally different
+(container vs native, chocolatey vs pre-installed, MSVC vs gcc). Conditionals
+in every step would make the workflow unreadable and fragile. Each stage would
+need `if: platform == 'linux'` / `if: platform == 'windows'` on most steps.
+The Linux workflow already has 789 lines for 7 stages — adding Windows
+conditionals throughout would double the complexity.
+
+**Better approach:** Separate workflow files, same supporting scripts. The
+scripts (`configure_stage.py`, `artifact_manager.py`, `fetch_sources.py`) are
+already cross-platform. Only the YAML plumbing (env setup, runner selection)
+differs.
+
+### Use a composite action for per-stage environment setup
+
+**Idea:** Create a composite action that encapsulates the ~10 setup steps
+(checkout, Python, chocolatey, MSVC, git config, ccache, health check, DVC)
+so each stage job just calls the action.
+
+**Why deferred (not rejected):** This is a good idea but adds a separate
+concern. The immediate goal is getting the Windows pipeline working. Once it
+works, DRYing up the repeated setup steps into a composite action is a natural
+follow-up. The Linux pipeline also has repeated setup steps and doesn't use
+composite actions yet — doing it for Windows first would create an asymmetry.
+Better to do it for both platforms together.
+
+## MVP Plan
+
+### PR 1: `multi_arch_build_portable_windows.yml` + `multi_arch_ci_windows.yml`
+
+**New files:**
+- `.github/workflows/multi_arch_build_portable_windows.yml` — 3-stage build
+- `.github/workflows/multi_arch_ci_windows.yml` — orchestration (build + test)
+
+**Modified files:**
+- `.github/workflows/multi_arch_ci.yml` — uncomment Windows section, update
+  to call `multi_arch_ci_windows.yml`, add to `ci_summary` needs
+
+**Approach:**
+- Port the Linux pipeline structure to Windows
+- Adapt environment setup from `build_windows_artifacts.yml`
+- Use `configure_stage.py` for stage cmake args (same as Linux)
+- Use `artifact_manager.py` for inter-stage artifacts (same as Linux)
+- Keep GitHub Actions cache for ccache (match existing Windows pattern)
+- Disable stages not applicable to Windows (handled automatically by
+  `configure_stage.py` reading `BUILD_TOPOLOGY.toml`)
+
+**Testing:**
+- `workflow_dispatch` on a branch with `windows_amdgpu_families: gfx110X`
+- Verify each stage completes and artifacts flow between stages
+- Verify test job can fetch final artifacts and run
+
+### PR 2 (optional): DRY up repeated setup steps
+
+If the per-stage setup repetition is excessive, extract common Windows
+environment setup into a composite action or shared step template.
+
+## Investigation Notes
+
+### 2026-02-11 - Initial Analysis
+
+**Windows stages from BUILD_TOPOLOGY.toml:**
+
+Disabled on Windows: media (source set), comm-libs/RCCL, dctools-core/RDC,
+profiler-apps/rocprofiler-systems, debug-tools, and several sysdeps
+(expat, gmp, mpfr, ncurses, libpciaccess, hwloc). Also disabled:
+core-rocr (runtime), core-amdsmi, core-runtime-tests.
+
+This means the Windows pipeline has only 3 stages (foundation,
+compiler-runtime, math-libs) vs Linux's 7. The linear dependency chain
+(no parallel stages until math-libs fans out) keeps the pipeline simple.
+
+**`configure_ci.py` multi-arch Windows support:**
+
+`generate_multi_arch_matrix()` is platform-agnostic — it filters families by
+platform via `lookup_matrix.get(target_name)` and only includes families that
+have a platform entry. Windows variants already get `matrix_per_family_json`
+and `dist_amdgpu_families` fields. The `build_pytorch` flag is computed but
+not yet consumed by any Windows multi-arch workflow (separate task: pytorch-ci
+Phase 3).
+
+**`artifact_manager.py` S3 path structure:**
+
+Uses `{bucket}/{run_id}-{platform}/stages/{stage_name}/...` — platform is
+already in the path, so Linux and Windows artifacts are naturally separated.
+No additional disambiguation needed.
+
+## Next Steps
+
+1. [ ] Resolve open questions (ccache approach, build directory, kpack)
+2. [ ] Draft `multi_arch_build_portable_windows.yml` (3 stages)
+3. [ ] Draft `multi_arch_ci_windows.yml` (build + test orchestration)
+4. [ ] Update `multi_arch_ci.yml` (uncomment Windows, wire up)
+5. [ ] Test via `workflow_dispatch` on branch
+6. [ ] Review and iterate
