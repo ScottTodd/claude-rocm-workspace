@@ -170,6 +170,8 @@ git log -1 --stat
 - **DO NOT include pull request references** (e.g. "#123")
   - PR tagging happens in pull requests, not individual commits
   - Referencing _commit hashes_ is fine though
+- **DO NOT just list which files were changed for the sake of the "Changes:" template**
+  - That's already in the commit diff. The commit message should be a summary, not a verbose, exhaustive description of each individual change
 
 #### GPG Signing
 
