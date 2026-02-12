@@ -435,7 +435,9 @@ Approach:
   reading `BUILD_TOPOLOGY.toml`
 
 Testing:
-- `workflow_dispatch` on a branch with `windows_amdgpu_families: gfx110X`
+- `workflow_dispatch` of `multi_arch_ci.yml` on the branch with
+  `linux_amdgpu_families: ""` (empty) and `windows_amdgpu_families: gfx110X`
+  — this runs only Windows, skipping Linux
 - Verify each stage completes and artifacts flow between stages
 - Verify test job can fetch final artifacts and run
 
