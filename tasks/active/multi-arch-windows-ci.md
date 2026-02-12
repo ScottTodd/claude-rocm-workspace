@@ -441,6 +441,21 @@ Testing:
 - Verify each stage completes and artifacts flow between stages
 - Verify test job can fetch final artifacts and run
 
+### Follow-up: Evaluate cmake preset vs `_get_windows_platform_cmake_args`
+
+The `windows-release` cmake preset (inheriting `windows-base`) already sets
+`CMAKE_C_COMPILER` to `cl.exe`. It may be possible to add `CMAKE_LINKER` to
+the preset as well, which would make `_get_windows_platform_cmake_args()` in
+`configure_stage.py` redundant. The preset approach is arguably cleaner since
+it keeps compiler config in CMake-land rather than Python-land.
+
+**To investigate:**
+- Does `windows-release` preset set `CMAKE_LINKER`? If not, can we add it?
+- Does preset `cl.exe` (bare name, relies on PATH) work as reliably as the
+  full `VCToolsInstallDir` path that `_get_windows_platform_cmake_args` emits?
+- If we re-add preset support to the multi-arch workflow, does it fully
+  replace the Python-side platform args?
+
 ### Workstream 2: Refactor and clean up (interleave with CI wait times)
 
 While waiting on multi-hour CI builds from workstream 1, chip away at
@@ -596,19 +611,61 @@ Uses `{bucket}/{run_id}-{platform}/stages/{stage_name}/...` — platform is
 already in the path, so Linux and Windows artifacts are naturally separated.
 No additional disambiguation needed.
 
+## Progress
+
+### 2026-02-12 — Workstream 1 largely complete
+
+**Branches:**
+- `multi-arch-windows-ci-1` — main branch with all pipeline work
+- `users/scotttodd/multi-arch-windows-ci-2` — experimental: cmake preset for
+  compiler selection instead of Python-side VCToolsInstallDir logic
+
+**Commits on `-1` branch (8 total):**
+1. `8e127558` Add multi-arch staged build workflow for Windows
+2. `b1007021` Add unit tests for configure_stage platform cmake args
+3. `defec7fe` Remove configure_stage platform tests for now
+4. `77731eec` Add Windows platform cmake args to configure_stage.py
+5. `bbda81d0` Remove ccache and actions/cache from multi-arch Windows workflow
+6. `511ba742` Remove unused build_variant_cmake_preset input
+7. `eedaadbf` Add multi-arch Windows orchestration workflow
+8. `84b512e6` Filter disabled-platform artifacts in configure_stage.py
+
+**Commit on `-2` branch (on top of `-1`):**
+- `f280da29` Use CMake preset for Windows compiler/linker selection
+
+**Key fixes found during CI testing:**
+- Compiler paths with spaces need quoting in `--oneline`/`--gha-output` mode
+  (paths like `C:/Program Files/...` get word-split by bash)
+- `get_stage_features()` wasn't filtering by platform — Linux-only artifacts
+  like `sysdeps-expat` leaked into Windows builds. Fixed by checking
+  `artifact.disable_platforms`.
+- `GITHUB_PATH` appends were malformed (separate PR #3400, merged)
+
+**CI test runs in flight (end of day 2026-02-12):**
+- Run 21968103351 (`-1` branch) — platform filtering fix, no preset
+- Run 21968150605 (`-2` branch) — same + cmake preset for compiler selection
+- Both need to pass Foundation → Compiler Runtime → Math Libs to validate
+
+**Open question:** Does the cmake preset (`windows-release` inheriting
+`windows-base`) fully replace `_get_windows_platform_cmake_args()`? The `-2`
+branch tests this. If it works, we can drop the VCToolsInstallDir Python code
+entirely and just keep `THEROCK_BACKGROUND_BUILD_JOBS=4`.
+
 ## Next Steps
 
 **Workstream 1 (stand up pipeline):**
-1. [ ] Draft `multi_arch_build_portable_windows.yml` (3 stages, copy existing patterns)
-2. [ ] Draft `multi_arch_ci_windows.yml` (build + test orchestration)
-3. [ ] Update `multi_arch_ci.yml` (uncomment Windows, wire up)
-4. [ ] Test via `workflow_dispatch` on branch
-5. [ ] Iterate on CI failures
+1. [x] Draft `multi_arch_build_portable_windows.yml` (3 stages)
+2. [x] Draft `multi_arch_ci_windows.yml` (build + test orchestration)
+3. [x] Update `multi_arch_ci.yml` (wire up Windows, add to ci_summary)
+4. [~] Test via `workflow_dispatch` on branch — **in progress, 2 runs queued**
+5. [ ] Iterate on CI failures (check runs after weekend)
+6. [ ] Decide preset vs Python compiler selection based on CI results
+7. [ ] Squash/clean up commits for PR
 
 **Workstream 2 (refactor, interleave with CI waits):**
-6. [ ] Fix `setup_ccache.py` for Windows / `B:\build` paths
-7. [ ] Replace awscli usage with boto3
-8. [ ] Switch chocolatey to winget
-9. [ ] Remove redundant setup steps (DVC, Python, etc.)
-10. [ ] PR to bake ccache + ninja into base VM image
-11. [ ] Move repeated env setup into scripts (both platforms)
+8. [ ] Fix `setup_ccache.py` for Windows / `B:\build` paths
+9. [ ] Replace awscli usage with boto3
+10. [ ] Switch chocolatey to winget
+11. [ ] Remove redundant setup steps (DVC, Python, etc.)
+12. [ ] PR to bake ccache + ninja into base VM image
+13. [ ] Move repeated env setup into scripts (both platforms)
