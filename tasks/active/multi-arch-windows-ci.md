@@ -651,6 +651,10 @@ No additional disambiguation needed.
 branch tests this. If it works, we can drop the VCToolsInstallDir Python code
 entirely and just keep `THEROCK_BACKGROUND_BUILD_JOBS=4`.
 
+**Related PR:** #3402 — adds `CMAKE_LINKER` to the `windows-base` preset and
+drops explicit compiler options from `build_configure.py`, testing the preset
+approach on the existing single-arch Windows workflows too.
+
 ## Next Steps
 
 **Workstream 1 (stand up pipeline):**
@@ -661,6 +665,75 @@ entirely and just keep `THEROCK_BACKGROUND_BUILD_JOBS=4`.
 5. [ ] Iterate on CI failures (check runs after weekend)
 6. [ ] Decide preset vs Python compiler selection based on CI results
 7. [ ] Squash/clean up commits for PR
+
+## Job Timing Metrics
+
+Tracking setup overhead vs build time per stage across test runs.
+These metrics will support the eventual PR and workstream 2 optimization work.
+
+### How to collect
+
+From the GitHub Actions UI or `gh run view`, note the duration of key steps:
+- **setup-python**: `actions/setup-python`
+- **pip install**: `Install python deps`
+- **choco installs**: `Install requirements`
+- **setup-dvc**: `iterative/setup-dvc`
+- **msvc**: `Configure MSVC`
+- **git config**: `Adjust git config`
+- **health status**: `Runner health status`
+- **fetch sources**: `Fetch sources`
+- **AWS creds + fetch artifacts**: (stages 2-3 only)
+- **stage config**: `Get stage configuration`
+- **configure**: `Configure` (cmake)
+- **build**: `Build stage`
+- **push artifacts**: `Push stage artifacts`
+
+**Setup overhead** = total - build - configure - push artifacts
+**Build time** = build step only
+
+### Runs
+
+#### Run 21968103351 (`-1` branch, no preset, gfx1151)
+
+| Stage | Total | Build | Configure | Setup Overhead | Overhead % |
+|-------|-------|-------|-----------|----------------|------------|
+| foundation | 6m40s | 50s | | | ~85% |
+| compiler-runtime | 20m | 11m47s | | | ~40% |
+| math-libs (gfx1151) | | | | | |
+
+#### Run 21968150605 (`-2` branch, with preset, gfx1151)
+
+| Stage | Total | Build | Configure | Setup Overhead | Overhead % |
+|-------|-------|-------|-----------|----------------|------------|
+| foundation | | | | | |
+| compiler-runtime | | | | | |
+| math-libs (gfx1151) | | | | | |
+
+### Averages
+
+(Fill in once we have multiple runs)
+
+| Stage | Avg Total | Avg Build | Avg Overhead | Avg Overhead % |
+|-------|-----------|-----------|--------------|----------------|
+| foundation | | | | |
+| compiler-runtime | | | | |
+| math-libs | | | | |
+
+### Optimization targets
+
+Per-job overhead breakdown (approximate, from run 21968103351 foundation):
+- setup-python: ~1min
+- pip install requirements.txt: ~1min
+- choco installs (ninja, perl, awscli, pkgconfiglite): ~2min
+- setup-dvc: ~20s
+- MSVC + git config + health: ~30s
+- fetch sources: ~40s
+
+Biggest wins:
+1. Bake ninja, perl, pkgconfiglite into base VM image (~2min saved)
+2. Drop setup-dvc (already in base image) (~20s saved)
+3. Drop setup-python if 3.13 is acceptable (~1min saved)
+4. Cache or bake pip dependencies (~1min saved)
 
 **Workstream 2 (refactor, interleave with CI waits):**
 8. [ ] Fix `setup_ccache.py` for Windows / `B:\build` paths
