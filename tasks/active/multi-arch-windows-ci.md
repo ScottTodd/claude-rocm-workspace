@@ -735,6 +735,28 @@ Biggest wins:
 3. Drop setup-python if 3.13 is acceptable (~1min saved)
 4. Cache or bake pip dependencies (~1min saved)
 
+## S3 Artifacts and Index Pages
+
+The multi-arch jobs upload stage artifacts to S3 but do **not** generate index
+pages yet. For local testing of uploaded artifacts, we'll need to infer S3
+paths from logs or `artifact_manager.py` conventions.
+
+**Index page generation:** Currently each job generates its own index page
+before upload. This is fragile for multi-arch CI where multiple stages and
+architecture shards upload artifacts concurrently — the index page would need
+continuous updating as artifacts arrive, with potential race conditions between
+overlapping jobs.
+
+**Server-side index generation** (#3331) would fix this: instead of each job
+rebuilding the index, the server regenerates it as artifacts land. This is
+especially important for multi-arch CI where the upload pattern is:
+- foundation uploads (generic)
+- compiler-runtime uploads (generic)
+- math-libs uploads (per-arch, potentially concurrent for multiple families)
+
+Until #3331 lands, we can test locally by fetching artifacts directly from S3
+without relying on index pages.
+
 **Workstream 2 (refactor, interleave with CI waits):**
 8. [ ] Fix `setup_ccache.py` for Windows / `B:\build` paths
 9. [ ] Replace awscli usage with boto3
