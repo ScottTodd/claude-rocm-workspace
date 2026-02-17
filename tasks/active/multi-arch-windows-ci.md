@@ -718,9 +718,96 @@ From the GitHub Actions UI or `gh run view`, note the duration of key steps:
 | compiler-runtime | | | | | |
 | math-libs (gfx1151) | | | | | |
 
+#### Run 22081356438 (`-2` branch, with preset, gfx110X + gfx94X)
+
+PR #3443 test run. Both Linux (gfx94X-dcgpu) and Windows (gfx110X-all).
+
+**Build jobs — summary:**
+
+| Job | Total | Queue Wait | Setup | Build | Teardown | Overhead % |
+|-----|-------|------------|-------|-------|----------|------------|
+| **Linux** | | | | | | |
+| foundation | 4m57s | 22s | 1m39s | 3m9s | 8s | 36% |
+| media | 1m52s | 15s | 1m25s | 22s | 4s | 81% |
+| compiler-runtime | 18m54s | 5s | 3m4s | 15m36s | 14s | 18% |
+| profiler-apps | 7m23s | 12s | 1m15s | 6m3s | 5s | 18% |
+| dctools-core | 4m47s | 26s | 1m26s | 3m15s | 5s | 32% |
+| comm-libs (gfx94X) | 16m20s | 24s | 1m13s | 15m2s | 5s | 8% |
+| math-libs (gfx94X) | 95m33s | 25s | 4m26s | 90m47s | 20s | 5% |
+| **Windows** | | | | | | |
+| foundation | 7m5s | ~21m¹ | 5m45s | 1m2s | 17s | 85% |
+| compiler-runtime | 26m17s | 1m42s | 7m39s | 17m55s | 42s | 32% |
+| math-libs (gfx110X) | 206m2s | N/A² | 10m43s | 194m44s | 35s | 5% |
+
+**Queue wait** = time between dependency completing and this job starting.
+**Setup** = Set up job → start of "Build stage" step.
+**Overhead %** = (Setup + Teardown) / Total.
+
+¹ Windows foundation ~21m gap after setup — includes runner provisioning time
+for `azure-windows-scale-rocm`. May not be representative.
+² Windows math-libs was a manual re-run of a failed job. The 16h+ gap between
+compiler-runtime completing and math-libs starting reflects the human-initiated
+delay, not queue time. Actual queue wait is unknown from these timestamps.
+
+**Windows setup breakdown (per stage):**
+
+| Step | foundation | compiler-runtime | math-libs |
+|------|-----------|-----------------|-----------|
+| Set up job | 3s | 3s | 4s |
+| Checkout | 8s | 4s | 6s |
+| setup-python | 1m7s | 52s | 1m1s |
+| Install python deps (pip) | 58s | 47s | 52s |
+| Install requirements (choco) | 1m58s | 1m40s | 2m0s |
+| setup-dvc | 21s | 18s | 23s |
+| Configure MSVC | 4s | 3s | 4s |
+| git config + health | 6s | 5s | 7s |
+| AWS creds | 1s | 1s | 0s |
+| Fetch inbound artifacts | 1s | 4s | 21s |
+| Fetch sources | 47s | 3m28s | 5m22s |
+| Configure (cmake) | 10s | 14s | 22s |
+| **Total setup** | **5m45s** | **7m39s** | **10m43s** |
+
+**Linux setup breakdown (representative — compiler-runtime):**
+
+| Step | Duration |
+|------|----------|
+| Set up job | 1s |
+| Init containers | 1m12s |
+| Checkout | 1s |
+| Install python deps | 9s |
+| git config + ccache + health | 3s |
+| AWS creds | 1s |
+| Fetch inbound artifacts | 2s |
+| Fetch sources | 1m32s |
+| Configure (cmake) | 3s |
+| **Total setup** | **3m4s** |
+
+**Test jobs (representative):**
+
+| Job | Total | Queue Wait | Setup | Test | Teardown |
+|-----|-------|------------|-------|------|----------|
+| Linux sanity (gfx94X) | 32s | ~3m | 21s | 8s | 3s |
+| Linux hip-tests (gfx94X) | 31m53s | ~4m | 48s | 31m2s | 2s |
+| Windows sanity (gfx110X) | 27s | ~2m | 21s | 3s | 3s |
+
+Test jobs have minimal overhead — ~20-50s of setup. The queue wait between
+last build completing and first test starting is 2-4m (configure test matrix
+job + runner provisioning).
+
+**Queue wait analysis:**
+
+Linux jobs had 5-26s queue waits — the Linux runner pool is well-provisioned.
+Windows foundation had ~21m gap after setup, which likely reflects runner
+provisioning time for `azure-windows-scale-rocm` (cold start). Windows
+compiler-runtime had a reasonable 1m42s wait after foundation.
+
+Windows math-libs was a manual re-run after a first-attempt failure, so its
+apparent 16h+ gap is not queue time — it's human-initiated delay. We don't
+have queue wait data for that job from this run.
+
 ### Averages
 
-(Fill in once we have multiple runs)
+(Need more runs to fill in — one data point so far per configuration)
 
 | Stage | Avg Total | Avg Build | Avg Overhead | Avg Overhead % |
 |-------|-----------|-----------|--------------|----------------|
@@ -730,19 +817,32 @@ From the GitHub Actions UI or `gh run view`, note the duration of key steps:
 
 ### Optimization targets
 
-Per-job overhead breakdown (approximate, from run 21968103351 foundation):
-- setup-python: ~1min
-- pip install requirements.txt: ~1min
-- choco installs (ninja, perl, awscli, pkgconfiglite): ~2min
-- setup-dvc: ~20s
-- MSVC + git config + health: ~30s
-- fetch sources: ~40s
+**Windows setup overhead per job (from run 22081356438):**
 
-Biggest wins:
-1. Bake ninja, perl, pkgconfiglite into base VM image (~2min saved)
-2. Drop setup-dvc (already in base image) (~20s saved)
-3. Drop setup-python if 3.13 is acceptable (~1min saved)
-4. Cache or bake pip dependencies (~1min saved)
+| Category | Time | Optimization |
+|----------|------|-------------|
+| Install requirements (choco) | ~2m | Bake ninja, perl, pkgconfiglite into base image |
+| setup-python | ~1m | Drop if Python 3.13 (in base image) is acceptable |
+| Install python deps (pip) | ~1m | Pre-install or cache requirements.txt in base image |
+| setup-dvc | ~20s | Drop — DVC 3.62.0 already in base image |
+| Fetch sources | 47s-5m22s | Scales with stage complexity; hard to optimize |
+| MSVC + git + health | ~15s | Minimal — not worth optimizing |
+
+**Biggest wins (per job, compounded across 3 Windows stages):**
+1. Bake ninja, perl, pkgconfiglite into base VM image (~2m saved × 3 = 6m)
+2. Drop setup-python if 3.13 is acceptable (~1m saved × 3 = 3m)
+3. Drop setup-dvc (already in base image) (~20s × 3 = 1m)
+4. Cache or bake pip dependencies (~1m × 3 = 3m)
+5. **Total potential savings: ~4m20s per job, ~13m across pipeline**
+
+**Linux setup is already lean.** Container init (~1m) is the biggest item and
+is inherent to the container approach. Per-job overhead is 1-4m, dominated by
+container init + fetch sources.
+
+**Windows runner provisioning** adds noticeable delay (~21m for foundation
+cold start), but without more data points it's unclear how typical this is.
+The setup overhead (~4-11m per job) is the main actionable optimization
+target on the workflow side.
 
 ## S3 Artifacts and Index Pages
 
