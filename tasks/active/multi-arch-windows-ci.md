@@ -655,14 +655,23 @@ entirely and just keep `THEROCK_BACKGROUND_BUILD_JOBS=4`.
 drops explicit compiler options from `build_configure.py`, testing the preset
 approach on the existing single-arch Windows workflows too.
 
+### 2026-02-16 — Strawberry PATH fix, CI run in progress
+
+- Committed `4fe34876` on `-2` branch: restore `$PATH;` prefix for Strawberry
+  GITHUB_PATH entry. Without it, Strawberry's cmake shadows system cmake.
+- Kicked off test run 22074572979. Foundation passed (5m41s, ~84% setup overhead).
+  Compiler Runtime was in progress at end of session.
+- Unrelated breakage from PR #2045 merge (spdlog/amd-llvm) blocked multi-arch
+  Linux CI. Not a Windows-specific issue — see investigation notes in session.
+
 ## Next Steps
 
 **Workstream 1 (stand up pipeline):**
 1. [x] Draft `multi_arch_build_portable_windows.yml` (3 stages)
 2. [x] Draft `multi_arch_ci_windows.yml` (build + test orchestration)
 3. [x] Update `multi_arch_ci.yml` (wire up Windows, add to ci_summary)
-4. [~] Test via `workflow_dispatch` on branch — **in progress, 2 runs queued**
-5. [ ] Iterate on CI failures (check runs after weekend)
+4. [~] Test via `workflow_dispatch` on branch — **run 22074572979 in progress**
+5. [ ] Check compiler-runtime and math-libs results from run 22074572979
 6. [ ] Decide preset vs Python compiler selection based on CI results
 7. [ ] Squash/clean up commits for PR
 

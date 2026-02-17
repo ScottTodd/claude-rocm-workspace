@@ -5,7 +5,7 @@ repositories:
 
 # Build and Test PyTorch Python Packages in CI
 
-- **Status:** In progress — Phase 1 complete (all PRs merged)
+- **Status:** In progress — Phase 1 complete, Phase 3 in flight
 - **Priority:** P1 (High)
 - **Started:** 2026-02-06
 - **Issue:** https://github.com/ROCm/TheRock/issues/3291
@@ -738,10 +738,46 @@ numbered item can be a separate PR.
   - `workflow_dispatch`: configurable
 - Saves CI resources by restricting to 1-2 families on PR/postsubmit
 
-### Phase 3: Windows equivalent
+### Phase 3: Windows equivalent — in progress
 
-- New `build_windows_pytorch_wheels_ci.yml` mirroring Linux CI workflow
-- Wire into `ci_windows.yml` with same `build_pytorch` gating
+Branch: `users/scotttodd/pytorch-ci-windows-1`
+Test run: https://github.com/ROCm/TheRock/actions/runs/22075223599
+
+**Files changed:**
+- `.github/workflows/build_windows_pytorch_wheels_ci.yml` (NEW)
+- `.github/workflows/ci_windows.yml`
+- `.github/workflows/ci.yml`
+- `.github/workflows/ci_nightly.yml`
+- `.github/workflows/build_windows_pytorch_wheels.yml` (dispatch default update)
+
+**Changes:**
+
+*New CI workflow:*
+- `build_windows_pytorch_wheels_ci.yml`, modeled on release build workflow's
+  build job with CI adaptations (--find-links, torch only, no S3 upload)
+- Windows-specific plumbing: cmd shell for build step (load bearing, #827),
+  MSVC setup, B:/src checkout, --enable-pytorch-flash-attention-windows
+- workflow_dispatch defaults: gfx1151, release/2.10
+
+*Wiring:*
+- `ci_windows.yml`: new `build_pytorch` boolean input (default false), pytorch
+  job gated on `inputs.build_pytorch == true`, same pattern as Linux
+- `ci.yml` / `ci_nightly.yml`: pass `build_pytorch` to Windows job
+  (configure_ci.py already computes it for Windows variants)
+
+*Default updates:*
+- `build_windows_pytorch_wheels.yml`: dispatch pytorch_git_ref default
+  release/2.7 → release/2.9 (2.7 was stale; 2.9 is latest with working
+  Windows tests)
+
+**Notes:**
+- Windows pytorch testing (test_pytorch_wheels.yml) only works for torch 2.9
+  due to untriaged failures on 2.10 — see issue #2258. CI build uses 2.10
+  (hardcoded in ci_windows.yml) to catch build breaks; testing on 2.10 is
+  future work.
+- Evaluated combined Linux+Windows workflow vs separate — separate is right
+  because runs-on, container, shell, Python setup, and MSVC all differ
+  fundamentally. Share code at script level (build_prod_wheels.py).
 
 ### Phase 4: Test PyTorch in CI
 

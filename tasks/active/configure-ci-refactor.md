@@ -100,35 +100,70 @@ Prepare for opt-in/opt-out mechanisms:
 
 ### 2025-01-21 - Initial Analysis
 
-Current `matrix_generator()` structure (lines 378-631):
-1. **Lines 398-437**: Trigger type detection, lookup matrix selection
-2. **Lines 439-478**: Workflow dispatch handling (families + test labels)
-3. **Lines 480-528**: Pull request handling (PR labels → targets + tests)
-4. **Lines 530-548**: Push handling (long-lived vs regular branches)
-5. **Lines 550-558**: Schedule handling (nightly runs)
-6. **Lines 560-580**: Deduplication of targets/tests
-7. **Lines 582-631**: Matrix expansion (targets → matrix rows with variants)
+Current `matrix_generator()` structure (lines 250-543, ~295 lines):
+1. **Lines 265-273**: Init, branch detection
+2. **Lines 276-309**: Trigger type detection, lookup matrix selection
+3. **Lines 311-350**: Workflow dispatch handling (families + test labels)
+4. **Lines 352-406**: Pull request handling (PR labels → targets + tests)
+5. **Lines 408-426**: Push handling (long-lived vs regular branches)
+6. **Lines 428-436**: Schedule handling (nightly runs)
+7. **Lines 438-458**: Dedup, route to multi-arch or standard expansion
+8. **Lines 460-543**: Standard matrix expansion (targets → matrix rows)
 
-Key observations:
-- Trigger handlers are interleaved with shared setup code
-- Label parsing logic is inline rather than extracted
-- Matrix expansion is separate concern from target selection
+### 2026-02-16 - Full style review and coverage analysis
+
+**Style guide violations (see Python style guide checklist):**
+
+Blocking:
+- Mutable default args (`base_args={}`, `families={}`) — classic Python bug
+- `matrix_generator` is 295 lines (guide says <30 ideal, extract at 100+)
+- `main` is 145 lines
+- Missing type hints on most functions (5 functions untyped or partially typed)
+- `base_args` is untyped dict with 12+ fields threaded through 4 functions — should be dataclass
+- Wildcard import `from github_actions_utils import *`
+
+Important:
+- `assert` used for input validation (disabled with `-O`)
+- Silent error handling: `filter_known_names` line 118 prints warning for unknown name_type instead of raising
+- Duplicate code: test label parsing, build_pytorch computation, target list appending
+- `label.split(":")` without `maxsplit` — crashes on multiple colons
+- Nested `format_variants` function inside `main` — untestable
+- `matrix_generator` called with positional args at lines 593-602
+
+**Test coverage: 63% (branch: 65%)**
+
+Untested code paths:
+- `main()` — **zero coverage** (lines 552-695, 145 lines)
+- `__main__` block — expected, not testable
+- `skip-ci` label handling (lines 381-384)
+- `run-all-archs-ci` label handling (lines 386-389)
+- Workflow dispatch test labels (lines 339-341, 346)
+- `expect_failure` from build variant (line 492)
+- Non-release variant artifact group naming (line 509)
+- `filter_known_names` unknown name_type path (lines 118-119)
+- `generate_multi_arch_matrix` edge cases (lines 176, 211)
+
+**Decision: incremental refactoring, not full rewrite.**
+`matrix_generator` has enough untested edge cases that rewriting it in one go
+is risky. `main()` has zero coverage and could be rewritten freely. Plan:
+- Incremental refactoring of `matrix_generator` (extract pieces, add tests for gaps)
+- Rewrite `main()` and `__main__` block alongside a `base_args` dataclass
+- Standardized `os.environ.get` (done: 4 `os.getenv` calls fixed)
+
+**Motivation: issue #3399** (stage-aware prebuilt artifacts) needs a clean
+insertion point between target selection and matrix expansion. The refactoring
+creates that seam.
 
 ## Decisions & Trade-offs
 
-*To be filled in during implementation*
-
-## Code Changes
-
-### Files Modified
-*To be filled in during implementation*
-
-### Testing Done
-*To be filled in during implementation*
+- Prefer `os.environ.get` over `os.getenv` for consistency — `os.environ` gives
+  both `.get()` (optional) and `[]` (required) from one interface
+- Incremental refactoring over rewrite — coverage gaps in `matrix_generator`
+  make full rewrite risky without adding tests first
 
 ## Blockers & Issues
 
-None currently identified.
+- Refactoring deferred while landing open PRs and fixing #2045 breakage
 
 ## Resources & References
 
@@ -136,14 +171,18 @@ None currently identified.
 - [configure_ci_test.py](../TheRock/build_tools/github_actions/tests/configure_ci_test.py)
 - [amdgpu_family_matrix.py](../TheRock/build_tools/github_actions/amdgpu_family_matrix.py)
 - [fetch_test_configurations.py](../TheRock/build_tools/github_actions/fetch_test_configurations.py)
+- [Issue #3399](https://github.com/ROCm/TheRock/issues/3399) — stage-aware prebuilt artifacts (motivating refactor)
 
 ## Next Steps
 
-1. [ ] Review proposed refactoring approach
-2. [ ] Implement Phase 1: Extract trigger handlers
-3. [ ] Update tests to cover extracted functions
-4. [ ] Implement Phase 2: Structured label processing (if beneficial)
-5. [ ] Document extension points for future opt-in/opt-out work
+1. [x] Full style review against Python style guide
+2. [x] Check test coverage to inform rewrite vs refactor decision
+3. [x] Standardize `os.getenv` → `os.environ.get`
+4. [ ] Add tests for untested edge cases (skip-ci, run-all-archs-ci, workflow dispatch test labels)
+5. [ ] Introduce `base_args` dataclass, rewrite `main()` and `__main__` block
+6. [ ] Extract trigger handlers from `matrix_generator`
+7. [ ] Extract standard matrix expansion
+8. [ ] Deduplicate build_pytorch computation and test label parsing
 
 ## Completion Notes
 
