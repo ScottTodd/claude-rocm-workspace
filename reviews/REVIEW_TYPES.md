@@ -8,7 +8,7 @@ This document defines different types of code reviews that can be performed, eac
 
 | Review Type | Focus Area | Best For |
 |-------------|------------|----------|
-| **Comprehensive** | All aspects | Final review before human review |
+| **Comprehensive** | All aspects | Final automated review |
 | **Style** | Code formatting, conventions, readability | Ensuring consistency |
 | **Tests** | Test coverage, edge cases, test quality | Validating correctness |
 | **Documentation** | Comments, docstrings, guides | Knowledge transfer |
@@ -60,7 +60,7 @@ A comprehensive review covers all aspects:
 
 **Output:** Single comprehensive review file with all findings
 
-**When to use:** Final review before submitting for human review
+**When to use:** Final automated review covering all aspects
 
 ---
 
@@ -345,7 +345,7 @@ When multiple review types run in parallel, they're combined into sections:
 
 ## Combined Recommendations
 
-### ❌ REQUIRED Before Human Review:
+### ❌ REQUIRED (Blocking):
 [All blocking issues from all review types]
 
 ### ✅ Recommended:
@@ -427,10 +427,10 @@ This ensures:
 - Optimization is effective (performance)
 - Optimization doesn't break functionality (tests)
 
-### Example 5: Before Human Review
+### Example 5: Final Automated Review
 
 ```
 "Run a comprehensive review"
 ```
 
-Covers everything before submitting for human review.
+Covers all aspects in a single automated review pass.

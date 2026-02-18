@@ -36,7 +36,7 @@ This directory contains code review documentation and completed reviews.
 
 | Type | Focus | Use When |
 |------|-------|----------|
-| **Comprehensive** | Everything | Before human review |
+| **Comprehensive** | Everything | Final automated review |
 | **Style** | Code formatting & conventions | After refactoring |
 | **Tests** | Test coverage & quality | New features, bug fixes |
 | **Documentation** | Docs, comments, help text | API changes, complex code |
@@ -60,7 +60,7 @@ See [REVIEW_TYPES.md](REVIEW_TYPES.md) for detailed descriptions.
 
 ## Review Severity Levels
 
-### ❌ BLOCKING (Must Fix Before Human Review)
+### ❌ BLOCKING (Must Fix)
 
 Critical issues that prevent approval:
 
@@ -70,7 +70,7 @@ Critical issues that prevent approval:
 - Missing critical tests
 - Breaking changes without migration
 
-### ⚠️ IMPORTANT (Should Fix Before Human Review)
+### ⚠️ IMPORTANT (Should Fix)
 
 Issues that significantly impact quality:
 
@@ -211,8 +211,8 @@ Claude: [Creates updated review, verifies fixes]
 ### When to Use Each Review Type
 
 **Use Comprehensive when:**
-- Preparing for human review
-- Final check before submitting PR
+- Final automated check before submitting PR
+- Reviewing an open PR
 - Unsure what aspects to focus on
 
 **Use Focused Reviews when:**

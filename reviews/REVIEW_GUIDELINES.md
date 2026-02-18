@@ -15,26 +15,25 @@ Use these status levels in the "Overall Assessment" section:
 ### ✅ APPROVED
 
 - No blocking issues
-- Code is ready for human review
+- Passed automated review
 - May have optional recommendations for future improvements
 
 ### ⚠️ CHANGES REQUESTED
 
-- Has blocking issues that MUST be fixed before human review
+- Has blocking issues that MUST be fixed
 - May also have non-blocking recommendations
 - Requires another review after changes
 
 ### 🚫 REJECTED
 
 - Fundamental problems with approach
-- Code should not proceed to human review even with fixes
 - Requires complete rework or abandonment
 
 ---
 
 ## Issue Severity Categories
 
-### ❌ BLOCKING (Must Fix Before Human Review)
+### ❌ BLOCKING (Must Fix)
 
 **When to use:**
 
@@ -63,7 +62,7 @@ Use these status levels in the "Overall Assessment" section:
 - **Required action:** Specific fix needed
 ```
 
-### ⚠️ IMPORTANT (Should Fix Before Human Review)
+### ⚠️ IMPORTANT (Should Fix)
 
 **When to use:**
 
@@ -227,11 +226,11 @@ Is this a correctness/security issue?
 
 ## Recommendations
 
-### ❌ REQUIRED Before Human Review (Blocking):
+### ❌ REQUIRED (Blocking):
 
 1. [Blocking items only]
 
-### ✅ Recommended Before Human Review:
+### ✅ Recommended:
 
 1. [Important items and good practices]
 
@@ -348,7 +347,7 @@ Before finalizing a review, verify:
 **General:**
 - [ ] Overall assessment has clear status (APPROVED/CHANGES REQUESTED/REJECTED)
 - [ ] Every blocking issue is marked with ❌ BLOCKING
-- [ ] Blocking issues are listed in "REQUIRED Before Human Review" section
+- [ ] Blocking issues are listed in "REQUIRED (Blocking)" section
 - [ ] Each issue has clear severity marker (❌/⚠️/💡/📋)
 - [ ] Required actions are specific and actionable
 - [ ] Future work items are clearly marked as out of scope
