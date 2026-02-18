@@ -33,9 +33,33 @@ gh pr diff <URL>
 
 ### 3. Review Setup
 
-- Read `reviews/REVIEW_GUIDELINES.md` for severity levels and format
+- Read `reviews/REVIEW_GUIDELINES.md` for severity levels, format, and the
+  evidence-based review methodology
 - Read `reviews/REVIEW_TYPES.md` if doing focused reviews
 - Determine output filename: `reviews/pr_{NUMBER}.md` or `reviews/pr_{NUMBER}_{TYPE}.md`
+
+### 3a. Gather CI Evidence (if available)
+
+Check the PR body for linked CI/test runs. If found:
+
+1. Fetch step-level data for the PR run:
+   ```bash
+   gh api repos/OWNER/REPO/actions/jobs/JOB_ID \
+     --jq '{name, steps: [.steps[] | {name, conclusion, started_at, completed_at}]}'
+   ```
+
+2. Find a recent baseline run on `main` for the same workflow to compare
+   against (look at the workflow's recent runs via `gh run list`).
+
+3. Note any step timing anomalies, cache behavior differences, or status
+   changes between the PR run and the baseline.
+
+This evidence will be used during the review to validate or disprove
+hypotheses formed from the diff. See the "Evidence-Based Review" section
+in `REVIEW_GUIDELINES.md` for the full methodology.
+
+If no CI runs are linked or discoverable, proceed with code-only review
+and note hypotheses as conditional (with suggested verification steps).
 
 ### 4. Perform Review
 

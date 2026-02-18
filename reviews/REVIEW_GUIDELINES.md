@@ -176,6 +176,70 @@ Is this a correctness/security issue?
 
 ---
 
+## Evidence-Based Review (CI Validation)
+
+When CI run data is available, use it to validate findings from the diff.
+Code-only review can produce false positives — CI logs provide ground truth.
+
+### Process
+
+1. **Form hypotheses from the diff.** When reading changes, note potential
+   behavioral impacts:
+   - Removed env var → might break a downstream step
+   - Changed paths → might break caching or artifact collection
+   - Added/removed CMake flags → might change build behavior
+   - Reordered steps → might break dependencies
+
+2. **Gather evidence.** If the PR links a CI run (or one is discoverable on
+   the branch), fetch step-level data:
+   ```bash
+   # Get step timings and status for a specific job
+   gh api repos/OWNER/REPO/actions/jobs/JOB_ID \
+     --jq '{steps: [.steps[] | {name, conclusion, started_at, completed_at}]}'
+   ```
+   Also find a recent baseline run on `main` for the same workflow to compare
+   against.
+
+3. **Test hypotheses.** Compare the PR run against the baseline:
+   - **Step timings** — Large increases may indicate missing caching,
+     unnecessary work, or configuration regressions. Note that different VM
+     sizes can affect timings, so focus on relative patterns (e.g., a step
+     going from 51s to 0s) rather than absolute values.
+   - **Cache behavior** — Compare save/restore step durations. A cache save
+     of 0s when the baseline saves data is a strong signal that cache
+     configuration is broken.
+   - **Step presence/absence** — New steps, missing steps, or steps that
+     changed from pass to fail.
+   - **Log output** — When step timings alone aren't conclusive, check actual
+     log output for specific markers (cmake flags, error messages, warnings).
+
+4. **Calibrate findings based on evidence:**
+   - Hypothesis confirmed by CI data → keep finding, cite evidence
+   - Hypothesis disproven by CI data → remove finding or downgrade to
+     informational note
+   - Unexpected pattern in CI data → investigate as potential new finding
+
+### What to Compare
+
+| Signal | Where to Look | What It Indicates |
+|--------|---------------|-------------------|
+| Cache save duration (0s vs >0s) | Save cache step timing | Cache configuration broken |
+| Build step duration (large delta) | Build step timing | Missing optimization, extra work, or VM difference |
+| Step conclusion changes | Step status field | Regression or flaky behavior |
+| cmake configure output | Configure step logs | Flag differences, missing options |
+| Artifact sizes | Upload step logs or artifact listings | Missing or extra content |
+
+### When CI Data Is Not Available
+
+If no CI run is linked or discoverable, note hypotheses as conditional:
+> "If ccache is not configured to write within `$OUTPUT_DIR/caches`, the
+> cache save step will be ineffective. **Verify by checking Save cache
+> step timing in a CI run.**"
+
+This makes the finding actionable without asserting certainty.
+
+---
+
 ## Review Structure Template
 
 ```markdown
