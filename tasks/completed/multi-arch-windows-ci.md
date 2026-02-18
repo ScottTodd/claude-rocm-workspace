@@ -5,12 +5,14 @@ repositories:
 
 # Multi-Arch Windows CI Workflows
 
-- **Status:** Not started
+- **Status:** Complete
 - **Priority:** P1 (High)
 - **Started:** 2026-02-11
+- **Completed:** 2026-02-18
 - **Issue:** https://github.com/ROCm/TheRock/issues/3325
 - **Parent issue:** https://github.com/ROCm/TheRock/issues/3323
 - **Depends on:** Linux multi-arch pipeline (already landed)
+- **PRs:** #3400, #3402, #3436, #3443
 
 ## Overview
 
@@ -22,12 +24,12 @@ Windows needs the same treatment.
 
 ## Goals
 
-- [ ] Create `multi_arch_build_portable_windows.yml` (staged build pipeline)
-- [ ] Create `multi_arch_ci_windows.yml` (orchestration: build + test)
-- [ ] Uncomment and wire up Windows in `multi_arch_ci.yml`
-- [ ] Verify `configure_ci.py` multi-arch output works for Windows variants
-- [ ] End-to-end test via `workflow_dispatch` on a branch
-- [ ] Trim redundant setup steps and align with style guides (both platforms)
+- [x] Create `multi_arch_build_portable_windows.yml` (staged build pipeline) — #3443
+- [x] Create `multi_arch_ci_windows.yml` (orchestration: build + test) — #3443
+- [x] Uncomment and wire up Windows in `multi_arch_ci.yml` — #3443
+- [x] Verify `configure_ci.py` multi-arch output works for Windows variants — CI run 22081356438
+- [x] End-to-end test via `workflow_dispatch` on a branch — CI run 22081356438
+- [ ] Trim redundant setup steps and align with style guides (both platforms) — deferred to Workstream 2
 
 ## Context
 
@@ -664,16 +666,15 @@ approach on the existing single-arch Windows workflows too.
 - Unrelated breakage from PR #2045 merge (spdlog/amd-llvm) blocked multi-arch
   Linux CI. Not a Windows-specific issue — see investigation notes in session.
 
-## Next Steps
+## Completion Summary
 
-**Workstream 1 (stand up pipeline):**
+**Workstream 1 (stand up pipeline) — all complete:**
 1. [x] Draft `multi_arch_build_portable_windows.yml` (3 stages)
 2. [x] Draft `multi_arch_ci_windows.yml` (build + test orchestration)
 3. [x] Update `multi_arch_ci.yml` (wire up Windows, add to ci_summary)
-4. [~] Test via `workflow_dispatch` on branch — **run 22074572979 in progress**
-5. [ ] Check compiler-runtime and math-libs results from run 22074572979
-6. [ ] Decide preset vs Python compiler selection based on CI results
-7. [ ] Squash/clean up commits for PR
+4. [x] Test via `workflow_dispatch` on branch — run 22081356438 passed
+5. [x] Preset approach adopted (PR #3402), Python compiler selection dropped
+6. [x] Squash/clean up commits → PR #3443 merged 2026-02-18
 
 ## Job Timing Metrics
 
