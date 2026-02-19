@@ -490,6 +490,34 @@ This is generic infrastructure — not TheRock-specific. An off-the-shelf soluti
 
 CloudFront should set `TTL=0` on `*/index.html` paths so listings are always fresh.
 
+### Alternatives Considered
+
+**A. Keep generating indexes client-side (status quo)**
+
+Each CI workflow generates index HTML locally and uploads it alongside raw files. This is what `post_build_upload.py` does today via `index_log_files()`, `index_artifact_files()`, and the `third-party/indexer` dependency.
+
+Rejected because: the multi-arch CI doesn't use `post_build_upload.py` at all (it uses `artifact_manager.py push`), so we'd need to duplicate the index generation logic or shoehorn it in. Also, index generation is coupled to uploading, making both harder to test or change.
+
+**B. Client-side JavaScript directory listing**
+
+Deploy a single static HTML file that uses JavaScript to call S3's `ListObjectsV2` API at browse time, rendering directory listings dynamically in the browser. Projects like [s3-bucket-listing](https://github.com/rufuspollock/s3-bucket-listing) and [s3-autoindex](https://github.com/sgtFloyd/s3-autoindex) implement this pattern.
+
+Rejected because: requires `ListBucket` access from browsers (public access + CORS on the bucket). More importantly, some of our tooling scrapes index pages rather than interfacing with S3 directly — especially relevant as we move toward CloudFront, where the S3 list API wouldn't be available. Static HTML indexes that work through CloudFront are more useful.
+
+**C. Layout-aware Lambda (server knows TheRock structure)**
+
+A Lambda that knows the run outputs layout — artifact groups, log directory nesting, cross-references between output types (e.g., log index parent link → artifact index for the same group). It would generate specialized indexes with cross-navigation links.
+
+Rejected because: coupling the server-side to the layout creates forward/backward compatibility issues. We'll be adding new files and folders over time and may change directory nesting. If the Lambda needs to understand the structure, every layout change requires coordinating client and server updates. A generic file lister avoids this entirely.
+
+**D. S3 static website hosting built-in indexes**
+
+S3's static website hosting feature can serve `index.html` when a "directory" is requested, but it does not auto-generate directory listings. You must provide your own `index.html` at each level. So this doesn't solve the generation problem — it only helps with serving, which CloudFront already handles.
+
+**Selected: Generic Lambda on S3 events (Option E)**
+
+A Lambda triggered by S3 `PutObject` events that simply lists objects at a prefix and generates a static `index.html` with filenames, sizes, and timestamps. Completely generic — works for any directory structure, no TheRock-specific knowledge, no coordination needed when the layout changes. [s3-directory-listing](https://github.com/razorjack/s3-directory-listing) is an existing implementation of this pattern.
+
 ### Scope Boundaries
 
 | In scope for #3331 | Out of scope |
