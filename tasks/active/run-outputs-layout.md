@@ -444,3 +444,63 @@ This is problematic because:
 **Review:** `reviews/local_006_fetch-artifacts-backend.md` - APPROVED
 
 **Next:** Resume `OutputLocation` work on `run-outputs-locations` branch with cleaner foundations. The `fetch_artifacts.py` refactoring resolves the leaky abstraction issue where it was directly accessing S3 via `run_root.bucket` and `run_root.prefix`.
+
+## Design: Server-Side Index Generation (#3331)
+
+**Issue:** https://github.com/ROCm/TheRock/issues/3331
+**Parent:** https://github.com/ROCm/TheRock/issues/3344 (move S3 scripts server-side)
+
+### Problem
+
+`post_build_upload.py` currently generates index HTML files client-side (in the workflow) before uploading them alongside raw outputs. This has several problems:
+
+1. **Multi-arch CI gap** — The new multi-arch CI (`multi_arch_build_*_artifacts.yml`) uses `artifact_manager.py push` for artifacts but has no log/index/manifest upload at all. Adding index generation there means duplicating the logic.
+2. **Coupling** — Index generation is tangled with uploading, making it hard to test or change either independently.
+3. **Fragility** — The `indexer.py` dependency and link-rewriting hack (`a href=".."` → artifact index cross-reference) are brittle.
+
+### Design Principle
+
+**Client-side knows the layout; server-side knows how to list files.**
+
+- Upload scripts decide *where* files go (using `RunOutputRoot` as the structure authority).
+- The server-side index generator is completely generic — like Apache's `mod_autoindex`. It lists what's at a prefix, shows filenames/sizes/timestamps, and writes `index.html`. It knows nothing about TheRock, artifact groups, or cross-references.
+- Standard `..` parent links provide navigation between levels. No cross-reference rewriting.
+
+### Changes
+
+**Client-side (PR for #3331):**
+
+Remove index generation from the upload path:
+- Remove `index_log_files()` — generates log directory index, rewrites parent links
+- Remove `index_artifact_files()` — generates artifact directory index
+- Remove the `indexer.py` dependency (`sys.path.append` for `third-party/indexer`)
+- Keep all upload functions unchanged — they still upload raw files (artifacts, logs, manifests) to the same S3 paths
+
+This is a net deletion from `post_build_upload.py`. The upload path becomes: archive ninja logs → upload artifacts → upload logs → upload manifest → write GHA summary.
+
+**Server-side (separate work, #3344):**
+
+Deploy a Lambda triggered by S3 `PutObject` events that:
+1. Determines the "directory" prefix from the uploaded object's key
+2. Lists objects at that prefix via `ListObjectsV2`
+3. Generates `index.html` with file listing (name, size, last modified)
+4. Writes it back to the same prefix
+
+This is generic infrastructure — not TheRock-specific. An off-the-shelf solution like [s3-directory-listing](https://github.com/razorjack/s3-directory-listing) could work, or a minimal custom Lambda.
+
+CloudFront should set `TTL=0` on `*/index.html` paths so listings are always fresh.
+
+### Scope Boundaries
+
+| In scope for #3331 | Out of scope |
+|---|---|
+| Remove index generation from `post_build_upload.py` | Lambda implementation (#3344) |
+| Remove `indexer.py` dependency | CloudFront configuration |
+| Remove link-rewriting code | Adding log/manifest upload to multi-arch CI |
+| | `RunOutputRoot` refactoring (parallel work) |
+
+### Sequencing
+
+1. **#3331 PR** — Remove client-side index generation (net deletion, low risk)
+2. **#3344** — Deploy server-side index Lambda (generic, no TheRock coupling)
+3. **Parallel** — Land `RunOutputRoot`/`OutputLocation`, extend multi-arch CI upload story
