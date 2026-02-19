@@ -527,8 +527,21 @@ A Lambda triggered by S3 `PutObject` events that simply lists objects at a prefi
 | Remove link-rewriting code | Adding log/manifest upload to multi-arch CI |
 | | `RunOutputRoot` refactoring (parallel work) |
 
+### Spectrum of Server-Side Sophistication
+
+The generic file-lister Lambda is the starting point, not the end state. There's a spectrum:
+
+1. **Generic directory lister** (start here) — Lists files at a prefix with name/size/timestamp. No knowledge of what's being uploaded. Works for any layout, zero maintenance. Like `mod_autoindex`.
+
+2. **Content-aware index pages** — The nightly tarball index at `https://therock-nightly-tarball.s3.amazonaws.com/index.html` already has sorting/filtering specific to the file types present. As CI outputs grow, we may want similar treatment — e.g., grouping artifacts by GPU family, showing only `.tar.xz` files in one section and logs in another.
+
+3. **Workflow run dashboard** — A summary page per run that updates dynamically as builds complete. Shows CI configuration (which jobs, why), commit/branch/PR links, pending/completed job status, artifact listings, test report summaries with links to logs. Similar to [EngFlow Build Dashboard](https://www.engflow.com/product/buildDashboard), Google's Sponge, or Buildkite job summary pages. This would require either a more sophisticated static page generator (Lambda that understands build metadata) or a dynamic web server.
+
+The design principle still holds across all three levels: **start generic, add domain knowledge only when there's a concrete need.** Level 1 is #3331/#3344 scope. Levels 2-3 are future work that builds on the same S3 event infrastructure.
+
 ### Sequencing
 
 1. **#3331 PR** — Remove client-side index generation (net deletion, low risk)
 2. **#3344** — Deploy server-side index Lambda (generic, no TheRock coupling)
 3. **Parallel** — Land `RunOutputRoot`/`OutputLocation`, extend multi-arch CI upload story
+4. **Future** — Evolve server-side toward content-aware indexes and/or workflow run dashboards as needs arise
