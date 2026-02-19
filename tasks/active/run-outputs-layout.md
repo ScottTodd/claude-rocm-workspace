@@ -5,11 +5,12 @@ repositories:
 
 # Run Outputs Layout Consolidation
 
-- **Status:** In Review
+- **Status:** Ready for PR
 - **Priority:** P2 (Medium)
 - **Started:** 2026-01-19
-- **Branch:** `run-outputs` (15 commits)
-- **PR:** https://github.com/ROCm/TheRock/pull/3000
+- **Branch:** `run-outputs-locations-2` (fresh start, 1 commit: d6fb9ff7)
+- **Previous attempts:** `run-outputs` (PR #3000, stale), `run-outputs-locations` (stale)
+- **PR:** TBD
 
 ## Overview
 
@@ -545,3 +546,38 @@ The design principle still holds across all three levels: **start generic, add d
 2. **#3344** — Deploy server-side index Lambda (generic, no TheRock coupling)
 3. **Parallel** — Land `RunOutputRoot`/`OutputLocation`, extend multi-arch CI upload story
 4. **Future** — Evolve server-side toward content-aware indexes and/or workflow run dashboards as needs arise
+
+## Future Work: Move AWS CLI Calls from Workflows to Python Scripts
+
+### Problem
+
+Workflow YAML files like `.github/workflows/release_windows_packages.yml` directly run `aws s3 cp` commands inline:
+
+```yaml
+aws s3 cp ${{ env.BUILD_DIR }}/packages/dist/ s3://${{ env.S3_BUCKET_PY }}/${{ env.S3_SUBDIR }}/${{ matrix.target_bundle.amdgpu_family }}/ \
+```
+
+This has several issues:
+1. Path construction is duplicated in YAML (hard to test, hard to refactor)
+2. Inline shell commands in workflows bypass all the Python abstractions we've built
+3. No single source of truth — some uploads go through `run_outputs.py`, others through ad-hoc f-strings in YAML
+
+### Vision
+
+Nearly all workflow jobs upload through code paths from `run_outputs.py`. The workflow:
+
+1. **CI workflows** — Build artifacts, logs, manifests, python packages → upload to CI buckets via `run_outputs.py` code paths
+2. **Release workflows** — Copy files from CI buckets to release buckets (a simple bucket-to-bucket promotion)
+
+### Approach
+
+- Move `aws s3 cp` commands from workflow YAML into Python scripts that use boto3
+- Python scripts use `RunOutputRoot` / `OutputLocation` for path computation
+- Workflows become thin plumbing: set env vars, call Python scripts
+- This aligns with the "share code at script level, not workflow level" principle
+
+### Candidates for Migration
+
+- `release_windows_packages.yml` — inline `aws s3 cp` for python package upload
+- Other release workflows with similar patterns (TBD — need to audit)
+- `upload_test_report_script.py` — already migrated to `RunOutputRoot` but still uses `aws s3 cp` CLI instead of boto3
