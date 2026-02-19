@@ -5,10 +5,10 @@ repositories:
 
 # Run Outputs Layout Consolidation
 
-- **Status:** Ready for PR
+- **Status:** Ready for review, then PR
 - **Priority:** P2 (Medium)
 - **Started:** 2026-01-19
-- **Branch:** `run-outputs-locations-2` (fresh start, 1 commit: d6fb9ff7)
+- **Branch:** `run-outputs-locations-2` (3 commits on main)
 - **Previous attempts:** `run-outputs` (PR #3000, stale), `run-outputs-locations` (stale)
 - **PR:** TBD
 
@@ -445,6 +445,63 @@ This is problematic because:
 **Review:** `reviews/local_006_fetch-artifacts-backend.md` - APPROVED
 
 **Next:** Resume `OutputLocation` work on `run-outputs-locations` branch with cleaner foundations. The `fetch_artifacts.py` refactoring resolves the leaky abstraction issue where it was directly accessing S3 via `run_root.bucket` and `run_root.prefix`.
+
+### 2026-02-19 — Fresh start on `run-outputs-locations-2`
+
+Abandoned old branches (`run-outputs`, `run-outputs-locations`) and started fresh from main. All work in one session across 3 commits.
+
+**Commit 1: `d6fb9ff7` — Core + first wave of migrations**
+
+New files:
+- `run_outputs.py` (+361): `OutputLocation`, `RunOutputRoot`, `_retrieve_bucket_info()`
+- `run_outputs_test.py` (+448, 41 tests)
+- `post_build_upload_test.py` (+290, 13 tests) — became possible because RunOutputRoot makes upload functions independently testable
+- `run_outputs_layout.md` (+121): documentation
+
+Migrated:
+- `artifact_backend.py` — backends take `RunOutputRoot` instead of individual kwargs
+- `post_build_upload.py` — all upload functions take `run_root: RunOutputRoot`
+- `upload_test_report_script.py` — replaced `retrieve_bucket_info` import
+- Test files updated for new constructors (artifact_backend_test, artifact_manager_tool_test)
+
+Lesson learned: initially over-deleted tests in `artifact_backend_test.py` (removed test cases that exercised .tar.zst variants, S3 filtering, etc.). User caught this in review — "keep the changes limited to what we needed for the migration." Rewrote to only change constructor calls. Diff went from 243 line changes to 68.
+
+**Commit 2: `4bd5abc3` — Remove `retrieve_bucket_info` from `github_actions_utils`**
+
+User pointed out the duplication: "I still see a retrieve_bucket_info function in github_actions_utils. We originally moved that into run_outputs.py to hide it as an implementation detail."
+
+Migrated 4 remaining callers:
+- `fetch_artifacts.py` — also fixed broken old-style `S3Backend()` constructor (would have failed at runtime, but tests didn't cover `run()`)
+- `find_artifacts_for_commit.py` — surgical: kept `ArtifactRunInfo` dataclass unchanged, just changed data source
+- `upload_pytorch_manifest.py` and `upload_python_packages.py`
+
+Deleted `retrieve_bucket_info()` (-107 lines) and its 10 tests (-167 lines). Equivalent coverage in `run_outputs_test.py`. Updated stale comments referencing the old function name.
+
+**Commit 3: `a6703558` — Replace `UploadPath` with `OutputLocation`**
+
+User: "I think we should go further and have upload_python_packages and upload_pytorch_manifest use properly registered paths and not call `f"{run_root.prefix}/manifests/{amdgpu_family}"` (the very style of inlined fstring path construction we're trying to get rid of)."
+
+- Deleted `UploadPath` dataclass from both scripts (they were mini-`OutputLocation` duplicates)
+- `upload_python_packages.py` → `run_root.python_packages(ag)` returns `OutputLocation`
+- `upload_pytorch_manifest.py` → `run_root.manifest_dir(ag)` returns `OutputLocation`
+- Added `manifest_dir()` to `RunOutputRoot` (directory, vs `manifest()` which is the specific `therock_manifest.json` file)
+
+**Overall stats:** 16 files changed, +1393 / -522. Tests: 291 passed, 1 skipped.
+
+**Remaining duplicate:** `ArtifactRunInfo` in `find_artifacts_for_commit.py` still has `s3_path`, `s3_uri`, `s3_index_url` properties that reimplement `RunOutputRoot`/`OutputLocation`. Deeper refactor deferred.
+
+**Next:** Review code together, decide squash vs keep 3 commits, open PR.
+
+### Future work: Move AWS CLI calls from workflows to Python scripts
+
+(Notes from user, 2026-02-19)
+
+Workflow YAML files like `release_windows_packages.yml` directly run `aws s3 cp` inline. Should move to Python scripts using boto3. Vision: nearly all workflow jobs upload through `run_outputs.py` code paths, then release workflows copy from CI buckets to release buckets.
+
+Candidates:
+- `release_windows_packages.yml` — inline `aws s3 cp` for python package upload
+- Other release workflows with similar patterns (need audit)
+- `upload_test_report_script.py` — already uses `RunOutputRoot` but still shells out to `aws` CLI
 
 ## Design: Server-Side Index Generation (#3331)
 
