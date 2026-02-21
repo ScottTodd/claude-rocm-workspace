@@ -136,8 +136,8 @@ The distinction is about **packaging behavior**, not build ordering or
 optionality.
 
 **Sysdeps** (`third-party/sysdeps/`):
-- C libraries normally available from the OS package manager (zlib, zstd,
-  elfutils, libdrm, numactl, hwloc, ncurses, gmp, mpfr, expat, etc.)
+- Libraries (zlib, zstd, elfutils, libdrm, numactl, hwloc, ncurses, gmp,
+  mpfr, expat, etc.) — may also be available via OS package managers
 - Built with SONAME rewriting (`rocm_sysdeps_*` prefix), symbol versioning
   (`AMDROCM_SYSDEPS_1.0`), and installed into `lib/rocm_sysdeps/`
 - Consumed via `THEROCK_BUNDLED_*` variables in `RUNTIME_DEPS` — variables
@@ -148,8 +148,8 @@ optionality.
   zlib, zstd)
 
 **Third-party libs** (`third-party/` top-level):
-- C++ libraries NOT typically available as OS packages (fmt, spdlog,
-  flatbuffers, googletest, etc.)
+- Libraries not typically available as OS packages (fmt, spdlog, flatbuffers,
+  googletest, etc.)
 - Built as normal CMake targets, consumed via `BUILD_DEPS` (`therock-spdlog`,
   `therock-fmt`, etc.)
 - No SONAME rewriting or special install prefix
@@ -182,26 +182,14 @@ distinction is packaging behavior, not build stage.
 | gmp, mpfr, expat, ncurses | debug-tools (rocgdb) |
 
 The compiler needs several sysdeps (zlib, zstd, elfutils, libdrm, numactl) but
-that's not the reason they're sysdeps — they're sysdeps because they're system C
-libraries that need special packaging treatment for portable distribution.
+that's not the reason they're sysdeps — they're sysdeps because they need
+special packaging treatment for portable distribution.
 
-### Follow-up: documentation
+### Follow-up: documentation — PR #3548
 
-The existing docs don't explain the sysdeps-vs-libs distinction:
-- `third-party/sysdeps/linux/README.md` covers the packaging behavior (SONAME
-  rewriting, symbol versioning, install prefix)
-- `third-party/sysdeps/common/README.md` is one line
-- `docs/development/dependencies.md` covers per-library find_package patterns
-- No `third-party/sysdeps/README.md` exists at the directory level
-
-TODO: Add a `third-party/sysdeps/README.md` explaining:
-1. Why sysdeps are separate from other third-party deps (packaging behavior)
-2. Point to `docs/development/dependencies.md` for per-library details
-3. Point to `linux/README.md` for Linux-specific packaging details
-
-Also consider fixing the `BUILD_TOPOLOGY.toml` description for
-`third-party-libs` — something like "Third-party C++ build dependencies"
-instead of "Optional third-party libraries (for tests/specific features)".
-
-Blocked on branch availability — need to set up git worktrees to work on
-docs in parallel with other branches.
+Addressed by PR #3548 (in review):
+- Created `third-party/sysdeps/README.md` explaining the distinction
+- Added overview section to `docs/development/dependencies.md` framing the
+  two categories
+- Fixed `BUILD_TOPOLOGY.toml` artifact group descriptions and added section
+  comments in the artifacts block
