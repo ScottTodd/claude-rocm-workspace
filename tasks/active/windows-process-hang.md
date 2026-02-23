@@ -92,17 +92,22 @@ unloaded), this blocks forever.
 
 #### Why Linux Doesn't Hang
 
-On Linux, the CLR has a full `RuntimeTearDown` global destructor
-(`clr/rocclr/platform/runtime.cpp` line ~114) that runs registered teardown
-callbacks and calls `Runtime::tearDown()` → `Hsa::shut_down()`. This properly
-drains and cleans up GPU work.
+On Linux, the CLR uses the HSA (ROCR) runtime backend. The `RuntimeTearDown`
+global destructor (`clr/rocclr/platform/runtime.cpp` line ~114) runs registered
+teardown callbacks and calls `Runtime::tearDown()` → `Hsa::shut_down()`. This
+properly drains and cleans up GPU work.
 
-**On Windows, this entire teardown body is compiled out:**
+**On Windows, the runtime stack is entirely different: CLR uses PAL (Platform
+Abstraction Layer), not HSA/ROCR.** PAL is AMD's proprietary GPU abstraction
+used by their Windows driver stack. The teardown paths, device management, and
+stream synchronization all go through PAL rather than HSA.
+
+Additionally, the `RuntimeTearDown` destructor body is compiled out on Windows:
 
 ```cpp
 RuntimeTearDown::~RuntimeTearDown() {
 #if !defined(_WIN32) && !defined(BUILD_STATIC_LIBS)
-  // ... full teardown ...
+  // ... full teardown (HSA path) ...
   Runtime::tearDown();
 #endif
 }
@@ -110,7 +115,12 @@ RuntimeTearDown::~RuntimeTearDown() {
 
 Instead, Windows relies on `DllMain(DLL_PROCESS_DETACH)` in
 `clr/hipamd/src/hip_runtime.cpp`, which only calls `ihipDestroyDevice()` (deletes
-device handles). This is far less thorough — no stream draining, no HSA shutdown.
+device handles via PAL). This is far less thorough — no stream draining, no
+orderly PAL device shutdown.
+
+**Important:** Because Windows uses PAL, the hang likely involves PAL-level
+stream/fence synchronization primitives, not HSA signals. Debugging will need
+to look at PAL's wait mechanisms, not HSA's.
 
 #### Why `torch.cuda.synchronize()` Fixes It
 
@@ -178,15 +188,17 @@ crashes).
 
 6. **Compare DLL unload order**
    - Use Loader Snaps (`gflags +sls`) or Process Monitor to trace DLL unload
-   - Is `hsa-runtime64.dll` or `amd_comgr.dll` being unloaded before
+   - Is `amd_comgr.dll` or a PAL-related DLL being unloaded before
      `amdhip64.dll` finishes its atexit handler?
    - DLL unload order on Windows is non-deterministic and a known source of
      shutdown bugs
 
 7. **Test the RuntimeTearDown hypothesis**
    - Remove the `!defined(_WIN32)` guard from `RuntimeTearDown::~RuntimeTearDown()`
-   - Does enabling the full Linux-style teardown on Windows fix the hang?
-   - Or does it crash (which would explain why it was disabled)?
+   - Note: this teardown calls into HSA paths, but Windows uses PAL — it likely
+     won't work as-is and may need a PAL-specific teardown path
+   - Does enabling it crash? What specific call fails?
+   - This may be more informative about WHY it was disabled than a viable fix
 
 ### Phase 3: Develop a Fix
 
@@ -197,9 +209,11 @@ Based on Phase 2 findings, likely approaches (in order of preference):
      skip it with `#if !defined(_WIN32)` or make it non-blocking
    - Simplest fix, lowest risk
 
-9. **Fix B: Enable `RuntimeTearDown` on Windows**
-   - If the proper teardown sequence makes the sync work correctly, enable it
-   - Higher risk — may need to handle DLL unload ordering carefully
+9. **Fix B: Implement proper PAL-aware teardown on Windows**
+   - The existing `RuntimeTearDown` calls HSA paths that don't apply on Windows
+   - Would need a PAL-specific teardown that properly drains streams and shuts
+     down PAL devices before the atexit sync runs
+   - Higher risk and effort — requires understanding PAL's shutdown requirements
 
 10. **Fix C: Add `torch.cuda.synchronize()` to PyTorch's atexit**
     - Register a Python atexit handler that syncs all devices before CLR's atexit
@@ -222,10 +236,14 @@ Based on Phase 2 findings, likely approaches (in order of preference):
 
 ```
 # CLR / HIP runtime (likely fix location)
-D:/projects/TheRock/rocm-systems/projects/clr/hipamd/src/hip_platform.cpp    # __hipUnregisterFatBinary
-D:/projects/TheRock/rocm-systems/projects/clr/hipamd/src/hip_runtime.cpp     # DllMain
+D:/projects/TheRock/rocm-systems/projects/clr/hipamd/src/hip_platform.cpp    # __hipUnregisterFatBinary + SyncAllStreams
+D:/projects/TheRock/rocm-systems/projects/clr/hipamd/src/hip_runtime.cpp     # DllMain (DLL_PROCESS_DETACH)
 D:/projects/TheRock/rocm-systems/projects/clr/hipamd/src/hip_device.cpp      # ihipDestroyDevice
-D:/projects/TheRock/rocm-systems/projects/clr/rocclr/platform/runtime.cpp    # RuntimeTearDown
+D:/projects/TheRock/rocm-systems/projects/clr/rocclr/platform/runtime.cpp    # RuntimeTearDown (compiled out on Windows)
+
+# PAL backend (Windows GPU abstraction — the actual runtime stack on Windows)
+# PAL source is in the driver stack; need to identify relevant files for
+# stream sync, fence wait, and device teardown
 
 # PyTorch (alternative fix location)
 # torch/csrc/cuda/Module.cpp    # CUDA/HIP module init
@@ -246,9 +264,14 @@ Key evidence chain:
 1. `torch.cuda.synchronize()` fixes the hang → pending async work is the trigger
 2. `RuntimeTearDown` is compiled out on Windows → no proper stream draining
 3. `__hipUnregisterFatBinary` atexit handler calls `SyncAllStreams(true)` → blocks
-4. DLL unload order non-deterministic → runtime may be partially torn down
-5. `os._exit()` doesn't work but `os.kill(SIGTERM)` does → suggests the hang is
-   in a signal-interruptible wait (possibly a Windows event or semaphore)
+4. Windows uses PAL backend (not HSA) → teardown paths are entirely different
+5. DLL unload order non-deterministic → PAL or runtime DLLs may be partially torn down
+6. `os._exit()` doesn't work but `os.kill(SIGTERM)` does → suggests the hang is
+   in a signal-interruptible wait (possibly a Windows event or PAL fence)
+
+**Open question:** The `SyncAllStreams` hypothesis is based on source reading and
+is plausible but unconfirmed. The actual hang point could be elsewhere in the PAL
+stack. Phase 1 (stack traces) is essential before committing to a fix direction.
 
 ## Blockers & Issues
 
