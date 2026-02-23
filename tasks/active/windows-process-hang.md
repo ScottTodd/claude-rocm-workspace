@@ -148,89 +148,123 @@ crashes).
 
 ## Investigation Plan
 
-### Phase 1: Confirm the Hypothesis
+Strategy: progressively narrow from "PyTorch hangs" to a minimal C/C++ HIP
+reproducer that can be handed to the PAL or CLR teams. Each phase produces
+concrete evidence that guides the next. Stop early if a phase already reveals
+the fix.
 
-**Goal:** Prove the hang is in `SyncAllStreams` inside `__hipUnregisterFatBinary`.
+### Phase 1: Observe the Hang (no source changes)
+
+**Goal:** Get hard evidence of where the process is stuck.
 
 1. **Get a stack trace of the hung process**
-   - Use Process Explorer or WinDbg to attach to a hung `python.exe`
+   - Run the 3-line Python repro, wait for hang
+   - Attach WinDbg or Process Explorer to the hung `python.exe`
    - `~*k` in WinDbg to dump all thread stacks
-   - Look for `SyncAllStreams`, `__hipUnregisterFatBinary`, or similar in the stack
-   - Note: the "heisenbug" behavior with `breakpoint()` might not apply to
-     post-mortem attach — attaching to an already-hung process should be fine
+   - Record which function(s) are blocked and in which DLL
+   - Note: attaching to an already-hung process should be fine — the heisenbug
+     (termination when `breakpoint()` is added) shouldn't apply post-mortem
 
-2. **Use AMD logging to trace shutdown**
-   - `AMD_LOG_LEVEL=4` — verbose HIP runtime logging
-   - `HIP_TRACE_API=1` — trace all HIP API calls
-   - Look for the last HIP call before the hang
-   - Check if `__hipUnregisterFatBinary` appears in the log
+2. **Use AMD logging to trace the shutdown sequence**
+   - `AMD_LOG_LEVEL=4` — verbose HIP/CLR logging
+   - `HIP_TRACE_API=1` — trace HIP API calls
+   - Look for the last log line before silence (= the hang point)
+   - Does `__hipUnregisterFatBinary` appear? `SyncAllStreams`? Something else?
 
-3. **Instrument `__hipUnregisterFatBinary` directly**
-   - Add `fprintf(stderr, ...)` before and after `SyncAllStreams` in
-     `clr/hipamd/src/hip_platform.cpp`
-   - Rebuild CLR/HIP and test with the minimal repro
-   - Confirm whether the hang is before, during, or after the sync
+**Checkpoint:** After Phase 1 we should know the specific function and DLL where
+the hang occurs. If it's not where we expect, reassess before continuing.
 
-### Phase 2: Narrow the Root Cause
+### Phase 2: Build a Minimal C++ Reproducer
 
-**Goal:** Understand WHY `SyncAllStreams` hangs.
+**Goal:** Strip away PyTorch and reproduce the hang with pure HIP C++ code.
 
-4. **Check what's pending on the streams**
-   - Add logging inside `SyncAllStreams` to print stream count, pending operations
-   - Is it waiting on a specific stream? A specific operation type?
-   - Does the underlying `hipStreamSynchronize` or PAL-level wait actually hang,
-     or is it some higher-level locking issue?
+3. **Understand what `torch.randn(1, 1, device="cuda")` does at the HIP level**
+   - Use `HIP_TRACE_API=1` output from Phase 1 to get the sequence of HIP calls
+   - Key calls are likely: `hipSetDevice`, `hipMalloc`, `hipLaunchKernel` (for
+     the RNG kernel), and possibly `hipMemcpy` / `hipStreamCreate`
+   - Note which calls are async (return before GPU work completes)
 
-5. **Test with `__hipUnregisterFatBinary` sync disabled**
-   - Comment out the `SyncAllStreams` call in `__hipUnregisterFatBinary`
-   - Does the process exit cleanly? Does it crash instead?
-   - This tells us whether the sync is the proximate cause vs a symptom
+4. **Write a minimal HIP C++ program that reproduces the hang**
+   - Start with just the HIP calls identified in step 3
+   - Compile with `hipcc` on Windows, run, check if it hangs on exit
+   - Iteratively simplify: remove calls until the hang disappears, then add
+     the last one back — that's the trigger
+   - Candidate minimal repro structure:
+     ```cpp
+     #include <hip/hip_runtime.h>
+     int main() {
+         hipSetDevice(0);
+         void* ptr;
+         hipMalloc(&ptr, sizeof(float));
+         // launch a trivial kernel? just the alloc?
+         // does it hang here on exit without hipDeviceSynchronize()?
+         return 0;
+     }
+     ```
+   - Test variants: with/without `hipDeviceSynchronize()` before return,
+     with/without a kernel launch, with/without `hipFree`
 
-6. **Compare DLL unload order**
-   - Use Loader Snaps (`gflags +sls`) or Process Monitor to trace DLL unload
-   - Is `amd_comgr.dll` or a PAL-related DLL being unloaded before
-     `amdhip64.dll` finishes its atexit handler?
-   - DLL unload order on Windows is non-deterministic and a known source of
-     shutdown bugs
+5. **If pure HIP doesn't reproduce, try adding library calls**
+   - `torch.randn` may go through rocRAND, MIOpen, or hipBLAS
+   - Try adding `rocrand` calls to the C++ repro
+   - Or try loading/unloading `amdhip64.dll` dynamically to simulate what
+     Python's `ctypes.CDLL` does
 
-7. **Test the RuntimeTearDown hypothesis**
-   - Remove the `!defined(_WIN32)` guard from `RuntimeTearDown::~RuntimeTearDown()`
-   - Note: this teardown calls into HSA paths, but Windows uses PAL — it likely
-     won't work as-is and may need a PAL-specific teardown path
-   - Does enabling it crash? What specific call fails?
-   - This may be more informative about WHY it was disabled than a viable fix
+**Checkpoint:** If we have a C++ reproducer, we can file it directly with the
+CLR/PAL team. If we can't reproduce outside PyTorch, the bug may be in
+PyTorch's specific usage pattern (e.g., atexit ordering, DLL load method).
 
-### Phase 3: Develop a Fix
+### Phase 3: Narrow Within the Runtime
 
-Based on Phase 2 findings, likely approaches (in order of preference):
+**Goal:** Pinpoint the mechanism — is it the sync, a lock, DLL ordering, etc.?
 
-8. **Fix A: Remove or guard the `SyncAllStreams` in `__hipUnregisterFatBinary`**
-   - If the sync is unnecessary on Windows (since the OS reclaims GPU resources),
-     skip it with `#if !defined(_WIN32)` or make it non-blocking
-   - Simplest fix, lowest risk
+6. **If we have a C++ repro: instrument and vary**
+   - Add `hipDeviceSynchronize()` before `return` — does it fix it? (matches
+     the `torch.cuda.synchronize()` workaround)
+   - Add `hipDeviceReset()` before `return` — does it fix it?
+   - Try `_exit(0)` vs normal `return` — does `_exit` avoid the hang?
+     (Tests whether the hang is in atexit handlers vs static destructors)
+   - Vary compilation: static vs dynamic linking of HIP runtime
 
-9. **Fix B: Implement proper PAL-aware teardown on Windows**
-   - The existing `RuntimeTearDown` calls HSA paths that don't apply on Windows
-   - Would need a PAL-specific teardown that properly drains streams and shuts
-     down PAL devices before the atexit sync runs
-   - Higher risk and effort — requires understanding PAL's shutdown requirements
+7. **If we don't have a C++ repro: narrow within PyTorch**
+   - Write a C++ program that `LoadLibrary("torch_hip.dll")` and calls a
+     minimal sequence through PyTorch's C++ API
+   - Or write a Python extension (.pyd) that does the equivalent of `torch.randn`
+     but with explicit HIP calls, to isolate whether PyTorch's Python layer
+     matters
+   - Check whether the bug requires PyTorch's atexit handlers to be registered
 
-10. **Fix C: Add `torch.cuda.synchronize()` to PyTorch's atexit**
-    - Register a Python atexit handler that syncs all devices before CLR's atexit
-    - Workaround at the PyTorch level — doesn't fix the HIP runtime bug
-    - But pragmatic if the CLR fix takes time to land
+8. **Test specific hypotheses with CLR source changes**
+   - Only after we understand the hang point from stack traces (Phase 1)
+   - If `SyncAllStreams` in `__hipUnregisterFatBinary`: comment it out, test
+   - If a PAL fence wait: add timeout logging
+   - If a lock: check for deadlock (two threads, lock ordering)
+   - Each change should be minimal and test one thing
 
-11. **Fix D: Use `TerminateProcess` instead of waiting**
-    - In `__hipUnregisterFatBinary`, if running during process exit (detectable
-      via `DLL_PROCESS_DETACH` reserved parameter), skip the sync
-    - Standard Windows pattern: many libraries skip cleanup during process exit
+**Checkpoint:** By now we should have either a root-cause-level understanding or
+a clean reproducer + stack traces to hand off.
 
-### Phase 4: Validate and Upstream
+### Phase 4: Fix and Validate
 
-12. **Run PyTorch unit tests without the `os.kill` workaround**
-13. **Test on multiple GPU architectures** (gfx1100, gfx1151)
-14. **Submit fix PR** to appropriate repo (CLR or PyTorch)
-15. **Remove TheRock workaround** once fix is available
+**Goal:** Ship a fix and remove the workaround.
+
+9. **Develop a fix in the appropriate layer**
+   - If it's a CLR/PAL bug: fix in CLR, PR to ROCm/clr
+   - If it's a PyTorch teardown ordering issue: fix in PyTorch, PR upstream
+   - If it's a fundamental Windows DLL unload issue: may need a workaround
+     at the PyTorch level (register an atexit sync) even if the root cause
+     is in CLR
+
+10. **Validate the fix**
+    - Minimal C++ repro exits cleanly
+    - Python 3-line repro exits cleanly
+    - PyTorch unit tests complete without `os.kill` workaround
+    - Test on available GPU architectures (gfx1100, gfx1151)
+
+11. **Remove the TheRock workaround**
+    - Remove `force_exit_with_code()` from `run_pytorch_tests.py`
+    - Remove `*exit_code.txt` machinery from CI workflow
+    - Update skip lists if any tests were skipped due to this bug
 
 ## Directories/Files Involved
 
@@ -292,7 +326,12 @@ stack. Phase 1 (stack traces) is essential before committing to a fix direction.
 
 ## Next Steps
 
-1. [ ] Attach WinDbg/Process Explorer to hung `python.exe` and get stack traces
-2. [ ] Run minimal repro with `AMD_LOG_LEVEL=4` to see shutdown sequence
-3. [ ] Instrument `__hipUnregisterFatBinary` with logging and rebuild CLR
-4. [ ] Test with `SyncAllStreams` disabled on Windows
+Phase 1 (no source changes needed):
+1. [ ] Attach WinDbg to hung `python.exe` → get all-threads stack trace (`~*k`)
+2. [ ] Run minimal repro with `AMD_LOG_LEVEL=4 HIP_TRACE_API=1` → capture log
+3. [ ] From the HIP trace, extract the sequence of HIP API calls that `torch.randn` makes
+
+Phase 2 (build a handoff-ready reproducer):
+4. [ ] Write minimal HIP C++ program using the call sequence from step 3
+5. [ ] Iterate: simplify until we have the smallest program that hangs
+6. [ ] Confirm `hipDeviceSynchronize()` before return fixes the C++ repro too
