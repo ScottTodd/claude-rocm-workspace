@@ -153,115 +153,146 @@ reproducer that can be handed to the PAL or CLR teams. Each phase produces
 concrete evidence that guides the next. Stop early if a phase already reveals
 the fix.
 
-### Phase 1: Observe the Hang (no source changes)
+### Phase 1: Find the Simplest PyTorch Trigger
 
-**Goal:** Get hard evidence of where the process is stuck.
+**Goal:** Before tracing or instrumenting anything, find which PyTorch operations
+trigger the hang. `torch.randn` is the known repro but it's deceptively complex
+(RNG state init, Philox kernel, possibly rocRAND). A simpler trigger means fewer
+HIP calls to trace and a shorter path to a C++ reproducer.
 
-1. **Get a stack trace of the hung process**
-   - Run the 3-line Python repro, wait for hang
+1. **Test a matrix of simple PyTorch operations**
+
+   Run each as a standalone script, record: hangs? exits? timeout threshold?
+
+   ```
+   # Category: device init only
+   a) torch.cuda.is_available()
+   b) torch.cuda.device_count()
+   c) torch.cuda.set_device(0)
+
+   # Category: memory allocation (no compute)
+   d) torch.empty(1, device="cuda")
+   e) torch.zeros(1, device="cuda")            # may or may not launch a kernel
+   f) torch.tensor([1.0], device="cuda")        # host-to-device copy
+
+   # Category: compute (kernel launch)
+   g) a = torch.ones(1, device="cuda"); b = a + a   # add kernel
+   h) torch.randn(1, device="cuda")                  # RNG kernel (known repro)
+
+   # Category: explicit cleanup variations
+   i) torch.empty(1, device="cuda"); del tensor       # explicit del
+   j) torch.empty(1, device="cuda"); torch.cuda.empty_cache()
+   ```
+
+   For each one that hangs, also test if adding `torch.cuda.synchronize()`
+   before exit fixes it.
+
+2. **Identify the boundary**
+   - If (a-c) hang: the bug triggers on device init alone — very useful
+   - If (d-f) hang but not (a-c): memory allocation is the trigger
+   - If (g-h) hang but not (d-f): kernel launch is required
+   - The simplest hanging case becomes our reference repro going forward
+
+**Checkpoint:** We now know the simplest PyTorch operation that triggers the
+hang. This tells us roughly what HIP-level activity is involved (device init?
+alloc? kernel launch?) before we even look at traces.
+
+### Phase 2: Observe the Hang (no source changes)
+
+**Goal:** Get hard evidence of where the process is stuck, using the simplest
+repro from Phase 1.
+
+3. **Get a stack trace of the hung process**
+   - Run the simplest hanging repro from Phase 1, wait for hang
    - Attach WinDbg or Process Explorer to the hung `python.exe`
    - `~*k` in WinDbg to dump all thread stacks
    - Record which function(s) are blocked and in which DLL
    - Note: attaching to an already-hung process should be fine — the heisenbug
      (termination when `breakpoint()` is added) shouldn't apply post-mortem
 
-2. **Use AMD logging to trace the shutdown sequence**
+4. **Use AMD logging to trace the shutdown sequence**
    - `AMD_LOG_LEVEL=4` — verbose HIP/CLR logging
    - `HIP_TRACE_API=1` — trace HIP API calls
+   - Run the simplest hanging repro — fewer calls = cleaner trace
    - Look for the last log line before silence (= the hang point)
    - Does `__hipUnregisterFatBinary` appear? `SyncAllStreams`? Something else?
 
-**Checkpoint:** After Phase 1 we should know the specific function and DLL where
-the hang occurs. If it's not where we expect, reassess before continuing.
+**Checkpoint:** We now know both the simplest trigger AND the exact hang point.
 
-### Phase 2: Build a Minimal C++ Reproducer
+### Phase 3: Build a Minimal C++ Reproducer
 
 **Goal:** Strip away PyTorch and reproduce the hang with pure HIP C++ code.
 
-3. **Understand what `torch.randn(1, 1, device="cuda")` does at the HIP level**
-   - Use `HIP_TRACE_API=1` output from Phase 1 to get the sequence of HIP calls
-   - Key calls are likely: `hipSetDevice`, `hipMalloc`, `hipLaunchKernel` (for
-     the RNG kernel), and possibly `hipMemcpy` / `hipStreamCreate`
-   - Note which calls are async (return before GPU work completes)
+5. **Extract the HIP call sequence from Phase 2 traces**
+   - From the `HIP_TRACE_API=1` log, list every HIP call the simplest repro makes
+   - This should be a short list if Phase 1 narrowed well (e.g., if `torch.empty`
+     is sufficient, it's likely just `hipSetDevice` + `hipMalloc`)
 
-4. **Write a minimal HIP C++ program that reproduces the hang**
-   - Start with just the HIP calls identified in step 3
+6. **Write a minimal HIP C++ program and iterate**
+   - Start with the full call sequence from step 5
    - Compile with `hipcc` on Windows, run, check if it hangs on exit
-   - Iteratively simplify: remove calls until the hang disappears, then add
-     the last one back — that's the trigger
-   - Candidate minimal repro structure:
-     ```cpp
-     #include <hip/hip_runtime.h>
-     int main() {
-         hipSetDevice(0);
-         void* ptr;
-         hipMalloc(&ptr, sizeof(float));
-         // launch a trivial kernel? just the alloc?
-         // does it hang here on exit without hipDeviceSynchronize()?
-         return 0;
-     }
-     ```
-   - Test variants: with/without `hipDeviceSynchronize()` before return,
-     with/without a kernel launch, with/without `hipFree`
+   - If it hangs: simplify (remove calls one at a time)
+   - If it doesn't hang: the difference is in how PyTorch loads/uses HIP
+     (DLL load method, atexit registration, threading, etc.)
+   - Test variants:
+     - with/without `hipDeviceSynchronize()` before return
+     - with/without `hipFree` / `hipDeviceReset`
+     - `_exit(0)` vs normal `return` (atexit handlers vs static destructors)
+     - static vs dynamic linking of HIP runtime
 
-5. **If pure HIP doesn't reproduce, try adding library calls**
-   - `torch.randn` may go through rocRAND, MIOpen, or hipBLAS
-   - Try adding `rocrand` calls to the C++ repro
-   - Or try loading/unloading `amdhip64.dll` dynamically to simulate what
-     Python's `ctypes.CDLL` does
+7. **If pure HIP doesn't reproduce, escalate incrementally**
+   - Add library calls matching what PyTorch uses (rocRAND, hipBLAS, etc.)
+   - Try `LoadLibrary("amdhip64.dll")` + `GetProcAddress` to match Python's
+     `ctypes.CDLL` loading pattern
+   - Try registering a dummy atexit handler before/after HIP init
 
-**Checkpoint:** If we have a C++ reproducer, we can file it directly with the
-CLR/PAL team. If we can't reproduce outside PyTorch, the bug may be in
-PyTorch's specific usage pattern (e.g., atexit ordering, DLL load method).
+**Checkpoint:** If we have a C++ reproducer, we can hand it directly to the
+CLR/PAL team. If we can't reproduce outside PyTorch, the bug is in PyTorch's
+specific usage pattern and we narrow from there (Phase 4 step 8).
 
-### Phase 3: Narrow Within the Runtime
+### Phase 4: Narrow Within the Runtime
 
 **Goal:** Pinpoint the mechanism — is it the sync, a lock, DLL ordering, etc.?
 
-6. **If we have a C++ repro: instrument and vary**
-   - Add `hipDeviceSynchronize()` before `return` — does it fix it? (matches
-     the `torch.cuda.synchronize()` workaround)
-   - Add `hipDeviceReset()` before `return` — does it fix it?
-   - Try `_exit(0)` vs normal `return` — does `_exit` avoid the hang?
-     (Tests whether the hang is in atexit handlers vs static destructors)
-   - Vary compilation: static vs dynamic linking of HIP runtime
+Only reach this phase if Phases 1-3 haven't already given us enough to hand off
+or fix directly.
 
-7. **If we don't have a C++ repro: narrow within PyTorch**
+8. **If we don't have a C++ repro: narrow within PyTorch**
    - Write a C++ program that `LoadLibrary("torch_hip.dll")` and calls a
      minimal sequence through PyTorch's C++ API
-   - Or write a Python extension (.pyd) that does the equivalent of `torch.randn`
-     but with explicit HIP calls, to isolate whether PyTorch's Python layer
-     matters
+   - Or write a Python extension (.pyd) that does the equivalent of the
+     simplest hanging op but with explicit HIP calls, to isolate whether
+     PyTorch's Python layer matters
    - Check whether the bug requires PyTorch's atexit handlers to be registered
 
-8. **Test specific hypotheses with CLR source changes**
-   - Only after we understand the hang point from stack traces (Phase 1)
+9. **Test specific hypotheses with CLR source changes**
+   - Only after we understand the hang point from stack traces (Phase 2)
    - If `SyncAllStreams` in `__hipUnregisterFatBinary`: comment it out, test
    - If a PAL fence wait: add timeout logging
    - If a lock: check for deadlock (two threads, lock ordering)
    - Each change should be minimal and test one thing
 
 **Checkpoint:** By now we should have either a root-cause-level understanding or
-a clean reproducer + stack traces to hand off.
+a clean reproducer + stack traces to hand off to the CLR/PAL team.
 
-### Phase 4: Fix and Validate
+### Phase 5: Fix and Validate
 
 **Goal:** Ship a fix and remove the workaround.
 
-9. **Develop a fix in the appropriate layer**
-   - If it's a CLR/PAL bug: fix in CLR, PR to ROCm/clr
-   - If it's a PyTorch teardown ordering issue: fix in PyTorch, PR upstream
-   - If it's a fundamental Windows DLL unload issue: may need a workaround
-     at the PyTorch level (register an atexit sync) even if the root cause
-     is in CLR
+10. **Develop a fix in the appropriate layer**
+    - If it's a CLR/PAL bug: fix in CLR, PR to ROCm/clr
+    - If it's a PyTorch teardown ordering issue: fix in PyTorch, PR upstream
+    - If it's a fundamental Windows DLL unload issue: may need a workaround
+      at the PyTorch level (register an atexit sync) even if the root cause
+      is in CLR
 
-10. **Validate the fix**
-    - Minimal C++ repro exits cleanly
+11. **Validate the fix**
+    - Minimal C++ repro exits cleanly (if we have one)
     - Python 3-line repro exits cleanly
     - PyTorch unit tests complete without `os.kill` workaround
     - Test on available GPU architectures (gfx1100, gfx1151)
 
-11. **Remove the TheRock workaround**
+12. **Remove the TheRock workaround**
     - Remove `force_exit_with_code()` from `run_pytorch_tests.py`
     - Remove `*exit_code.txt` machinery from CI workflow
     - Update skip lists if any tests were skipped due to this bug
@@ -326,12 +357,15 @@ stack. Phase 1 (stack traces) is essential before committing to a fix direction.
 
 ## Next Steps
 
-Phase 1 (no source changes needed):
-1. [ ] Attach WinDbg to hung `python.exe` → get all-threads stack trace (`~*k`)
-2. [ ] Run minimal repro with `AMD_LOG_LEVEL=4 HIP_TRACE_API=1` → capture log
-3. [ ] From the HIP trace, extract the sequence of HIP API calls that `torch.randn` makes
+Phase 1 (find simplest PyTorch trigger):
+1. [ ] Run the test matrix (device init, alloc, compute, etc.) — find the boundary
+2. [ ] Confirm `torch.cuda.synchronize()` fixes whichever is simplest
 
-Phase 2 (build a handoff-ready reproducer):
-4. [ ] Write minimal HIP C++ program using the call sequence from step 3
-5. [ ] Iterate: simplify until we have the smallest program that hangs
-6. [ ] Confirm `hipDeviceSynchronize()` before return fixes the C++ repro too
+Phase 2 (observe the hang on simplest trigger):
+3. [ ] Attach WinDbg to hung process → get all-threads stack trace (`~*k`)
+4. [ ] Run simplest repro with `AMD_LOG_LEVEL=4 HIP_TRACE_API=1` → capture log
+
+Phase 3 (build a handoff-ready C++ reproducer):
+5. [ ] Extract HIP call sequence from Phase 2 trace
+6. [ ] Write minimal HIP C++ program, iterate to smallest hanging version
+7. [ ] Hand off to CLR/PAL team if we get a clean repro
