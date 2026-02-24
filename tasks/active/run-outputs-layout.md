@@ -604,6 +604,21 @@ The design principle still holds across all three levels: **start generic, add d
 3. **Parallel** — Land `RunOutputRoot`/`OutputLocation`, extend multi-arch CI upload story
 4. **Future** — Evolve server-side toward content-aware indexes and/or workflow run dashboards as needs arise
 
+## Next Up: UploadBackend Abstraction
+
+**Status:** Drafted plan, not yet started
+**Plan file:** `.claude/plans/bright-sauteeing-cat.md`
+
+Replace `aws s3 cp` subprocess calls in upload scripts with an `UploadBackend` abstraction (S3 and local implementations). Design approach: write ideal call-site code first (`upload_artifacts()` etc.), then build the system underneath.
+
+Key ideas:
+- `UploadBackend` ABC with `upload_file(source, dest: OutputLocation)` and `upload_directory(source_dir, dest, include=[...])`
+- Content-type inferred from file extension inside the backend (callers don't specify)
+- `S3UploadBackend` (boto3) and `LocalUploadBackend` (shutil.copy2) implementations
+- Add `RunOutputRoot.root()` → `OutputLocation` for the run root prefix
+- Dry-run support via constructor flag
+- Migrate all 4 upload scripts: `post_build_upload.py`, `upload_python_packages.py`, `upload_test_report_script.py`, `upload_pytorch_manifest.py`
+
 ## Future Work: Move AWS CLI Calls from Workflows to Python Scripts
 
 ### Problem
