@@ -187,6 +187,12 @@ git log -1 --stat
 - Git submodules are used extensively
 - When editing build configs, check both source tree and build tree caches
 
+#### Running Git in Other Directories
+
+- Use `git -C <path>` instead of `cd <path> && git ...`
+- This matches existing Bash permission rules and avoids unnecessary permission prompts
+- Example: `git -C /d/projects/TheRock log --oneline -10` (not `cd /d/projects/TheRock && git log --oneline -10`)
+
 ### Review Workflow
 
 Code reviews happen at two levels: **comprehensive reviews** (full PR/branch analysis) and **inline reviews** (quick feedback during iteration).
