@@ -63,7 +63,11 @@ D:/projects/TheRock/build_tools/ci/       # CI support scripts
 
 ### Phase 1: Quantitative Analysis
 
-TODO: Analyze recent CI runs to measure per-job overhead breakdown:
+Two parts: per-job overhead breakdown and volume/impact modeling.
+
+#### 1a: Per-Job Overhead Breakdown
+
+Analyze recent CI runs to measure per-job overhead breakdown:
 
 - **Setup/checkout time** — How long does repo checkout + submodule init take?
 - **Artifact download time** — How long to fetch build artifacts?
@@ -71,6 +75,35 @@ TODO: Analyze recent CI runs to measure per-job overhead breakdown:
 - **Software installation** — What gets installed at job start? How long?
 - **Test environment setup** — Python env, dependencies, etc.
 - **Teardown/upload** — Result upload, cleanup
+
+#### 1b: Volume & Impact Model
+
+Measure the aggregate picture to show concrete queue time impact:
+
+- **Jobs per workflow run** — How many test jobs does a single CI run produce?
+- **Workflow runs per day** — How many CI runs are triggered daily?
+- **Runner pool size** — How many self-hosted GPU runners are available?
+- **Actual test time vs overhead** — What fraction of each job is real work?
+
+Use these to model queue time impact. Example calculation:
+
+```
+Given:
+  10 runners, 50 workflow runs/day, 15 test jobs/workflow run
+  4 min actual test + 1 min overhead = 5 min/job
+
+Total job-minutes/day:  50 × 15 × 5 = 3,750 min
+Runner capacity/day:    10 × 24 × 60 = 14,400 min
+Queue pressure:         3,750 / 14,400 = 26% utilization (just test jobs)
+
+If overhead drops from 1 min → 30 sec:
+  Total job-minutes/day:  50 × 15 × 4.5 = 3,375 min  (saves 375 min/day)
+  That's 6.25 runner-hours freed per day
+```
+
+The real numbers will be different (and utilization is likely much higher once
+build jobs, other workloads, and bursty arrival patterns are factored in), but
+this kind of model makes the case for optimization concrete and prioritizable.
 
 ### Phase 2: Identify Optimization Opportunities
 
@@ -127,5 +160,7 @@ Ideas to evaluate:
 
 1. [ ] Pull timing data from recent CI runs (GitHub Actions API or log analysis)
 2. [ ] Create a breakdown table of overhead per job type
-3. [ ] Prioritize optimization opportunities by impact vs effort
-4. [ ] Prototype the highest-impact optimization (likely artifact caching)
+3. [ ] Measure volume: jobs per workflow, workflow runs per day, runner pool size
+4. [ ] Build impact model showing queue time savings from overhead reduction
+5. [ ] Prioritize optimization opportunities by impact vs effort
+6. [ ] Prototype the highest-impact optimization (likely artifact caching)
