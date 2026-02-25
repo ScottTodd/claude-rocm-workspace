@@ -5,12 +5,12 @@ repositories:
 
 # Run Outputs Layout Consolidation
 
-- **Status:** Ready for review, then PR
+- **Status:** Draft PR submitted, CI running
 - **Priority:** P2 (Medium)
 - **Started:** 2026-01-19
-- **Branch:** `run-outputs-locations-2` (3 commits on main)
+- **Branch:** `run-outputs-locations-2` (18 commits on main)
 - **Previous attempts:** `run-outputs` (PR #3000, stale), `run-outputs-locations` (stale)
-- **PR:** TBD
+- **PR:** https://github.com/ROCm/TheRock/pull/3596 (draft)
 
 ## Overview
 
@@ -492,6 +492,35 @@ User: "I think we should go further and have upload_python_packages and upload_p
 
 **Next:** Review code together, decide squash vs keep 3 commits, open PR.
 
+### 2026-02-24 — Polish, tests, and draft PR (#3596)
+
+Picked up from previous session which had left uncommitted changes for `lookup_workflow_run`.
+
+**Commits 8-18 (polish and hardening):**
+
+- `30af4c64` — Made `from_workflow_run()` GitHub API lookup opt-in (`lookup_workflow_run=False` default). Fixed test env isolation for `_retrieve_bucket_info`.
+- `647d4268` — Style cleanup: removed unused `PurePosixPath` import, moved inlined `import tempfile` to top-level, added `UploadBackend` type annotation.
+- `6e23d417` — Rewrote `run_outputs_layout.md`: added architecture overview (three-layer design), all 8 consumers in upload/download tables, fixed misleading "calls GitHub API" comment, documented `lookup_workflow_run`.
+- `e4a8cc19` — Added ASCII bucket selection flowchart to docs.
+- `d5b5b37e` — Improved doc readability: keyword args in examples (`artifact_group=`), hyperlinks for file references.
+- `4f79a462` — Added TODO to `upload_test_report_script.py` for future UploadBackend migration.
+- `9c8aab94` — Added RELEASE_TYPE allowlist validation (`dev`, `nightly`, `prerelease`).
+- `516574bd` — Used `root().s3_uri` instead of `artifact("").s3_uri.rstrip("/")` hack in `artifact_backend.py`. Reverted unrelated `os.getenv` → `os.environ.get` change.
+- `b807f4b1` — Simplified `upload_directory`: unified glob/filter branches, replaced `PurePosixPath` with `.as_posix()`.
+- `50f5c550` + `10a91bcd` — Added tests for `upload_python_packages.py` (5 tests) and `upload_pytorch_manifest.py` (10 tests). Removed tests for `_make_run_root` internal helper.
+
+**Branch review:** `reviews/local_015_run-outputs-locations-2.md` — no blocking issues.
+
+**Final stats:** 18 commits, 20 files changed, +2688 / -676 lines. 354 tests pass (up from 291). Test-to-implementation ratio ~3.7:1 on net new lines.
+
+**Draft PR:** https://github.com/ROCm/TheRock/pull/3596 — CI queued.
+
+**Remaining out-of-scope items:**
+- Migrate `upload_test_report_script.py` to UploadBackend (TODO added)
+- Deduplicate S3 client init between upload/download backends
+- Lazy import of `gha_query_workflow_run_by_id`
+- Project-wide logging convergence
+
 ### Future work: Move AWS CLI calls from workflows to Python scripts
 
 (Notes from user, 2026-02-19)
@@ -604,20 +633,14 @@ The design principle still holds across all three levels: **start generic, add d
 3. **Parallel** — Land `RunOutputRoot`/`OutputLocation`, extend multi-arch CI upload story
 4. **Future** — Evolve server-side toward content-aware indexes and/or workflow run dashboards as needs arise
 
-## Next Up: UploadBackend Abstraction
+## UploadBackend Abstraction — DONE
 
-**Status:** Drafted plan, not yet started
-**Plan file:** `.claude/plans/bright-sauteeing-cat.md`
-
-Replace `aws s3 cp` subprocess calls in upload scripts with an `UploadBackend` abstraction (S3 and local implementations). Design approach: write ideal call-site code first (`upload_artifacts()` etc.), then build the system underneath.
-
-Key ideas:
-- `UploadBackend` ABC with `upload_file(source, dest: OutputLocation)` and `upload_directory(source_dir, dest, include=[...])`
-- Content-type inferred from file extension inside the backend (callers don't specify)
-- `S3UploadBackend` (boto3) and `LocalUploadBackend` (shutil.copy2) implementations
-- Add `RunOutputRoot.root()` → `OutputLocation` for the run root prefix
-- Dry-run support via constructor flag
-- Migrate all 4 upload scripts: `post_build_upload.py`, `upload_python_packages.py`, `upload_test_report_script.py`, `upload_pytorch_manifest.py`
+Implemented as part of PR #3596. All key ideas from the plan were realized:
+- `UploadBackend` ABC with `upload_file()` and `upload_directory()`
+- `S3UploadBackend` (boto3, retry, dry-run) and `LocalUploadBackend` (shutil.copy2)
+- Content-type inferred from extension inside the backend
+- `RunOutputRoot.root()` added
+- 3 of 4 upload scripts migrated; `upload_test_report_script.py` deferred (TODO added)
 
 ## Future Work: Move AWS CLI Calls from Workflows to Python Scripts
 
