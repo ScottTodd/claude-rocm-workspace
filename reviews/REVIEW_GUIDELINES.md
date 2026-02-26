@@ -383,6 +383,7 @@ For PRs that add tests or documentation, consult the detailed guidelines:
 | GitHub Actions workflows | [guidelines/github_actions.md](guidelines/github_actions.md) |
 | General PR hygiene | [guidelines/pr_hygiene.md](guidelines/pr_hygiene.md) |
 | Common PR patterns | [guidelines/pr_patterns.md](guidelines/pr_patterns.md) |
+| Security (secrets, injection) | [guidelines/security.md](guidelines/security.md) |
 
 ### Quick Reference: Test Anti-Patterns (BLOCKING)
 
@@ -401,6 +402,15 @@ These documentation issues should always be marked **BLOCKING**:
 1. **Stale information** - Specific counts, percentages, version numbers that will change
 2. **Generic instructions** - Don't duplicate how to use pytest/unittest; link to official docs
 3. **Wrong location** - Testing practices belong in style guides, not nested READMEs
+
+### Quick Reference: Security Red Flags (BLOCKING)
+
+These security issues should always be marked **BLOCKING**:
+
+1. **Committed secrets** - Private keys (`.gpg`, `.pem`, `.key`, `.p12`), API keys, passwords, tokens
+2. **Unverified binary files** - Binary `.gpg` keyrings, keystores, or other opaque files that could contain private material must be inspected before merge
+3. **Command injection** - `system()` or `eval` with unsanitized user input
+4. **Unsanitized `source`/`eval`** - Config files sourced without validation execute arbitrary code
 
 ---
 
@@ -429,3 +439,8 @@ Before finalizing a review, verify:
 - [ ] No stale information (counts, percentages, versions)
 - [ ] Not duplicating standard tool documentation
 - [ ] Documentation in correct location (style guide vs nested README)
+
+**Security (always check):** See [guidelines/security.md](guidelines/security.md) for full checklist
+- [ ] No private keys or credentials committed (check binary files too)
+- [ ] Binary files inspected and justified
+- [ ] No `system()`/`eval`/`source` with unsanitized input
