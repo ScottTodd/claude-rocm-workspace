@@ -5,10 +5,10 @@ repositories:
 
 # Run Outputs Layout Consolidation
 
-- **Status:** Draft PR submitted, CI running
+- **Status:** Draft PR submitted, Linux CI green, Windows CI retriggered
 - **Priority:** P2 (Medium)
 - **Started:** 2026-01-19
-- **Branch:** `run-outputs-locations-2` (18 commits on main)
+- **Branch:** `run-outputs-locations-2` (19 commits on main)
 - **Previous attempts:** `run-outputs` (PR #3000, stale), `run-outputs-locations` (stale)
 - **PR:** https://github.com/ROCm/TheRock/pull/3596 (draft)
 
@@ -520,6 +520,31 @@ Picked up from previous session which had left uncommitted changes for `lookup_w
 - Deduplicate S3 client init between upload/download backends
 - Lazy import of `gha_query_workflow_run_by_id`
 - Project-wide logging convergence
+
+### 2026-02-25 — Fix S3 upload auth for fork PRs
+
+**Problem:** CI failed on PR #3596 with `AccessDenied` on `PutObject` to
+`therock-ci-artifacts-external`. The old code used `aws s3 cp` (CLI) which
+succeeded; the new `S3UploadBackend` (boto3) failed.
+
+**Root cause:** `S3UploadBackend` explicitly checked for `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` env vars and fell back to
+`UNSIGNED` when any was missing. CI runners provide credentials via
+`AWS_SHARED_CREDENTIALS_FILE` (a `credentials.ini` mounted from the K8s
+host into the container). The `aws` CLI's credential chain picks this up
+automatically; our explicit env var check bypassed it.
+
+**Fix (`7b40e53c`):** Replaced the explicit env var check + UNSIGNED fallback
+with `boto3.client("s3")`, which uses boto3's default credential chain
+(mirrors the `aws` CLI). Added `TestS3UploadBackendCredentialResolution`
+tests that reproduce the CI credential pattern and assert the client is
+never created with `UNSIGNED` signatures.
+
+**CI re-run:** Linux passed. Windows hit a `SignatureDoesNotMatch` error
+likely caused by stale credentials from a K8s cluster restart (unrelated
+to our code change). Windows jobs retriggered.
+
+**Next:** Wait for Windows CI to pass, then mark PR ready for review.
 
 ### Future work: Move AWS CLI calls from workflows to Python scripts
 
