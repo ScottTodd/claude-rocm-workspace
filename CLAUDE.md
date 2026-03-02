@@ -120,6 +120,7 @@ These conventions keep Bash tool calls consistent with the permission rules in `
 - **Paths**: Use MSYS2-style paths: `/d/projects/...` (not `D:/projects/...`). Read/Edit/Glob paths from the system use `D:\projects\...` regardless; this only applies to Bash tool calls.
 - **Testing**: Use `python -m pytest <path>` (not bare `pytest`, not `python test_file.py`, not `cd <dir> && python -m pytest`). Passing the test path as an argument matches the single `python -m pytest:*` permission rule regardless of which directory the tests are in.
 - **Linting**: Use `pre-commit run` (not bare `pre-commit` or `python -m pre_commit`).
+- **Prefer separate tool calls over `&&` chains**: Permission matching treats `cmd1 && cmd2` as a single command string, so chained commands may not match individual rules. Use separate Bash tool calls when possible.
 
 ### Git Workflow
 
