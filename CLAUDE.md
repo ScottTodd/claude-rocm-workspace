@@ -113,6 +113,14 @@ Key principles across all languages:
 - **Validate output**: Check that operations actually succeeded
 - **DRY/YAGNI/KISS**: Don't repeat yourself, you aren't gonna need it, keep it simple
 
+### Bash Command Conventions
+
+These conventions keep Bash tool calls consistent with the permission rules in `settings.local.json`, reducing unnecessary permission prompts.
+
+- **Paths**: Use MSYS2-style paths: `/d/projects/...` (not `D:/projects/...`). Read/Edit/Glob paths from the system use `D:\projects\...` regardless; this only applies to Bash tool calls.
+- **Testing**: Use `python -m pytest <path>` (not bare `pytest`, not `python test_file.py`, not `cd <dir> && python -m pytest`). Passing the test path as an argument matches the single `python -m pytest:*` permission rule regardless of which directory the tests are in.
+- **Linting**: Use `pre-commit run` (not bare `pre-commit` or `python -m pre_commit`).
+
 ### Git Workflow
 
 #### Branch Naming
