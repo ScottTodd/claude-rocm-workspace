@@ -380,6 +380,7 @@ For PRs that add tests or documentation, consult the detailed guidelines:
 |---------|----------------|
 | Adding/modifying tests | [guidelines/tests.md](guidelines/tests.md) |
 | Adding/modifying documentation | [guidelines/documentation.md](guidelines/documentation.md) |
+| Adding/modifying artifacts | [guidelines/pr_patterns.md](guidelines/pr_patterns.md#pattern-adds-or-modifies-artifacts) |
 | GitHub Actions workflows | [guidelines/github_actions.md](guidelines/github_actions.md) |
 | General PR hygiene | [guidelines/pr_hygiene.md](guidelines/pr_hygiene.md) |
 | Common PR patterns | [guidelines/pr_patterns.md](guidelines/pr_patterns.md) |
@@ -412,6 +413,17 @@ These security issues should always be marked **BLOCKING**:
 3. **Command injection** - `system()` or `eval` with unsanitized user input
 4. **Unsanitized `source`/`eval`** - Config files sourced without validation execute arbitrary code
 
+### Quick Reference: Artifact Anti-Patterns (BLOCKING)
+
+These artifact issues should always be marked **BLOCKING**:
+
+1. **Duplicate file ownership** - Same stage path + component defined in multiple `artifact-*.toml` files, causing files to be packaged into multiple artifacts
+2. **Stale descriptor after split** - New artifact created for files previously bundled in an existing artifact, but old descriptor not updated to remove those files
+3. **Dead TOML components** - Descriptor defines components (dbg, dev, lib, etc.) that no `therock_provide_artifact()` call activates — indicates copy-paste from another descriptor
+
+**How to check:** For any stage path in a new/changed TOML, grep all
+`artifact-*.toml` for that path. Multiple hits on the same component = duplicate.
+
 ---
 
 ## Review Checklist
@@ -439,6 +451,11 @@ Before finalizing a review, verify:
 - [ ] No stale information (counts, percentages, versions)
 - [ ] Not duplicating standard tool documentation
 - [ ] Documentation in correct location (style guide vs nested README)
+
+**For PRs adding/modifying artifacts:** See [guidelines/pr_patterns.md](guidelines/pr_patterns.md#pattern-adds-or-modifies-artifacts) for full checklist
+- [ ] No duplicate component ownership across `artifact-*.toml` files (grep stage paths)
+- [ ] TOML components match what `therock_provide_artifact()` COMPONENTS activates
+- [ ] Old descriptor updated when splitting files into a new artifact
 
 **Security (always check):** See [guidelines/security.md](guidelines/security.md) for full checklist
 - [ ] No private keys or credentials committed (check binary files too)

@@ -80,6 +80,63 @@ If not addressed in description:
 
 ---
 
+## Pattern: Adds or Modifies Artifacts
+
+### Detection
+
+- New or changed `artifact-*.toml` files
+- Changes to `BUILD_TOPOLOGY.toml` (new `[artifacts.*]` entries)
+- New `therock_provide_artifact()` calls in CMakeLists.txt
+- Changes to `install_rocm_from_artifacts.py` (new `--flag` for artifact fetching)
+
+### Additional Checks
+
+**Cross-reference artifact descriptors for duplicate file ownership:**
+
+A single subproject's stage directory (e.g. `profiler/aqlprofile/stage`) may
+be referenced by multiple artifact descriptors. When a PR adds a new artifact
+for files that were previously bundled into an existing artifact, check that
+the same component+include pattern is not claimed by both.
+
+- [ ] **No duplicate component ownership** — search all `artifact-*.toml`
+  files for the same stage path (e.g. `"profiler/aqlprofile/stage"`). If
+  two descriptors define the same component (e.g. `components.test`) for the
+  same stage, files will be packaged into both artifacts.
+- [ ] **TOML components match CMake COMPONENTS** — the `therock_provide_artifact()`
+  call lists which `COMPONENTS` are activated. The TOML descriptor should only
+  define components that some artifact actually selects. Dead component
+  definitions (defined in TOML but never activated by any CMake call) are
+  noise and a copy-paste smell.
+- [ ] **Existing descriptor updated when splitting** — if test files are being
+  moved from an existing artifact (e.g. `rocprofiler-sdk`) into a new
+  dedicated artifact (e.g. `aqlprofile-tests`), the old descriptor must drop
+  the component/include for those files.
+
+**How to check:** For any stage path in the new/changed TOML, grep all
+`artifact-*.toml` files for that path:
+```bash
+grep -r "profiler/aqlprofile/stage" --include="artifact-*.toml"
+```
+If multiple files match the same component, that's a duplicate.
+
+**BUILD_TOPOLOGY.toml consistency:**
+- [ ] New artifact has correct `type` (target-specific vs target-neutral)
+- [ ] `artifact_deps` are minimal and accurate
+- [ ] `feature_group` and `disable_platforms` match related artifacts
+- [ ] `feature_name` follows convention (explicit for target-neutral, auto-generated for target-specific)
+
+**install_rocm_from_artifacts.py consistency:**
+- [ ] New `--flag` name is clear about what it fetches
+- [ ] Flag maps to the correct artifact name in `extra_artifacts`
+
+### Questions for PR Author
+
+- "Which existing artifact(s) previously packaged these files?"
+- "Was the old descriptor updated to remove the migrated components?"
+- "Does the TOML define only the components the CMake call activates?"
+
+---
+
 ## Pattern: Build System Changes
 
 ### Detection
@@ -287,6 +344,7 @@ Quick reference for which guidelines to apply:
 |-------------|------------------|
 | Test changes | pr_hygiene + tests |
 | New dependency | pr_hygiene + architecture + security |
+| Artifact changes | pr_hygiene + artifact checks (duplicate ownership, TOML/CMake alignment) |
 | Build changes | pr_hygiene + (project-specific patterns) |
 | Revert | pr_hygiene (revert section) |
 | Docs only | pr_hygiene (reduced) + documentation |
