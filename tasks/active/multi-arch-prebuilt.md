@@ -5,7 +5,7 @@ repositories:
 
 # Multi-Arch Stage-Aware Prebuilt Artifacts
 
-- **Status:** Not started
+- **Status:** In progress (Phase 1 — copy command implemented)
 - **Priority:** P1 (High)
 - **Started:** 2026-02-26
 - **Target:** TBD
@@ -355,18 +355,70 @@ mismatch for copy-forward — `fetch --stage=X` gets inbound artifacts, not
 produced artifacts. Need a new `copy` subcommand or `--fetch-produced` mode.
 S3 server-side copy (`CopyObject`) would avoid the download-upload round-trip.
 
-**Open threads for next session:**
-- Scott has baseline selection ideas not yet captured (Phase 2)
+**Open threads:**
 - Need to check the 12-input situation on `multi_arch_build_portable_linux.yml`
   (over GitHub's documented 10-input limit for reusable workflows — is it
   enforced?)
-- Priority of S3 server-side copy vs download-upload through runner
 - Scott mentioned hardcoding baseline run_ids for rocm-libraries and
   rocm-systems repos as a starting point
 
+### 2026-03-02 - copy subcommand implemented
+
+Branch `multi-arch-prebuilt-1`, commits `d9febabe` and `9d1ae32c`.
+
+**What was built:**
+- `ArtifactBackend.copy_artifact(artifact_key, source_backend)` — abstract
+  method with S3Backend (server-side copy) and LocalDirectoryBackend
+  (shutil.copy2) implementations. Runtime isinstance checks enforce
+  same-backend-type constraint.
+- `artifact_manager.py copy` subcommand — copies all produced artifacts for
+  a stage from `--source-run-id` to `--run-id`. Source bucket resolved via
+  `retrieve_bucket_info(workflow_run_id=...)`. Parallel via ThreadPoolExecutor.
+  sha256sum files copied best-effort. Supports `--dry-run`.
+- `_create_source_backend()` helper — separate from `create_backend_from_env`
+  because the source needs its own bucket resolution (different workflow run
+  may be in a different bucket).
+- 12 new tests across artifact_backend_test.py and artifact_manager_tool_test.py.
+
+**What to review before PR:**
+- Scott mentioned he'd have comments after the commit — review and refine
+- sha256sum best-effort approach: currently runs as a separate pass after
+  main artifacts copy. Could be simplified or made more robust.
+- `_create_source_backend` is a standalone function in artifact_manager.py,
+  not on the backend module. Consider whether it belongs elsewhere.
+
+**Open threads for next session:**
+- Review and refine the copy code, send as PR
+- Continue vertical spike: wire copy into workflow for "prebuilt
+  compiler-runtime → build math-libs fresh" scenario
+- Still undecided: single copy job upfront vs per-stage copy-and-exit
+
 ## Decisions & Trade-offs
 
-(to be filled as we make decisions)
+### Pipeline approach: single copy job vs per-stage copy-and-exit
+Discussed both options. Per-stage copy-and-exit (each prebuilt stage spins
+up a runner, copies, exits) pays serial VM startup overhead for chained
+stages like foundation → compiler-runtime. A single "copy-prebuilt-stages"
+job upfront avoids that overhead. **Leaning toward Option B (single copy job)**
+for the rocm-libraries use case, but not yet finalized — Scott wanted to
+discuss further after the copy command is implemented.
+
+### S3 server-side copy
+Confirmed: `s3_client.copy()` (boto3 high-level transfer manager) handles
+server-side copy with automatic multipart for >5GB objects. No download
+through the runner. Cross-bucket supported via `CopySource.Bucket`.
+
+### Source bucket resolution
+Source bucket is NOT passed explicitly. `retrieve_bucket_info(workflow_run_id=...)`
+fetches workflow run metadata from GitHub API and derives the correct bucket
+and external_repo prefix. This handles cross-repo scenarios (e.g. copying from
+`therock-ci-artifacts` to `therock-ci-artifacts-external`).
+
+### No boto3 batch copy API
+Investigated S3 Batch Operations — it's designed for millions of objects with
+async job semantics. Too heavyweight for ~50-100 artifacts. Using
+`ThreadPoolExecutor` + `s3_client.copy()` per-artifact, consistent with
+existing fetch/push patterns.
 
 ## Blockers & Issues
 
@@ -388,8 +440,9 @@ S3 server-side copy (`CopyObject`) would avoid the download-upload round-trip.
 
 ## Next Steps
 
-1. [ ] Validate fetch-and-republish approach: check that `artifact_manager.py push`
-       works with fetched (not built) artifacts
-2. [ ] Prototype Phase 1 workflow changes on a branch
-3. [ ] Test with a hardcoded baseline run_id via workflow_dispatch
-4. [ ] Design `configure_ci.py` integration for automatic stage selection
+1. [x] Implement `artifact_manager.py copy` subcommand (S3-to-S3)
+2. [ ] Review and refine copy code, send as PR
+3. [ ] Vertical spike: wire copy into multi-arch workflow for
+       "prebuilt compiler-runtime → build math-libs" scenario
+4. [ ] Test with a hardcoded baseline run_id via workflow_dispatch
+5. [ ] Design `configure_ci.py` integration for automatic stage selection
