@@ -5,7 +5,7 @@ repositories:
 
 # Run Outputs Layout Consolidation
 
-- **Status:** Draft PR submitted, Linux CI green, Windows CI retriggered
+- **Status:** Draft PR submitted, Linux CI green (upload perf fixed), Windows pending
 - **Priority:** P2 (Medium)
 - **Started:** 2026-01-19
 - **Branch:** `run-outputs-locations-2` (19 commits on main)
@@ -545,6 +545,32 @@ likely caused by stale credentials from a K8s cluster restart (unrelated
 to our code change). Windows jobs retriggered.
 
 **Next:** Wait for Windows CI to pass, then mark PR ready for review.
+
+### 2026-03-03 — Fix 10x upload regression with parallel uploads
+
+**Problem:** boto3 `upload_file()` called sequentially in `upload_directory()` took ~58 min vs ~6 min with the old `aws s3 cp --recursive` (which parallelizes 10 transfers by default).
+
+**Fix (`57cf52f4`):**
+- Added `upload_files(files: list[tuple[Path, StorageLocation]]) -> int` to `StorageBackend` ABC (sequential default)
+- `S3StorageBackend` overrides with `ThreadPoolExecutor` (10 workers, matching AWS CLI)
+- `upload_directory()` refactored to delegate to `upload_files()`
+- `max_pool_connections` on boto3 client sized to match concurrency
+- Short-circuits to sequential for dry-run, single-file, or empty list
+- 14 new tests (54 total in `storage_backend_test.py`)
+
+**CI results:** Two Linux jobs confirmed 6 minute uploads — back to parity with AWS CLI baseline.
+
+**Follow-up items (not blocking PR #3596):**
+
+1. **Upload progress logging** — Currently a ~6 min gap with no log output during log upload phase. Add an `on_progress` callback to `upload_files()` that callers use to log progress (e.g., every 50 files or 30 seconds). Callback approach keeps logging policy out of the backend. `post_build_upload.py` would pass a callback; callers that don't care just omit it.
+
+2. **Per-phase timing** — Log "Uploaded N artifacts in Xs", "Uploaded N logs in Ys" summary lines in `post_build_upload.py` so upload performance is visible at a glance.
+
+3. **Config struct** — Eventually replace individual params (`upload_concurrency`, future `download_concurrency`, `multipart_threshold`, retry params) with a config dataclass. Fine with one param for now.
+
+4. **Unify credential handling** — `artifact_backend.py` S3Backend uses explicit env var check + UNSIGNED fallback; `storage_backend.py` S3StorageBackend uses boto3 default credential chain. Should unify when migrating `artifact_manager.py` to `StorageBackend`.
+
+5. **Migrate `artifact_manager.py` to `StorageBackend`** — Requires adding `download_file()`, `list_files()` to `StorageBackend`. The compress→upload pipeline in `artifact_manager.py` would keep its own `ThreadPoolExecutor` for the pipeline orchestration, calling `backend.upload_file()` directly. The batch `upload_files()` is for simpler cases like `upload_directory()`.
 
 ### Future work: Move AWS CLI calls from workflows to Python scripts
 

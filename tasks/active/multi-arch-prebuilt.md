@@ -5,7 +5,7 @@ repositories:
 
 # Multi-Arch Stage-Aware Prebuilt Artifacts
 
-- **Status:** In progress (Phase 1 — copy command implemented)
+- **Status:** In progress (Phase 1 — copy command implemented, starting workflow plumbing)
 - **Priority:** P1 (High)
 - **Started:** 2026-02-26
 - **Target:** TBD
@@ -441,8 +441,20 @@ existing fetch/push patterns.
 ## Next Steps
 
 1. [x] Implement `artifact_manager.py copy` subcommand (S3-to-S3)
-2. [ ] Review and refine copy code, send as PR
+2. [x] Refine copy code — extracted shared helpers, multi-stage support, sha256sum pre-filter
+   - Addressed duplication findings from `reviews/local_016_multi-arch-prebuilt-1.md`
+   - Reviewed post-refactor in `reviews/local_017_multi-arch-prebuilt-1.md` (APPROVED)
+   - Remaining duplication (retry logic, `_create_source_backend`) deferred to
+     align with `run-outputs-layout` / `StorageBackend` work
 3. [ ] Vertical spike: wire copy into multi-arch workflow for
        "prebuilt compiler-runtime → build math-libs" scenario
 4. [ ] Test with a hardcoded baseline run_id via workflow_dispatch
-5. [ ] Design `configure_ci.py` integration for automatic stage selection
+5. [ ] Send copy subcommand as PR (after vertical spike proves value)
+6. [ ] Add sha256sum downloads to `fetch_artifacts.py` — currently only archives
+       are fetched; sha256sum sidecar files exist in S3 but are never downloaded.
+7. [ ] Design `configure_ci.py` integration for automatic stage selection
+
+## Branches
+
+- `multi-arch-prebuilt-1` — original 5-commit branch (preserved as-is)
+- `multi-arch-prebuilt-2` — squashed copy of prebuilt-1, used for continued work
