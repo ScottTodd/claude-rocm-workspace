@@ -436,13 +436,36 @@ existing fetch/push patterns.
    - Reviewed post-refactor in `reviews/local_017_multi-arch-prebuilt-1.md` (APPROVED)
    - Remaining duplication (retry logic, `_create_source_backend`) deferred to
      align with `run-outputs-layout` / `StorageBackend` work
-3. [ ] Vertical spike: wire copy into multi-arch workflow for
+3. [x] Vertical spike: wire copy into multi-arch workflow for
        "prebuilt compiler-runtime → build math-libs" scenario
 4. [ ] Test with a hardcoded baseline run_id via workflow_dispatch
-5. [ ] Send copy subcommand as PR (after vertical spike proves value)
-6. [ ] Add sha256sum downloads to `fetch_artifacts.py` — currently only archives
+   - Baseline run: 22655391643
+   - Test run (compiler-runtime only): 22685667001 — `pip` not found, fixed
+     with setup-python (3b4e4517). Also: foundation ran because it wasn't in
+     prebuilt list — user must specify all stages including predecessors for now.
+   - Test run (partial skip): 22685667001 — skipped stages worked after
+     adding !cancelled() && !failure() (e6ae7709). Some artifact extraction
+     failures due to known overlapping artifact files issue (not ours).
+   - Test run (all stages prebuilt): 22686926501 — copy job succeeded (185
+     artifacts + 185 sha256sums in ~16s). Cancelled prior partial-skip run
+     due to concurrency group collision.
+   - **Future:** auto-expand prebuilt_stages to include predecessor stages
+     (read stage ordering from BUILD_TOPOLOGY.toml in configure_ci.py)
+5. [ ] Clean up `use_prebuilt_artifacts` — replace with `prebuilt_stages`
+   - Consider "all" sentinel to skip `build_multi_arch_stages` entirely
+6. [ ] Fix concurrency groups for parallel dispatch testing
+   - See `tasks/active/concurrency-groups.md`
+7. [ ] Send copy subcommand as PR (after vertical spike proves value)
+8. [ ] Add sha256sum downloads to `fetch_artifacts.py` — currently only archives
        are fetched; sha256sum sidecar files exist in S3 but are never downloaded.
-7. [ ] Design `configure_ci.py` integration for automatic stage selection
+9. [ ] Design `configure_ci.py` integration for automatic stage selection
+10. [ ] Improve copy logging and workflow summary
+    - Per-stage artifact counts (not just total)
+    - Log source/dest S3 key paths (not just filenames)
+    - Explain filtered-out artifacts (e.g. "143 from non-matching families skipped")
+    - When configure_ci.py auto-selects stages: write to workflow summary
+      explaining what copies were requested and why (so users understand
+      the auto-selection logic without inspecting inputs)
 
 ## Branches
 
