@@ -118,102 +118,86 @@ see a uniform artifact set.
 baseline run automatically. We can hardcode a baseline run_id for testing, or
 pass one via `workflow_dispatch` input.
 
-#### Approach: Copy-and-Early-Exit Inside the Per-Stage Workflow
+#### Approach: Copy in Setup Job with S3 Server-Side Copy
 
-The per-stage reusable workflow (`multi_arch_build_portable_linux_artifacts.yml`)
-gains two new inputs: `use_prebuilt` (boolean) and `baseline_run_id` (string).
-When `use_prebuilt` is true, the workflow:
+The existing setup job (which already runs before all build stages) gains a
+copy step. When `prebuilt_stages` and `baseline_run_id` are provided, setup
+runs `artifact_manager.py copy` to server-side copy all prebuilt stages'
+artifacts from the baseline run_id to the current run_id in S3. Build stages
+then proceed normally — they fetch inbound artifacts via the usual
+`artifact_manager.py fetch --run-id=${{ github.run_id }}` path and find the
+copied artifacts waiting.
 
-1. Checks out the repo (needed for scripts)
-2. Installs python deps (needed for artifact_manager)
-3. Configures AWS credentials
-4. Fetches artifacts from the baseline run_id
-5. Pushes them under the current run_id
-6. Skips everything else (ccache, source fetch, cmake, build)
+Stages whose artifacts were pre-copied are skipped (via `if:` on the stage
+job). Stages that need fresh builds run unchanged.
 
-The top-level pipeline workflow (`multi_arch_build_portable_linux.yml`) stays
-**straight-line** — every stage job runs unconditionally, just as it does today.
-The build-vs-copy decision is internal to each stage's reusable workflow.
+```
+setup (configure CI matrix + copy prebuilt foundation & compiler-runtime)
+  └─> math-libs (builds fresh, fetches inbound from current run_id)
+  └─> comm-libs (builds fresh)
+  └─> ... (other stages that need building)
+```
 
-**Trade-off: VM overhead for prebuilt stages.** Each prebuilt stage still
-spins up a runner, pulls the container, and runs a few setup steps (~3-5 min
-overhead). For a rocm-libraries PR skipping foundation + compiler-runtime,
-that's ~6-10 minutes of overhead to save 1-4+ hours of build time.
+**Why this approach:**
+- **No extra job.** Reuses the existing setup job that all build stages
+  already depend on. No new dependency edges, no extra runner spin-up.
+- **No per-stage VM overhead.** The per-stage copy-and-early-exit alternative
+  would spin up a runner, pull the container, and run setup for each prebuilt
+  stage (~3-5 min each). Copying in setup does all stages in one shot.
+- **S3 server-side copy is fast.** `artifact_manager.py copy` uses
+  `s3_client.copy()` (CopyObject) — no download/upload round-trip through
+  the runner. Expected to add seconds, not minutes, to setup.
+- **Build stages stay unchanged.** No new inputs or conditions needed on
+  the per-stage reusable workflow.
+- **Splittable later.** If copy turns out to be slow in practice, the copy
+  step can be extracted to a parallel job without changing any per-stage
+  workflow logic.
 
 **Alternatives considered:**
-- **`if:` conditions at the pipeline level**: Skip prebuilt stage jobs entirely
-  (no VM cost) but pollutes the pipeline DAG with conditional logic. This is
-  the pattern used in non-multi-arch `ci_linux.yml` and is fragile — exactly
-  what multi-arch was designed to avoid.
+- **Separate `copy-prebuilt-stages` job**: Dedicated job before build stages.
+  Cleaner separation of concerns, but adds a runner spin-up and extra
+  plumbing (checkout, pip install, AWS creds) that setup already has. Can
+  migrate to this if copy latency becomes a problem.
+- **Copy-and-early-exit inside per-stage workflow**: Each prebuilt stage
+  spins up a runner, copies its own artifacts, exits. Pays VM startup
+  overhead per prebuilt stage. Rejected due to the overhead cost for
+  chained stages (foundation → compiler-runtime).
 - **Mixed run_id approach**: Downstream stages fetch from different run_ids
-  for different inbound stages. More efficient (no S3 copy) but requires
-  changes to `artifact_manager.py` (per-stage run_id mapping) and all
-  downstream plumbing. Much higher complexity.
-- **S3 server-side copy**: Use S3 CopyObject API to copy artifacts between
-  run_id prefixes without downloading to the runner. Could reduce the
-  overhead significantly. Worth investigating as a Phase 1 optimization but
-  not essential for initial implementation.
+  for different inbound stages. Most efficient (no copy at all) but requires
+  significant changes to artifact_manager and all consumers. Deferred as a
+  potential future optimization.
 
-#### Workflow Input Changes
+#### Workflow Changes
 
-**`multi_arch_build_portable_linux_artifacts.yml`** (per-stage, currently 6 inputs):
-- Add `use_prebuilt` (boolean, default: false)
-- Add `baseline_run_id` (string, default: ""): run_id to fetch prebuilt
-  artifacts from
+**`multi_arch_build_portable_linux.yml`** (pipeline):
+- Add `prebuilt_stages` input (string, default: ""): comma-separated stage names
+- Add `baseline_run_id` input (string, default: "")
+- Add `if:` conditions on stage jobs to skip stages listed in `prebuilt_stages`
 
-That brings it to 8/10 inputs.
+**Issue:** `multi_arch_build_portable_linux.yml` already has 12 `workflow_call`
+inputs, which is over GitHub's documented limit of 10 for reusable workflows.
+Need to check whether this is enforced. If so, inputs need consolidation
+before adding `prebuilt_stages` and `baseline_run_id`.
 
-**`multi_arch_build_portable_linux.yml`** (pipeline, currently 12 inputs):
-- Add `prebuilt_stages` (string, default: ""): comma-separated stage names
-- Add `baseline_run_id` (string, default: "")
+**`setup.yml`** (or wherever the setup job is defined):
+- Add copy step after CI configuration, gated on `prebuilt_stages != ''`
+- Needs AWS credentials (may already be configured) and python deps
 
-Each stage call passes `use_prebuilt: contains(inputs.prebuilt_stages, 'foundation')`
-(or similar parsing) and `baseline_run_id: inputs.baseline_run_id`.
+**`multi_arch_build_portable_linux_artifacts.yml`** (per-stage): No changes
+needed. It continues to fetch/build/push as before.
 
-**Issue:** `multi_arch_build_portable_linux.yml` already has 12 inputs, which
-is over the GitHub Actions limit of 10 for reusable workflows. Need to check
-how it currently works — it may be using `workflow_call` without the limit,
-or some inputs may need consolidation.
-
-#### Per-Stage Workflow Pseudocode
+#### Setup Job Copy Step Pseudocode
 
 ```yaml
-steps:
-  - name: Checkout Repository
-    uses: actions/checkout@...
-
-  - name: Install python deps
-    run: pip install -r requirements.txt
-
-  - name: Configure AWS Credentials
-    if: ${{ !github.event.pull_request.head.repo.fork }}
-    uses: aws-actions/configure-aws-credentials@...
-
-  # === PREBUILT PATH ===
-  - name: Copy prebuilt artifacts
-    if: ${{ inputs.use_prebuilt && !github.event.pull_request.head.repo.fork }}
-    run: |
-      python build_tools/artifact_manager.py fetch \
-        --run-id=${{ inputs.baseline_run_id }} \
-        --stage="${STAGE_NAME}" \
-        --amdgpu-families="${{ inputs.amdgpu_family }}" \
-        --output-dir="${BUILD_DIR}"
-      python build_tools/artifact_manager.py push \
-        --run-id=${{ github.run_id }} \
-        --stage="${STAGE_NAME}" \
-        --build-dir="${BUILD_DIR}"
-
-  # === BUILD PATH (all gated on !use_prebuilt) ===
-  - name: Fetch inbound artifacts
-    if: ${{ !inputs.use_prebuilt && !github.event.pull_request.head.repo.fork }}
-    run: |
-      python build_tools/artifact_manager.py fetch \
-        --run-id=${{ github.run_id }} ...
-
-  - name: Fetch sources
-    if: ${{ !inputs.use_prebuilt }}
-    ...
-  # (remaining build steps all gated on !inputs.use_prebuilt)
+# Inside existing setup job, after CI matrix configuration
+- name: Copy prebuilt artifacts
+  if: ${{ inputs.prebuilt_stages != '' && inputs.baseline_run_id != '' }}
+  run: |
+    python build_tools/artifact_manager.py copy \
+      --source-run-id=${{ inputs.baseline_run_id }} \
+      --run-id=${{ github.run_id }} \
+      --stages=${{ inputs.prebuilt_stages }} \
+      --amdgpu-families="${{ inputs.amdgpu_families }}"
 ```
 
 ### Phase 2: Baseline Run Selection (The Policy)
@@ -395,13 +379,19 @@ Branch `multi-arch-prebuilt-1`, commits `d9febabe` and `9d1ae32c`.
 
 ## Decisions & Trade-offs
 
-### Pipeline approach: single copy job vs per-stage copy-and-exit
-Discussed both options. Per-stage copy-and-exit (each prebuilt stage spins
-up a runner, copies, exits) pays serial VM startup overhead for chained
-stages like foundation → compiler-runtime. A single "copy-prebuilt-stages"
-job upfront avoids that overhead. **Leaning toward Option B (single copy job)**
-for the rocm-libraries use case, but not yet finalized — Scott wanted to
-discuss further after the copy command is implemented.
+### Where to run the copy: setup job vs separate job vs per-stage
+**Decided: copy in setup job.** S3 server-side copy is expected to be fast
+(seconds, not minutes) since CopyObject doesn't transfer data through the
+runner. Setup already has checkout, python deps, and AWS creds, and all build
+stages already depend on it — so no new plumbing needed. If copy turns out
+to be slow, it can be extracted to a parallel job later without changing
+per-stage workflows. Per-stage copy-and-early-exit was rejected due to VM
+startup overhead (~3-5 min each) for chained stages.
+
+**Runner caveat:** Setup needs S3 write access for the copy, which ubuntu-24.04
+doesn't have reliably. For the prototype, setup uses our hosted build runners.
+Long-term, consider a lightweight self-hosted runner with the right IAM role,
+or splitting copy to a separate job if queue times are a problem.
 
 ### S3 server-side copy
 Confirmed: `s3_client.copy()` (boto3 high-level transfer manager) handles
