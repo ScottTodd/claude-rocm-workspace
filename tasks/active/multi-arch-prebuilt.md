@@ -5,7 +5,7 @@ repositories:
 
 # Multi-Arch Stage-Aware Prebuilt Artifacts
 
-- **Status:** In progress (Phase 1 — copy command implemented, starting workflow plumbing)
+- **Status:** In progress (Phase 1 — workflow plumbing complete, prototype tested)
 - **Priority:** P1 (High)
 - **Started:** 2026-02-26
 - **Target:** TBD
@@ -346,6 +346,48 @@ S3 server-side copy (`CopyObject`) would avoid the download-upload round-trip.
 - Scott mentioned hardcoding baseline run_ids for rocm-libraries and
   rocm-systems repos as a starting point
 
+### 2026-03-04 - Workflow plumbing and prototype testing
+
+Wired copy into the multi-arch CI pipeline and ran prototype tests via
+workflow_dispatch. Branch `multi-arch-prebuilt-2` now has 10 commits.
+
+**What was built (session commits):**
+- `0bd27efc` Wire per-stage prebuilt artifacts into multi-arch CI workflow
+- `e083ca9e` Move prebuilt copy to separate job, keep setup.yml lightweight
+- `f74e2282` Remove copy_prebuilt_stages.py wrapper, use artifact_manager directly
+- `08acb685` Move copy job into per-platform orchestrator workflows
+- `36fbeb7f` Standardize --amdgpu-families on semicolon separator
+- `cf71140a` Add test for semicolon-separated --amdgpu-families
+- `3b4e4517` Add setup-python to copy_prebuilt_stages job
+- `e6ae7709` Allow stage jobs to run when predecessor stages are skipped
+
+**Architecture decisions made during session:**
+- Copy job lives in per-platform orchestrators (multi_arch_ci_linux.yml),
+  not in setup.yml or multi_arch_ci.yml — each platform copies its own
+  artifacts independently.
+- Eliminated the copy_prebuilt_stages.py wrapper script — the copy job
+  calls artifact_manager.py directly, using dist_amdgpu_families input.
+- Standardized --amdgpu-families on semicolons (matching configure_stage.py
+  convention) instead of commas, since no live callers used commas with
+  multiple values.
+- setup.yml stays on ubuntu-24.04 with read-only permissions — prebuilt_stages
+  input is a passthrough for future heuristics-driven defaults.
+
+**Prototype test results:**
+- Baseline run: 22655391643 (manually identified, no automated lookup yet)
+- Copy job: 185 artifacts + 185 sha256sums copied via S3 server-side copy in
+  ~16 seconds (plus runner queue time). Logging shows stage→artifact mapping,
+  source/dest S3 paths, and per-file copy progress.
+- All 8 stage skip conditions work correctly with !cancelled() && !failure()
+- Concurrency group collisions between dispatch runs confirmed as expected —
+  tracked in tasks/active/concurrency-groups.md
+
+**Bugs found and fixed:**
+- `pip: command not found` on azure-linux-scale-rocm runner → added
+  actions/setup-python (3b4e4517)
+- Downstream stages skipped when predecessor was skipped (prebuilt) →
+  added !cancelled() && !failure() to if: conditions (e6ae7709)
+
 ### 2026-03-02 - copy subcommand implemented
 
 Branch `multi-arch-prebuilt-1`, commits `d9febabe` and `9d1ae32c`.
@@ -438,7 +480,7 @@ existing fetch/push patterns.
      align with `run-outputs-layout` / `StorageBackend` work
 3. [x] Vertical spike: wire copy into multi-arch workflow for
        "prebuilt compiler-runtime → build math-libs" scenario
-4. [ ] Test with a hardcoded baseline run_id via workflow_dispatch
+4. [x] Test with a hardcoded baseline run_id via workflow_dispatch
    - Baseline run: 22655391643
    - Test run (compiler-runtime only): 22685667001 — `pip` not found, fixed
      with setup-python (3b4e4517). Also: foundation ran because it wasn't in
@@ -449,16 +491,21 @@ existing fetch/push patterns.
    - Test run (all stages prebuilt): 22686926501 — copy job succeeded (185
      artifacts + 185 sha256sums in ~16s). Cancelled prior partial-skip run
      due to concurrency group collision.
-   - **Future:** auto-expand prebuilt_stages to include predecessor stages
-     (read stage ordering from BUILD_TOPOLOGY.toml in configure_ci.py)
+
+**Immediate next steps (short-term):**
+
 5. [ ] Clean up `use_prebuilt_artifacts` — replace with `prebuilt_stages`
    - Consider "all" sentinel to skip `build_multi_arch_stages` entirely
 6. [ ] Fix concurrency groups for parallel dispatch testing
    - See `tasks/active/concurrency-groups.md`
-7. [ ] Send copy subcommand as PR (after vertical spike proves value)
-8. [ ] Add sha256sum downloads to `fetch_artifacts.py` — currently only archives
-       are fetched; sha256sum sidecar files exist in S3 but are never downloaded.
+7. [ ] Send workflow plumbing + copy subcommand as PR(s)
+
+**Medium-term (configure_ci.py integration):**
+
+8. [ ] Auto-expand prebuilt_stages to include predecessor stages
+   - Read stage ordering from BUILD_TOPOLOGY.toml in configure_ci.py
 9. [ ] Design `configure_ci.py` integration for automatic stage selection
+   - setup.yml heuristics for choosing baseline run + stages
 10. [ ] Improve copy logging and workflow summary
     - Per-stage artifact counts (not just total)
     - Log source/dest S3 key paths (not just filenames)
@@ -466,6 +513,13 @@ existing fetch/push patterns.
     - When configure_ci.py auto-selects stages: write to workflow summary
       explaining what copies were requested and why (so users understand
       the auto-selection logic without inspecting inputs)
+11. [ ] Automated baseline run lookup (find_latest_artifacts.py doesn't work
+    for multi-arch CI yet — no S3 index page generated)
+
+**Lower priority:**
+
+12. [ ] Add sha256sum downloads to `fetch_artifacts.py` — currently only archives
+       are fetched; sha256sum sidecar files exist in S3 but are never downloaded.
 
 ## Branches
 
