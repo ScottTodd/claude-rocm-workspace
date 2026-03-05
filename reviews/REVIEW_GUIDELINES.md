@@ -404,6 +404,16 @@ These documentation issues should always be marked **BLOCKING**:
 2. **Generic instructions** - Don't duplicate how to use pytest/unittest; link to official docs
 3. **Wrong location** - Testing practices belong in style guides, not nested READMEs
 
+### Quick Reference: GitHub Actions Anti-Patterns (BLOCKING)
+
+These workflow issues should always be marked **BLOCKING**:
+
+1. **Missing script dependencies** - Workflow calls a Python script but no prior step installs its non-stdlib imports (e.g., `boto3`, `packaging`). Trace imports transitively — the script may import a local module that imports the missing package.
+2. **Caller not updated** - Reusable workflow gains a new required input but callers don't pass it
+3. **Input source mismatch** - Switching from `github.event.inputs` to `inputs` breaks `workflow_dispatch`
+
+See [guidelines/github_actions.md](guidelines/github_actions.md) for full details.
+
 ### Quick Reference: Security Red Flags (BLOCKING)
 
 These security issues should always be marked **BLOCKING**:
@@ -456,6 +466,11 @@ Before finalizing a review, verify:
 - [ ] No duplicate component ownership across `artifact-*.toml` files (grep stage paths)
 - [ ] TOML components match what `therock_provide_artifact()` COMPONENTS activates
 - [ ] Old descriptor updated when splitting files into a new artifact
+
+**For PRs modifying GitHub Actions workflows:** See [guidelines/github_actions.md](guidelines/github_actions.md) for full checklist
+- [ ] Script runtime dependencies available (trace Python imports through call chain)
+- [ ] All callers of modified reusable workflows updated
+- [ ] Input propagation correct for all trigger types
 
 **Security (always check):** See [guidelines/security.md](guidelines/security.md) for full checklist
 - [ ] No private keys or credentials committed (check binary files too)

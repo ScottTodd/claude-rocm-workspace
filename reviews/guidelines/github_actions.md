@@ -10,6 +10,7 @@ Checklist for reviewing PRs that modify GitHub Actions workflows.
 | [Input propagation correct](#input-propagation) | No | BLOCKING | Requires understanding data flow |
 | [All trigger paths tested](#testing-trigger-paths) | No | BLOCKING | Each path may behave differently |
 | [No breaking changes to callers](#breaking-changes) | No | BLOCKING | Semantic changes are subtle |
+| [Script dependencies satisfied](#script-runtime-dependencies) | No | BLOCKING | Trace imports through script call chain |
 | [Permissions minimal](#permissions) | Yes | IMPORTANT | Can scan for overly broad permissions |
 | [Actions pinned](#pinned-versions) | Yes | IMPORTANT | Can detect `@main` or `@latest` |
 | [Style guide followed](#style) | Partial | SUGGESTION | Linters can catch some issues |
@@ -19,6 +20,7 @@ Checklist for reviewing PRs that modify GitHub Actions workflows.
 - Semantic correctness of input/output mappings
 - Coverage of all trigger types (dispatch, call, PR, push, schedule)
 - Regression to existing callers when modifying shared workflows
+- Script runtime dependencies (pip packages available in CI environment)
 
 **What automation can help with:**
 - Listing all callers of a reusable workflow
@@ -285,6 +287,75 @@ uses: actions/checkout@main
 
 ---
 
+## Script Runtime Dependencies
+
+### The Problem
+
+Workflows that call Python (or other) scripts must ensure all import
+dependencies are available in the CI environment. This means either:
+
+- Pre-installed in the container/runner image
+- Installed in a prior workflow step (e.g., `pip install`)
+- Listed in a requirements file that a prior step installs
+
+**This is easy to miss** because the script may work locally (where the
+developer has the package installed) but fail in CI.
+
+### Real Example: PR #3596 → Issue #3783
+
+PR #3596 added workflow steps that call `upload_pytorch_manifest.py`, which
+imports `boto3` via `storage_backend.py`. No workflow step installed `boto3`,
+causing all pytorch release runs to fail with `ModuleNotFoundError: No module
+named 'boto3'`.
+
+### Check: Script Dependencies Satisfied
+
+When a workflow step runs a Python script (`python script.py` or
+`python -m module`):
+
+1. **Trace the script's imports** — check what the script imports, including
+   transitive imports (e.g., script imports `storage_backend`, which imports
+   `boto3`)
+2. **Verify each non-stdlib import is available** — either pre-installed in
+   the container image or installed by a prior step
+3. **Watch for conditional/lazy imports** — a package imported inside a
+   function or `if` block may only be needed on certain code paths, making it
+   easy to miss in testing
+4. **Check requirements files** — if the workflow does `pip install -r
+   requirements.txt`, verify the requirements file includes the needed packages
+
+### Common Patterns in TheRock
+
+| Package | Where It's Needed | How to Provide |
+|---------|-------------------|----------------|
+| `boto3` | S3 upload/download scripts | `pip install` or requirements file |
+| `packaging` | Version parsing scripts | `pip install` or requirements file |
+| `requests` | API-calling scripts | Usually pre-installed, but verify |
+
+### Red Flags
+
+- A new `run: python ...` step calling a script not previously called from
+  this workflow
+- A script that was refactored to use a new library (e.g., switching from
+  `awscli` subprocess calls to `boto3` Python API)
+- Moving a script call from one workflow to another (the new workflow may not
+  have the same `pip install` steps)
+
+### Questions to Ask
+
+- "Does this script import anything not in the Python stdlib?"
+- "Is there a `pip install` step (or requirements file) that provides those
+  packages?"
+- "If this script is called from a container, does the container image include
+  these packages?"
+
+### Severity
+
+- Script will fail at runtime due to missing import: **BLOCKING**
+- Import is present but version not pinned and could break: **IMPORTANT**
+
+---
+
 ## Style
 
 ### Check: Style Guide Compliance
@@ -380,6 +451,7 @@ When modifying workflows with `workflow_call`:
 - [ ] All callers updated for input changes
 - [ ] Input sources correct for each trigger type
 - [ ] No breaking changes without migration path
+- [ ] Script runtime dependencies available (trace imports of called scripts)
 - [ ] Permissions are minimal
 - [ ] Actions are pinned
 - [ ] No security vulnerabilities

@@ -243,6 +243,7 @@ Apply full [github_actions.md](github_actions.md) checklist, especially:
 - [ ] Input propagation correct (`inputs` vs `github.event.inputs`)
 - [ ] Each trigger type tested (dispatch, call, PR, push)
 - [ ] No breaking changes to existing callers
+- [ ] Script runtime dependencies available (trace imports of called Python scripts)
 - [ ] Follows [GitHub Actions Style Guide](../../TheRock/docs/development/style_guides/github_actions_style_guide.md)
 - [ ] Permissions are minimal (prefer read-only where possible)
 - [ ] Uses pinned action versions (not `@main` or `@latest`)
