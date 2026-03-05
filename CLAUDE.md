@@ -93,6 +93,41 @@ ninja clr+expunge && ninja clr+dist
 - Unit tests, integration tests, and packaging tests
 - Tests may run on different GPU architectures (gfx906, gfx908, gfx90a, etc.)
 
+## Playbook
+
+Recipes for common multi-step operations. Scratch directory: `D:/scratch/claude`
+(large-file-friendly; switch if disk fills up).
+
+### Download CI artifacts (without extracting)
+
+```bash
+# 1. Find the latest successful run for an artifact group
+cd /d/projects/TheRock/build_tools && python find_latest_artifacts.py \
+  --artifact-group gfx110X-all -v
+
+# 2. Download archives to scratch (note the run-id from step 1)
+cd /d/projects/TheRock/build_tools && python fetch_artifacts.py \
+  --run-id=<RUN_ID> \
+  --artifact-group=gfx110X-all \
+  --output-dir=/d/scratch/claude/artifacts/<RUN_ID> \
+  --no-extract
+```
+
+Common artifact groups: `gfx110X-all`, `gfx120X-all`, `gfx94X-all`
+
+### Inspect an artifact archive without extracting
+
+```bash
+# List contents (zstd-compressed)
+python -c "
+from _therock_utils.artifacts import _open_archive_for_read
+from pathlib import Path
+with _open_archive_for_read(Path('<archive.tar.zst>')) as tf:
+    for m in tf:
+        print(m.name)
+"
+```
+
 ## Conventions & Gotchas
 
 ### Coding Standards
