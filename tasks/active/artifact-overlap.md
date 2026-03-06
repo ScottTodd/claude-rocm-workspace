@@ -35,7 +35,9 @@ Two classes of collision:
 - [ ] Wire workflow into `ci_linux.yml`, `ci_windows.yml`, `multi_arch_ci_linux.yml`
 - [ ] Fix mxDataGenerator overlap (blas vs support) — PR #3773
 - [ ] Fix miopen within-artifact overlap — PR #3793 (external)
-- [ ] Documentation update (`docs/development/artifacts.md`)
+- [x] Fix systemic `test` component extends issue — `test extends doc`
+- [x] Fix within-artifact overlaps via descriptor excludes (miopen, rocprofiler-sdk, rocrtst, base)
+- [x] Documentation update (`docs/development/artifacts.md`)
 - [ ] Target-specific archive content validation (kpack namespacing)
 
 ## Workstreams
@@ -215,13 +217,19 @@ Test data in `D:/scratch/claude/artifacts/`:
 
 ## Next Steps
 
-1. [ ] Wire `test_artifacts_structure.yml` into CI workflows (WS3)
-2. [ ] Verify PR #3773 CI results (exclude-based fix for mxDataGenerator)
-3. [ ] Update `docs/development/artifacts.md` with inheritance docs (WS4)
+1. [ ] Verify Linux CI builds pass with `test extends doc` + descriptor fixes
+       - ci.yml run: https://github.com/ROCm/TheRock/actions/runs/22782491222
+       - multi_arch_ci.yml run: https://github.com/ROCm/TheRock/actions/runs/22782514106
+2. [ ] Wire `test_artifacts_structure.yml` into CI workflows (WS3)
+3. [ ] Verify PR #3773 CI results (exclude-based fix for mxDataGenerator)
 4. [ ] Review PR #3793 findings with author (hipdnn fix unnecessary)
-5. [ ] Address systemic `test` component extends issue — decide whether
-       `test` should extend `doc` (would make it disjoint) or stay standalone
-6. [ ] Target-specific content validation test (approach 4)
+5. [ ] Target-specific content validation test (approach 4)
+6. [ ] Audit bare `[components.run."..."]` entries across all descriptors
+       (catch-all steals from dev/test — see run warning in artifact_builder.py)
 
-**Branch:** `artifact-overlap-testing-2` in TheRock.
-**PR:** https://github.com/ROCm/TheRock/pull/3802 (structure tests + CI workflow)
+**Branches:**
+- `artifact-overlap-testing-2`: structure tests + CI workflow
+- `users/scotttodd/artifact-overlap-fixes`: test extends doc + descriptor fixes + docs
+
+**PRs:**
+- https://github.com/ROCm/TheRock/pull/3802 (structure tests + CI workflow)
