@@ -28,12 +28,13 @@ Two classes of collision:
 
 ## Goals
 
-- [x] Cross-artifact collision test (`tests/test_artifact_collisions.py`)
+- [x] Cross-artifact collision test (`tests/test_artifact_structure.py`)
+- [x] Within-artifact component collision test (`tests/test_artifact_structure.py`)
 - [x] Basedir overlap unit test (`build_tools/tests/artifact_descriptor_overlap_test.py`)
-- [ ] Within-artifact component collision test
+- [x] CI workflow for manual testing (`test_artifacts_structure.yml` with workflow_dispatch)
+- [ ] Wire workflow into `ci_linux.yml`, `ci_windows.yml`, `multi_arch_ci_linux.yml`
 - [ ] Fix mxDataGenerator overlap (blas vs support) — PR #3773
 - [ ] Fix miopen within-artifact overlap — PR #3793 (external)
-- [ ] CI workflow integration (`test_artifacts_structure.yml`)
 - [ ] Documentation update (`docs/development/artifacts.md`)
 - [ ] Target-specific archive content validation (kpack namespacing)
 
@@ -83,30 +84,28 @@ Two classes of collision:
   rocprofiler-sdk and aqlprofile-tests descriptors).
 - Does NOT catch BUILD_DEPS spillover (different stage dirs, same files).
 
-**Approach 2 — Archive content collision test** (branch `artifact-overlap-testing-2`)
+**Approach 2 — Archive content tests** (branch `artifact-overlap-testing-2`)
 
-- `tests/test_artifact_collisions.py`
-- Scans actual artifact archives (without extracting) and checks for
-  flattened path collisions across different artifact names.
-- Catches mxDataGenerator and any other spillover-based overlap.
-- Tested against:
+- `tests/test_artifact_structure.py` (renamed from `test_artifact_collisions.py`)
+- Two tests in `TestArtifactStructure`:
+  - `test_no_cross_artifact_collisions` — flags paths in 2+ different artifacts
+  - `test_no_within_artifact_component_collisions` — flags pairwise component overlap
+- Scans actual artifact archives (without extracting) using shared
+  `archive_index` fixture (`list[ArchiveInfo]` dataclass).
+- Tested locally and via CI workflow_dispatch:
 
-  | Artifact set | Archives | Collisions |
-  |---|---|---|
-  | Windows gfx110X-all (classic) | ~100 | 36 (all mxDataGenerator) |
-  | Linux multi-arch, 5 families (classic) | ~500 | 36 (same, only in `_generic`) |
-  | Linux kpack (generic + gfx942) | ~207 | 36 (same pattern) |
+  | Artifact set | Archives | Cross-artifact | Within-artifact |
+  |---|---|---|---|
+  | Windows gfx110X-all (classic) | ~100 | 36 (mxDataGenerator) | ~4,700 (10 artifacts) |
+  | Linux multi-arch, 5 families (classic) | ~500 | 36 (same, `_generic` only) | same pattern |
+  | Linux kpack (generic + gfx942) | ~207 | 36 (same) | 4,777 (10 artifacts) |
 
 - Key finding: collisions are uniform across GPU families and artifact
   formats. Driven entirely by descriptor config, not build variation.
-
-**Approach 3 — Within-artifact component collision test** (not yet implemented)
-
-- Same archive scanning approach but checks for files appearing in
-  multiple components of the SAME artifact.
-- Would catch the miopen `bin/miopen_gtest` duplication.
-- Components are supposed to be disjoint (enforced by `transitive_relpaths`
-  in the scanner), but `test` has no extends chain so it bypasses this.
+- Within-artifact collisions ALL involve `test` component. Worst offenders:
+  rocprofiler-compute (4,162 files), rocprofiler-sdk (480), rocrtst (89).
+  Root cause: `test` has no extends chain (commit 6282bd46), so it
+  re-claims files already taken by other components.
 
 **Approach 4 — Target-specific content validation** (not yet implemented)
 
@@ -117,13 +116,25 @@ Two classes of collision:
 
 ### WS3: CI Integration
 
-Plan: new reusable workflow `test_artifacts_structure.yml`
+**Workflow file:** `.github/workflows/test_artifacts_structure.yml` (implemented)
 
-- CPU-only runner (no GPU needed)
+- CPU-only runner (`azure-linux-scale-rocm` on ROCm org, `ubuntu-24.04` on forks)
+- `workflow_dispatch` for manual testing + `workflow_call` for CI integration
+- Inputs: `artifact_group`, `amdgpu_targets`, `artifact_run_id`
 - Fetches archives via `fetch_artifacts.py --no-extract`
-- Runs `pytest tests/test_artifact_structure.py` (renamed from
-  `test_artifact_collisions.py` to reflect broader scope)
-- Called from three places in parallel with existing test jobs:
+- Runs `pytest tests/test_artifact_structure.py -v --log-cli-level=info --timeout=300`
+- Note: has `--run-github-repo=ROCm/TheRock` hardcoded for fork testing — remove before merge
+
+**CI test runs (2026-03-05):**
+
+| Run | Format | Fetch | Validate | Result |
+|---|---|---|---|---|
+| [22743296445](https://github.com/ScottTodd/TheRock/actions/runs/22743296445) | classic `.tar.xz` | 74s | 169s | 2 FAILED |
+| [22743345907](https://github.com/ScottTodd/TheRock/actions/runs/22743345907) | kpack `.tar.zst` | 12s | 18s | 2 FAILED |
+
+The ~8x performance difference is due to xz vs zstd decompression during archive listing.
+
+**Still TODO:** Wire `workflow_call` into CI workflows:
 
   | Workflow | New job | Parallel to |
   |---|---|---|
@@ -204,9 +215,13 @@ Test data in `D:/scratch/claude/artifacts/`:
 
 ## Next Steps
 
-1. [ ] Verify PR #3773 CI results (exclude-based fix for mxDataGenerator)
-2. [ ] Implement within-artifact component collision test (approach 3)
-3. [ ] Rename test file to `test_artifact_structure.py`, add all test cases
-4. [ ] Draft `test_artifacts_structure.yml` workflow
-5. [ ] Update `docs/development/artifacts.md` with inheritance docs
-6. [ ] Review PR #3793 findings with author (hipdnn fix unnecessary)
+1. [ ] Wire `test_artifacts_structure.yml` into CI workflows (WS3)
+2. [ ] Verify PR #3773 CI results (exclude-based fix for mxDataGenerator)
+3. [ ] Update `docs/development/artifacts.md` with inheritance docs (WS4)
+4. [ ] Review PR #3793 findings with author (hipdnn fix unnecessary)
+5. [ ] Address systemic `test` component extends issue — decide whether
+       `test` should extend `doc` (would make it disjoint) or stay standalone
+6. [ ] Target-specific content validation test (approach 4)
+
+**Branch:** `artifact-overlap-testing-2` in TheRock, ready for PR.
+Scott will tidy up and post.
