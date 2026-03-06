@@ -223,5 +223,5 @@ Test data in `D:/scratch/claude/artifacts/`:
        `test` should extend `doc` (would make it disjoint) or stay standalone
 6. [ ] Target-specific content validation test (approach 4)
 
-**Branch:** `artifact-overlap-testing-2` in TheRock, ready for PR.
-Scott will tidy up and post.
+**Branch:** `artifact-overlap-testing-2` in TheRock.
+**PR:** https://github.com/ROCm/TheRock/pull/3802 (structure tests + CI workflow)
