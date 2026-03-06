@@ -419,6 +419,18 @@ Branch `multi-arch-prebuilt-1`, commits `d9febabe` and `9d1ae32c`.
   compiler-runtime → build math-libs fresh" scenario
 - Still undecided: single copy job upfront vs per-stage copy-and-exit
 
+### 2026-03-05 - Copy subcommand PR posted
+
+Synced `multi-arch-prebuilt-1` with `main` (merge commit 0352e56e). The
+merge brought in #3596 (WorkflowOutputRoot refactor) which changed
+`S3Backend`/`LocalDirectoryBackend` constructors and moved
+`retrieve_bucket_info` into `WorkflowOutputRoot`. Updated
+`_create_source_backend` and 13 failing tests to use the new API
+(commit 2a0cc338). Self-review in `reviews/local_018_multi-arch-prebuilt-1.md`.
+
+Posted as PR #3801. Semicolon delimiter changes from `multi-arch-prebuilt-2`
+left out intentionally — they'll go in the workflow wiring PR.
+
 ## Decisions & Trade-offs
 
 ### Where to run the copy: setup job vs separate job vs per-stage
@@ -491,14 +503,21 @@ existing fetch/push patterns.
    - Test run (all stages prebuilt): 22686926501 — copy job succeeded (185
      artifacts + 185 sha256sums in ~16s). Cancelled prior partial-skip run
      due to concurrency group collision.
+5. [x] Send copy subcommand PR
+   - PR #3801 (branch `multi-arch-prebuilt-1`)
+   - Updated for WorkflowOutputRoot refactor from #3596 (merged from main)
+   - Self-review: `reviews/local_018_multi-arch-prebuilt-1.md` (APPROVED)
 
 **Immediate next steps (short-term):**
 
-5. [ ] Clean up `use_prebuilt_artifacts` — replace with `prebuilt_stages`
+6. [ ] Clean up `use_prebuilt_artifacts` — replace with `prebuilt_stages`
    - Consider "all" sentinel to skip `build_multi_arch_stages` entirely
-6. [ ] Fix concurrency groups for parallel dispatch testing
+7. [ ] Fix concurrency groups for parallel dispatch testing
    - See `tasks/active/concurrency-groups.md`
-7. [ ] Send workflow plumbing + copy subcommand as PR(s)
+8. [ ] Send workflow plumbing as PR (branch `multi-arch-prebuilt-2`)
+   - Includes: copy job in per-platform orchestrators, stage skip conditions,
+     semicolon standardization for --amdgpu-families
+   - Depends on #3801 merging first
 
 **Medium-term (configure_ci.py integration):**
 
