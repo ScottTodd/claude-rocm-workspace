@@ -145,6 +145,12 @@ Must not be auto-generated from branch name or be overly vague.
 - 400-1000 lines: Acceptable if cohesive
 - > 1000 lines: Should justify why it can't be split
 
+**Complexity matters, not just line count.** A 700-line PR touching one Python
+module is easier to review than a 700-line PR touching workflows, Python
+scripts, config files, and summary logic across 7 files. When changes span
+multiple subsystems (e.g., workflow + Python scripts + config), consider
+whether the workflow changes can land separately from the script changes.
+
 **Exceptions (large PRs acceptable):**
 - Generated code or vendored dependencies
 - Large-scale automated refactoring (e.g., rename across codebase)

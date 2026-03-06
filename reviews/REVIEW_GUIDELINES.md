@@ -411,8 +411,19 @@ These workflow issues should always be marked **BLOCKING**:
 1. **Missing script dependencies** - Workflow calls a Python script but no prior step installs its non-stdlib imports (e.g., `boto3`, `packaging`). Trace imports transitively — the script may import a local module that imports the missing package.
 2. **Caller not updated** - Reusable workflow gains a new required input but callers don't pass it
 3. **Input source mismatch** - Switching from `github.event.inputs` to `inputs` breaks `workflow_dispatch`
+4. **Complex inline bash** - `run:` blocks with conditionals, loops, string manipulation, or decision trees must be Python scripts per the [style guide](https://github.com/ROCm/TheRock/blob/main/docs/development/style_guides/github_actions_style_guide.md#prefer-python-scripts-over-inline-bash). One-line commands and simple `echo`/`mkdir` are fine.
 
 See [guidelines/github_actions.md](guidelines/github_actions.md) for full details.
+
+### Quick Reference: Python Error Handling Anti-Patterns (BLOCKING)
+
+These error handling issues should always be marked **BLOCKING**:
+
+1. **`sys.exit()` instead of exceptions** - Use `raise RuntimeError(...)`, not `sys.exit("error")`. `sys.exit()` bypasses the call stack and makes functions untestable.
+2. **`print("ERROR: ..."); return`** - Silent degradation. Raise an exception instead.
+3. **`print("WARNING: ..."); continue`** - If data is missing or corrupted, that's an error, not a warning.
+
+See the [Python style guide fail-fast section](https://github.com/ROCm/TheRock/blob/main/docs/development/style_guides/python_style_guide.md#fail-fast-behavior).
 
 ### Quick Reference: Security Red Flags (BLOCKING)
 
@@ -467,10 +478,16 @@ Before finalizing a review, verify:
 - [ ] TOML components match what `therock_provide_artifact()` COMPONENTS activates
 - [ ] Old descriptor updated when splitting files into a new artifact
 
+**For PRs modifying Python code:** See [guidelines/pr_patterns.md](guidelines/pr_patterns.md#pattern-python-code) for full checklist
+- [ ] Error handling uses exceptions, not `sys.exit()` or `print()+return` (see [fail-fast](https://github.com/ROCm/TheRock/blob/main/docs/development/style_guides/python_style_guide.md#fail-fast-behavior))
+- [ ] No broad `except Exception` that hides bugs
+
 **For PRs modifying GitHub Actions workflows:** See [guidelines/github_actions.md](guidelines/github_actions.md) for full checklist
 - [ ] Script runtime dependencies available (trace Python imports through call chain)
 - [ ] All callers of modified reusable workflows updated
 - [ ] Input propagation correct for all trigger types
+- [ ] No complex inline bash (conditionals/loops/string manipulation belong in Python scripts)
+- [ ] `runs-on:` labels pinned (not `*-latest`)
 
 **Security (always check):** See [guidelines/security.md](guidelines/security.md) for full checklist
 - [ ] No private keys or credentials committed (check binary files too)

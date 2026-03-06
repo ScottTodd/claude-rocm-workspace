@@ -11,6 +11,8 @@ Checklist for reviewing PRs that modify GitHub Actions workflows.
 | [All trigger paths tested](#testing-trigger-paths) | No | BLOCKING | Each path may behave differently |
 | [No breaking changes to callers](#breaking-changes) | No | BLOCKING | Semantic changes are subtle |
 | [Script dependencies satisfied](#script-runtime-dependencies) | No | BLOCKING | Trace imports through script call chain |
+| [No complex inline bash](#no-complex-inline-bash) | Partial | BLOCKING | Conditionals, loops, string manipulation belong in Python scripts |
+| [Runners pinned to specific versions](#pinned-runner-versions) | Yes | IMPORTANT | Detect `ubuntu-latest` etc. |
 | [Permissions minimal](#permissions) | Yes | IMPORTANT | Can scan for overly broad permissions |
 | [Actions pinned](#pinned-versions) | Yes | IMPORTANT | Can detect `@main` or `@latest` |
 | [Style guide followed](#style) | Partial | SUGGESTION | Linters can catch some issues |
@@ -21,12 +23,14 @@ Checklist for reviewing PRs that modify GitHub Actions workflows.
 - Coverage of all trigger types (dispatch, call, PR, push, schedule)
 - Regression to existing callers when modifying shared workflows
 - Script runtime dependencies (pip packages available in CI environment)
+- Whether inline bash should be a Python script (conditionals, loops, string manipulation)
 
 **What automation can help with:**
 - Listing all callers of a reusable workflow
-- Detecting unpinned action versions
+- Detecting unpinned action versions and runner labels (`*-latest`)
 - Scanning for overly broad permissions
 - Style/lint checks (actionlint)
+- Detecting complex inline bash (conditionals, loops in `run:` blocks)
 
 ---
 
@@ -48,6 +52,83 @@ Some workflow changes don't need full scrutiny:
 - Adjusting timeouts or minor configuration
 
 For these, verify CI passes and move on.
+
+---
+
+## No Complex Inline Bash
+
+### The Rule
+
+The [GitHub Actions style guide](https://github.com/ROCm/TheRock/blob/main/docs/development/style_guides/github_actions_style_guide.md#prefer-python-scripts-over-inline-bash) says: **prefer Python scripts over inline bash.** Workflow `run:` blocks should call scripts, not contain logic.
+
+This is a style guide rule, but violations are **BLOCKING** because:
+- Inline bash can't be unit tested
+- Inline bash can't be debugged with standard tools
+- Inline bash isn't portable across platforms
+- Inline bash encourages duplicating logic that scripts already handle
+
+### Complexity Signals
+
+Any of these in a `run:` block indicate the logic belongs in a Python script:
+
+- **Conditionals** (`if/elif/else`)
+- **Loops** (`for`, `while`)
+- **String manipulation** (parameter expansion, `sed`, `awk`)
+- **Array operations** (splitting, iterating)
+- **Multi-branch decision trees**
+
+### Check: Inline Bash Complexity
+
+1. **Scan all `run:` blocks** in new or modified workflows
+2. **Flag blocks with complexity signals** listed above
+3. **Verify no existing script already handles** the same task — if a script
+   exists, the workflow should call it rather than reimplementing the logic inline
+
+### Common Violations in TheRock
+
+| Pattern | Should Be |
+|---------|-----------|
+| S3 bucket selection with if/elif/else | Python script with unit tests |
+| IAM role selection with conditionals | Python script with unit tests |
+| Loop over families calling `fetch_artifacts.py` per iteration | Single call to `fetch_artifacts.py` (which already accepts lists) |
+| Parsing/splitting semicolon-separated inputs | Python script argument handling |
+
+### Questions to Ask
+
+- "Could this `run:` block be a one-line call to a Python script instead?"
+- "Does an existing script already handle this logic?"
+- "Are there unit tests for this logic?"
+
+### Severity
+
+- Complex inline bash (conditionals, loops, decision trees): **BLOCKING**
+- Simple inline bash (single command, `echo`, `mkdir`): **OK**
+
+---
+
+## Pinned Runner Versions
+
+### The Rule
+
+The [GitHub Actions style guide](https://github.com/ROCm/TheRock/blob/main/docs/development/style_guides/github_actions_style_guide.md#pin-action-runs-on-labels-to-specific-versions) says: **pin `runs-on:` labels to specific versions.**
+
+Using `ubuntu-latest` means GitHub controls when the runner image changes,
+which can break builds unexpectedly.
+
+### Check: Runner Labels
+
+Scan all `runs-on:` values in new or modified workflows for floating labels.
+
+| Label | Status |
+|-------|--------|
+| `ubuntu-24.04` | OK — pinned |
+| `ubuntu-latest` | **Flag** — should be pinned |
+| `windows-latest` | **Flag** — should be pinned |
+| Custom labels (e.g., `azure-linux-scale-rocm`) | OK — managed internally |
+
+### Severity
+
+- Using `*-latest` labels: **IMPORTANT**
 
 ---
 
@@ -452,6 +533,8 @@ When modifying workflows with `workflow_call`:
 - [ ] Input sources correct for each trigger type
 - [ ] No breaking changes without migration path
 - [ ] Script runtime dependencies available (trace imports of called scripts)
+- [ ] No complex inline bash — logic with conditionals/loops/string manipulation belongs in Python scripts
+- [ ] `runs-on:` labels pinned to specific versions (not `*-latest`)
 - [ ] Permissions are minimal
 - [ ] Actions are pinned
 - [ ] No security vulnerabilities

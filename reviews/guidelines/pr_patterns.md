@@ -244,6 +244,8 @@ Apply full [github_actions.md](github_actions.md) checklist, especially:
 - [ ] Each trigger type tested (dispatch, call, PR, push)
 - [ ] No breaking changes to existing callers
 - [ ] Script runtime dependencies available (trace imports of called Python scripts)
+- [ ] No complex inline bash — conditionals, loops, string manipulation belong in Python scripts
+- [ ] `runs-on:` labels pinned to specific versions (not `*-latest`)
 - [ ] Follows [GitHub Actions Style Guide](../../TheRock/docs/development/style_guides/github_actions_style_guide.md)
 - [ ] Permissions are minimal (prefer read-only where possible)
 - [ ] Uses pinned action versions (not `@main` or `@latest`)
@@ -268,8 +270,24 @@ Apply full [github_actions.md](github_actions.md) checklist, especially:
 - [ ] Follows [Python Style Guide](../../TheRock/docs/development/style_guides/python_style_guide.md)
 - [ ] Type hints on public interfaces
 - [ ] Uses `pathlib` for path operations
-- [ ] Proper error handling (fail-fast, no silent failures)
+- [ ] Proper error handling — see [fail-fast anti-patterns](#python-fail-fast-anti-patterns) below
 - [ ] Uses dataclasses/attrs for data containers where appropriate
+
+### Python Fail-Fast Anti-Patterns
+
+The Python style guide requires [fail-fast behavior](https://github.com/ROCm/TheRock/blob/main/docs/development/style_guides/python_style_guide.md#fail-fast-behavior). Flag these as **BLOCKING**:
+
+| Anti-Pattern | Should Be |
+|-------------|-----------|
+| `sys.exit("error message")` | `raise RuntimeError("error message")` |
+| `print("ERROR: ..."); return` | `raise RuntimeError("...")` |
+| `print("WARNING: ..."); continue` | `raise` or handle explicitly |
+| Broad `except Exception: pass` | Catch specific exceptions |
+
+**Why `sys.exit()` is wrong:** It bypasses the call stack, can't be caught by
+callers, and makes the function untestable. Use exceptions so callers can
+decide how to handle errors. The only place `sys.exit()` belongs is in the
+`main()` function's top-level error handler.
 
 ---
 
