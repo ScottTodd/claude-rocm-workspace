@@ -5,7 +5,7 @@ repositories:
 
 # Artifact Overlap Testing & Fixes
 
-- **Status:** In progress
+- **Status:** PR drafted, awaiting CI
 - **Priority:** P1 (High)
 - **Started:** 2026-03-04
 - **Tracking:** https://github.com/ROCm/TheRock/issues/3796
@@ -32,7 +32,7 @@ Two classes of collision:
 - [x] Within-artifact component collision test (`tests/test_artifact_structure.py`)
 - [x] Basedir overlap unit test (`build_tools/tests/artifact_descriptor_overlap_test.py`)
 - [x] CI workflow for manual testing (`test_artifacts_structure.yml` with workflow_dispatch)
-- [ ] Wire workflow into `ci_linux.yml`, `ci_windows.yml`, `multi_arch_ci_linux.yml`
+- [x] Wire workflow into `ci_linux.yml`, `ci_windows.yml`, `multi_arch_ci_linux.yml`, `multi_arch_ci_windows.yml`
 - [ ] Fix mxDataGenerator overlap (blas vs support) — PR #3773
 - [ ] Fix miopen within-artifact overlap — PR #3793 (external)
 - [x] Fix systemic `test` component extends issue — `test extends doc`
@@ -118,14 +118,16 @@ Two classes of collision:
 
 ### WS3: CI Integration
 
-**Workflow file:** `.github/workflows/test_artifacts_structure.yml` (implemented)
+**Workflow file:** `.github/workflows/test_artifacts_structure.yml`
+
+Initial implementation (PR #3802, merged):
 
 - CPU-only runner (`azure-linux-scale-rocm` on ROCm org, `ubuntu-24.04` on forks)
 - `workflow_dispatch` for manual testing + `workflow_call` for CI integration
 - Inputs: `artifact_group`, `amdgpu_targets`, `artifact_run_id`
 - Fetches archives via `fetch_artifacts.py --no-extract`
 - Runs `pytest tests/test_artifact_structure.py -v --log-cli-level=info --timeout=300`
-- Note: has `--run-github-repo=ROCm/TheRock` hardcoded for fork testing — remove before merge
+- Note: had `--run-github-repo=ROCm/TheRock` hardcoded for fork testing
 
 **CI test runs (2026-03-05):**
 
@@ -136,17 +138,24 @@ Two classes of collision:
 
 The ~8x performance difference is due to xz vs zstd decompression during archive listing.
 
-**Still TODO:** Wire `workflow_call` into CI workflows:
+**Changes on PR #3830:**
 
-  | Workflow | New job | Parallel to |
+- Removed unused `amdgpu_targets` input
+- Added `platform` input (linux/windows) — always runs on Linux runners, even
+  for Windows artifacts (just inspecting files, not running project code)
+- Passes `--platform=${PLATFORM}` to `fetch_artifacts.py`
+- Wired `workflow_call` into all four CI orchestration workflows:
+
+  | Workflow | New job | Notes |
   |---|---|---|
-  | `ci_linux.yml` | `validate_linux_artifacts` | `test_linux_artifacts` |
-  | `ci_windows.yml` | `validate_windows_artifacts` | `test_windows_artifacts` |
-  | `multi_arch_ci_linux.yml` | `validate_multi_arch_artifacts` | `test_artifacts_per_family` |
+  | `ci_linux.yml` | `validate_linux_artifact_structure` | `platform: linux` |
+  | `ci_windows.yml` | `validate_windows_artifact_structure` | `platform: windows` |
+  | `multi_arch_ci_linux.yml` | `validate_artifact_structure` | Single job (not per-family matrix) |
+  | `multi_arch_ci_windows.yml` | `validate_artifact_structure` | `platform: windows` |
 
 ### WS4: Documentation
 
-`docs/development/artifacts.md` is missing critical information:
+`docs/development/artifacts.md` was missing critical information:
 
 - Component inheritance chain (`lib -> run -> dbg -> dev -> doc`)
 - Default patterns per component type
@@ -155,6 +164,14 @@ The ~8x performance difference is due to xz vs zstd decompression during archive
 - `include` augments defaults rather than replacing them
 - Auto-creation of intermediate components
 - BUILD_DEPS spillover and mitigation strategies
+
+**Added on PR #3830:**
+
+- Extends chain diagram (`lib -> run -> dbg -> dev -> doc -> test`)
+- Default patterns table per component type
+- WARNING callout about `run` catch-all behavior
+- Two concrete routing approaches with real examples (rocBLAS, rocSPARSE, MIOpen, rocrtst)
+- Guidance on when to use `exclude` vs `default_patterns = false`
 
 ## Key Technical Findings
 
@@ -317,19 +334,21 @@ independently so it also claimed them (overlap). Now `dev` processes first
 
 ## Next Steps
 
-1. [ ] Verify Linux CI builds pass with `test extends doc` + descriptor fixes
-       - ci.yml run: https://github.com/ROCm/TheRock/actions/runs/22782491222
-       - multi_arch_ci.yml run: https://github.com/ROCm/TheRock/actions/runs/22782514106
-2. [ ] Wire `test_artifacts_structure.yml` into CI workflows (WS3)
-3. [ ] Verify PR #3773 CI results (exclude-based fix for mxDataGenerator)
-4. [ ] Review PR #3793 findings with author (hipdnn fix unnecessary)
-5. [ ] Target-specific content validation test (approach 4)
-6. [ ] Audit bare `[components.run."..."]` entries across all descriptors
+1. [ ] Wait for CI results on PR #3830 (structure tests + functional tests)
+2. [ ] Rebase onto main (has mxDataGenerator fix from 723748cd) if needed
+3. [ ] Check if `ci_summary` jobs need updating to include validation jobs in dependency/result checks
+4. [ ] Verify PR #3773 CI results (exclude-based fix for mxDataGenerator)
+5. [ ] Review PR #3793 findings with author (hipdnn fix unnecessary)
+6. [ ] Target-specific content validation test (approach 4)
+7. [ ] Audit bare `[components.run."..."]` entries across all descriptors
        (catch-all steals from dev/test — see run warning in artifact_builder.py)
+8. [ ] Fix pre-existing `_format_component_overlaps` return type annotation on main
+       (`-> str` should be `-> tuple[int, str]`)
 
 **Branches:**
-- `artifact-overlap-testing-2`: structure tests + CI workflow
-- `users/scotttodd/artifact-overlap-fixes`: test extends doc + descriptor fixes + docs
+- `artifact-overlap-testing-2`: structure tests + CI workflow (merged as PR #3802)
+- `users/scotttodd/artifact-overlap-fixes`: test extends doc + descriptor fixes + docs + CI wiring
 
 **PRs:**
-- https://github.com/ROCm/TheRock/pull/3802 (structure tests + CI workflow)
+- https://github.com/ROCm/TheRock/pull/3802 (structure tests + CI workflow) — **merged**
+- https://github.com/ROCm/TheRock/pull/3830 (test extends doc + descriptor fixes + CI wiring) — **draft, awaiting CI**
