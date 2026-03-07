@@ -215,6 +215,106 @@ Test data in `D:/scratch/claude/artifacts/`:
 | `22684449108-linux-kpack` | Kpack CI (generic + gfx942) | ~207 `.tar.zst` archives |
 | `22696910967-linux-gfx94X-dcgpu` | PR #3773 CI run | For verifying fix |
 
+## Descriptor Fix Details
+
+Each fix below was needed because `test extends doc` changed which component
+claims files first. Before: `test` processed independently and could re-claim
+files. After: `test` is last in the extends chain and only gets leftovers.
+
+### Fixes where `run` catch-all steals from `test`
+
+These descriptors have a bare `[components.run."..."]` (no includes = catch-all)
+that grabs everything not in `lib`. Previously `test` independently re-claimed
+its files (an overlap). Now `run` wins and `test` gets nothing unless we exclude.
+
+**miopen** (`ml-libs/artifact-miopen.toml`)
+- File: `bin/miopen_gtest*`
+- Before: in both `_run` (catch-all) and `_test` (`include = ["bin/miopen_gtest*"]`)
+- Fix: `exclude = ["bin/miopen_gtest*"]` on `run`
+- Why: test binaries belong in `_test`. Test infra fetches `miopen_test`.
+- Alternative: could add `miopen_run` to install script instead, but
+  semantically these are test files.
+
+**rocprofiler-sdk** (`profiler/artifact-rocprofiler-sdk.toml`)
+- Files: `share/rocprofiler-sdk/tests/**`
+- Before: in both `_run` (catch-all) and `_test` (`include = ["share/rocprofiler-sdk/tests/**"]`)
+- Fix: `exclude = ["share/rocprofiler-sdk/tests/**"]` on `run`
+- Why: test data belongs in `_test`. Test infra fetches `rocprofiler-sdk_test`.
+
+**rocprofiler-register in base** (`base/artifact.toml`)
+- Files: `share/rocprofiler-register/tests/**`
+- Before: in both `_run` and `_test` (`include = ["share/rocprofiler-register/tests/**"]`)
+- Fix: `exclude = ["share/rocprofiler-register/tests/**"]` on `run`
+- Why: same pattern as rocprofiler-sdk.
+
+**rocrtst** (`core/artifact-core-rocrtst.toml`)
+- Files: `bin/**` (test binaries like `bin/gfx*/rocrtst`)
+- Before: in both `_run` (catch-all) and `_test` (bare, also catch-all)
+- Fix: `exclude = ["bin/**"]` on `run`
+- Why: rocrtst is a test-only artifact. All bin/ content is test executables.
+- Note: `test` also excludes `lib/rocrtst/lib/libhwloc.so*` and
+  `lib/rocrtst/lib/LICENSE` which belong in `_lib`.
+
+**aqlprofile** (`profiler/artifact-aqlprofile.toml`)
+- Files: `share/hsa-amd-aqlprofile/**` (test scripts + hsaco test data)
+- Before: in both `_run` (catch-all) and `_test` (`include = ["share/hsa-amd-aqlprofile/**"]`)
+- Fix: `exclude = ["share/hsa-amd-aqlprofile/**"]` on `run`
+- Why: test infra fetches `aqlprofile_test` and expects `run_tests.sh` there.
+  CI failure confirmed: `FileNotFoundError: ... run_tests.sh` in
+  [job 66104473133](https://github.com/ROCm/TheRock/actions/runs/22782491222/job/66104473133).
+- Alternative: could add `aqlprofile_run` to install script, but these
+  are clearly test files (test scripts, `gfx90a_simple_convolution.hsaco`).
+
+### Fixes where `dev` defaults steal from `test`
+
+The `dev` component has default includes like `**/include/**` and `**/cmake/**`
+that can match files inside test directories. Previously `test` processed
+independently so it also claimed them (overlap). Now `dev` processes first
+(earlier in extends chain) and wins.
+
+**rocgdb** (`debug-tools/artifact-rocgdb.toml`)
+- Files: `tests/rocgdb/include/dwarf2.h`, `tests/rocgdb/include/dwarf2.def`
+- Before: in both `_dev` (`**/include/**` default) and `_test` (`include = ["tests/**"]`)
+- Fix: `exclude = ["tests/**"]` on `dev`
+- Why: the rocgdb testsuite references `../../include/dwarf2.h` relative to
+  `tests/rocgdb/gdb/testsuite/`. Test infra fetches `rocgdb_test` but not
+  `rocgdb_dev`. CI failure confirmed: `couldn't open ... dwarf2.h` in
+  [job 66104473158](https://github.com/ROCm/TheRock/actions/runs/22782491222/job/66104473158).
+- Alternative: could add `rocgdb_dev` to install script, but header files
+  inside `tests/` clearly belong in `_test`.
+
+**hipSPARSE in blas** (`math-libs/BLAS/artifact-blas.toml`)
+- File: `share/hipsparse/test/hipsparse_clientmatrices.cmake`
+- Before: in both `_dev` (explicit `include = ["**/*.cmake"]` + default
+  `**/cmake/**`) and `_test` (`include = ["share/hipsparse/test/**"]`)
+- Fix: `exclude = ["share/hipsparse/test/**"]` on hipSPARSE's `dev`
+- Why: this cmake script is a test client tool for downloading test matrices
+  (referenced in `hipsparse/clients/include/utility.hpp:74`). Belongs in
+  `_test`. No CI failure yet but would break if hipsparse tests need it.
+- Alternative: could add `blas_dev` to install script, but this is test
+  tooling that happens to be a `.cmake` file.
+
+**rocdecode** (`media-libs/artifact-rocdecode.toml`) — NO FIX NEEDED
+- Files: `share/rocdecode/cmake/Find*.cmake`
+- Before: in both `_dev` (`**/cmake/**` default) and `_test` (`include = ["share/rocdecode/**"]`)
+- Now: `dev` wins, files move to `_dev`
+- Why no fix: test infra already fetches `rocdecode_dev` (line 408 of
+  `install_rocm_from_artifacts.py`), so the files are available either way.
+
+### Install script change
+
+**rocprofiler-compute** (`build_tools/install_rocm_from_artifacts.py`)
+- The `rocprof-compute` CLI executable is in `bin/` → goes to `_run` component
+  (explicit `include = ["bin/**", "share/rocprofiler-compute/**"]`).
+- Before: `test` had no extends, bare `test` = catch-all, so `_test` also
+  had `bin/rocprof-compute`. Test infra fetched `_lib` + `_test` and found it.
+- After: `test` extends the chain, `run` already claimed it, `_test` is empty.
+- Fix: `argv.append("rocprofiler-compute_run")` in install script.
+- Why not descriptor fix: the executable genuinely belongs in `_run` (it's a
+  CLI tool, not a test binary). The install script just needs to fetch it.
+- CI failure confirmed: `FileNotFoundError: ... 'rocprof-compute'` in
+  [job 66104473155](https://github.com/ROCm/TheRock/actions/runs/22782491222/job/66104473155).
+
 ## Next Steps
 
 1. [ ] Verify Linux CI builds pass with `test extends doc` + descriptor fixes

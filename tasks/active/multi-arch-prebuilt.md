@@ -431,6 +431,28 @@ merge brought in #3596 (WorkflowOutputRoot refactor) which changed
 Posted as PR #3801. Semicolon delimiter changes from `multi-arch-prebuilt-2`
 left out intentionally — they'll go in the workflow wiring PR.
 
+### 2026-03-06 - PR #3801 review feedback addressed
+
+Review from HereThereBeDragons. Pushed 3 commits addressing feedback:
+
+- `10dfea29` — Widened `copy_artifact` type hints to `ArtifactBackend`
+  (runtime isinstance checks already enforce same-backend-type). Replaced
+  `getattr(args, "local_staging_dir", None)` with direct `args.local_staging_dir`.
+  Added failed artifact names to error output. (Led to style guide PR #3826
+  for the argparse `getattr` anti-pattern.)
+- `57ce8a0b` — Moved sha256sum copying into `copy_artifact` on both backends
+  for consistency with `download_artifact`/`upload_artifact`. Removed separate
+  sha256sum pass from `do_copy`. Added `test_copy_artifact_without_sha256sum`.
+- `e28882f2` — Added comment clarifying why `do_copy` validates multiple
+  stages in a loop vs single-stage validation in `do_fetch`/`do_push`.
+
+Reviewer also asked about listing available stages in source — deferred as
+future work. `list-stages` subcommand already shows topology stages, and
+`copy` validates `--stage` against that list.
+
+Also verified local copy output with real artifacts (no sha256sums) from
+run 22703255745 — output is clean after the refactor.
+
 ## Decisions & Trade-offs
 
 ### Where to run the copy: setup job vs separate job vs per-stage
@@ -507,6 +529,7 @@ existing fetch/push patterns.
    - PR #3801 (branch `multi-arch-prebuilt-1`)
    - Updated for WorkflowOutputRoot refactor from #3596 (merged from main)
    - Self-review: `reviews/local_018_multi-arch-prebuilt-1.md` (APPROVED)
+   - Review feedback addressed: type hints, sha256sum consistency, error reporting
 
 **Immediate next steps (short-term):**
 
