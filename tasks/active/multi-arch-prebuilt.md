@@ -533,14 +533,24 @@ existing fetch/push patterns.
 
 **Immediate next steps (short-term):**
 
-6. [ ] Clean up `use_prebuilt_artifacts` — replace with `prebuilt_stages`
-   - Consider "all" sentinel to skip `build_multi_arch_stages` entirely
+6. [x] Clean up `use_prebuilt_artifacts` — replaced with `prebuilt_stages`
+   - Removed from all multi-arch workflows (Linux + Windows)
+   - Collapsed per-platform inputs to single `prebuilt_stages` + `baseline_run_id`
+   - Removed `artifact_run_id` (tests default to github.run_id)
+   - Added Windows copy job + stage skip conditions
 7. [ ] Fix concurrency groups for parallel dispatch testing
    - See `tasks/active/concurrency-groups.md`
-8. [ ] Send workflow plumbing as PR (branch `multi-arch-prebuilt-2`)
+8. [ ] Send workflow plumbing as PR (branch `multi-arch-prebuilt-3`)
+   - PR #3856 (draft, under review)
+   - Test run (no-op due to enable_build_jobs): 22873836139 — fixed in configure_ci.py
+   - Test run (shell: bash fix): 22874353729 — Windows copy failed on PowerShell syntax
+   - Test run (all archs): 22874595180 — Windows queued 85min, cancelled
+   - Test run (Windows gfx110X, skip foundation+compiler-runtime): 22874804188 —
+     math-libs skipped due to missing !cancelled() && !failure() on stage conditions
+   - Test run (with cascading skip fix): 22875528559 — in progress
    - Includes: copy job in per-platform orchestrators, stage skip conditions,
-     semicolon standardization for --amdgpu-families
-   - Depends on #3801 merging first
+     semicolon standardization, use_prebuilt_artifacts removal, configure_ci.py
+     workflow_dispatch fix, docs, fork guard removal on copy step
 
 **Medium-term (configure_ci.py integration):**
 
@@ -565,5 +575,7 @@ existing fetch/push patterns.
 
 ## Branches
 
-- `multi-arch-prebuilt-1` — original 5-commit branch (preserved as-is)
+- `multi-arch-prebuilt-1` — copy subcommand (merged as PR #3801)
+- `multi-arch-prebuilt-2` — superseded by prebuilt-3
+- `users/scotttodd/multi-arch-prebuilt-3` — workflow plumbing cleanup (current)
 - `multi-arch-prebuilt-2` — squashed copy of prebuilt-1, used for continued work
