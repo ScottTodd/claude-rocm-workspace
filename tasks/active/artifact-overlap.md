@@ -5,7 +5,7 @@ repositories:
 
 # Artifact Overlap Testing & Fixes
 
-- **Status:** PR drafted, awaiting CI
+- **Status:** PR ready for review
 - **Priority:** P1 (High)
 - **Started:** 2026-03-04
 - **Tracking:** https://github.com/ROCm/TheRock/issues/3796
@@ -334,8 +334,11 @@ independently so it also claimed them (overlap). Now `dev` processes first
 
 ## Next Steps
 
-1. [ ] Wait for CI results on PR #3830 (structure tests + functional tests)
-2. [ ] Rebase onto main (has mxDataGenerator fix from 723748cd) if needed
+1. [x] Wait for CI results on PR #3830 (structure tests + functional tests)
+       - CI passed: 38,106 unique paths across 204 archives, no cross-artifact overlaps;
+         48 artifacts, no within-artifact component overlaps.
+       - Run: https://github.com/ROCm/TheRock/actions/runs/22787970447?pr=3830
+2. [ ] Code review and merge PR #3830
 3. [ ] Check if `ci_summary` jobs need updating to include validation jobs in dependency/result checks
 4. [ ] Verify PR #3773 CI results (exclude-based fix for mxDataGenerator)
 5. [ ] Review PR #3793 findings with author (hipdnn fix unnecessary)
@@ -351,4 +354,4 @@ independently so it also claimed them (overlap). Now `dev` processes first
 
 **PRs:**
 - https://github.com/ROCm/TheRock/pull/3802 (structure tests + CI workflow) — **merged**
-- https://github.com/ROCm/TheRock/pull/3830 (test extends doc + descriptor fixes + CI wiring) — **draft, awaiting CI**
+- https://github.com/ROCm/TheRock/pull/3830 (test extends doc + descriptor fixes + CI wiring) — **ready for review, CI passing**
