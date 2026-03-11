@@ -461,52 +461,94 @@ function.
 
 ## Implementation Plan
 
-### Phase 0: Shared Utilities
+### Phase 1: Scaffold — dataclasses, pipeline shape, test patterns
 
-Extract from `configure_ci.py` the pieces both scripts need:
-- Family selection by trigger type (already in `amdgpu_family_matrix.py`)
-- Label parsing (`get_pr_labels`, `filter_known_names`)
-- Path filtering (already in `configure_ci_path_filters.py`)
-- `github_actions_utils` (already separate)
+Create the script with all pipeline steps defined but mostly stubbed.
+The goal is to validate that the data flows cleanly between steps and
+that every step is independently testable.
 
-Evaluate: should label parsing move to a small shared module, or just
-be reimplemented in the new script? If it's <50 lines, reimplementing
-may be cleaner than introducing a shared module for legacy code.
+**Deliverables:**
+- `configure_multi_arch_ci.py` with:
+  - All dataclasses (`CIInputs`, `SkipDecision`, `TargetSelection`,
+    `StageDecisions`, `MatrixEntry`, `CIOutputs`)
+  - `configure()` orchestration function calling each step
+  - Stub implementations that return hardcoded/trivial values
+  - `CIInputs.from_environ()` and `write_outputs()` (the I/O edges)
+- `tests/configure_multi_arch_ci_test.py` with:
+  - Test for each step function showing the pattern (construct input
+    dataclass → call function → assert on output dataclass)
+  - At least one end-to-end test: construct `CIInputs` → call
+    `configure()` → assert `CIOutputs` shape
+- No workflow wiring yet — just the script and tests
 
-### Phase 1: Scaffold + Steps 1, 2, 4, 5
+**Why start here:** Establishes the architecture before filling in logic.
+Makes it easy to review whether the step boundaries feel right. Tests
+show exactly how each step is exercised.
 
-Create the script with the pipeline skeleton. Steps 1/2/4/5 reproduce
-the current `if multi_arch:` behavior without source-set awareness.
-Step 3 returns "rebuild all" (matching current behavior).
+### Phase 2: MVP logic — skip gate, target selection, matrix expansion
 
-Wire into `setup.yml` behind `MULTI_ARCH=true`. Run configure_ci.py
-for single-arch, configure_multi_arch_ci.py for multi-arch.
+Fill in the real logic for Steps 2, 3, 5 (skip CI, select targets,
+expand matrix). Step 4 (stage decisions) returns "rebuild all" for now.
 
-Deliverable: multi-arch CI produces identical matrix output as before.
+**Step 2 (check_skip_ci):**
+- `skip-ci` PR label
+- `is_ci_run_required()` path filtering (reuse from `configure_ci_path_filters.py`)
+- workflow_dispatch/schedule always proceed
 
-### Phase 2: Step 3 (Source-Set-Aware Stage Decisions)
+**Step 3 (select_targets):**
+- push / pull_request → presubmit+postsubmit families
+- schedule → all families
+- workflow_dispatch → parse explicit input
+- PR labels: `gfx*` opt-in, `run-all-archs-ci`, `test:*`
+- Validation against known families
 
-Implement `decide_stages` with BUILD_TOPOLOGY.toml parsing:
-- Source set → artifact group → stage mapping
-- Downstream propagation through stage DAG
-- Integration with `prebuilt_stages`/`baseline_run_id` outputs
+**Step 5 (expand_matrix):**
+- Port `generate_multi_arch_matrix` logic
+- Group families by build variant, produce matrix entries
 
-Deliverable: for PRs, the script outputs which stages to rebuild vs.
-prebuilt. Initially advisory-only (logged in step summary but not
-plumbed to skip stages) until validated.
+**Test coverage:** Each trigger type path, each label type, validation
+of unknown families, the skip gate cases.
 
-### Phase 3: End-to-End Integration
+**Deliverable:** Script produces correct matrix output for all trigger
+types. Can be tested locally by constructing `CIInputs` in tests.
+
+### Phase 3: Wire into setup.yml, validate output
+
+- `setup.yml` calls the new script when `MULTI_ARCH=true`
+- Verify identical output to current `configure_ci.py` for the same inputs
+- May need a comparison test or manual validation on a workflow_dispatch run
+
+### Phase 4: Stage decisions + test type
+
+Fill in Step 4 (`decide_stages`):
+- Parse BUILD_TOPOLOGY.toml for source_set → artifact_group → stage mapping
+- Classify changed files (submodule vs infra vs skippable)
+- Propagate rebuilds downstream through stage DAG
+- Handle explicit `prebuilt_stages` from workflow_dispatch
+- Determine test_type (smoke vs full)
+- Handle `run-full-tests-only` and `nightly_check_only_for_family` flags
+  (which currently live as post-hoc mutations in `main()`)
+
+Initially advisory — stage decisions appear in the step summary but
+don't yet drive workflow behavior.
+
+### Phase 5: Prebuilt integration + logging
 
 Connect stage decisions to the multi-arch-prebuilt workflow plumbing:
-- `prebuilt_stages` output feeds `multi_arch_ci_linux.yml` copy job
-- `rebuild_stages` output gates stage jobs
-- Automated baseline run selection (or manual via workflow_dispatch)
+- `prebuilt_stages` output feeds the copy job
+- `rebuild_stages` gates stage jobs
 
-### Phase 4: Test Selection
+Add quality-of-life logging:
+- Structured step summary in GITHUB_STEP_SUMMARY (markdown table showing
+  families, stages, rebuild/prebuilt decisions, test type, and *why* for
+  each decision)
+- Diagnostic logging to stdout for CI maintainers
+- Both are testable: summary is a pure function, logging can be captured
 
-Map rebuilt stages → test suites. This requires either:
-- Adding artifact_group → test mapping to BUILD_TOPOLOGY.toml, or
-- Mapping test_matrix entries to stages via a new config
+### Phase 6: Test selection from rebuilt stages
+
+Map rebuilt stages → test suites. Requires a mapping from artifact groups
+or stages to test labels (either in BUILD_TOPOLOGY.toml or a new config).
 
 ## Open Questions
 
@@ -602,14 +644,13 @@ comm-libs, profiler-apps, media-libs, etc. This is correct but coarse.
 
 ## Next Steps
 
-1. [ ] Discuss design — settle open questions, validate pipeline approach
-2. [ ] Phase 0: Evaluate shared utilities (extract vs. reimplement)
-3. [ ] Phase 1: Scaffold with Steps 1/2/4/5, matching current behavior
-4. [ ] Phase 1: Wire into setup.yml, validate identical output
-5. [ ] Phase 2: Implement Step 3 (topology parsing, source-set analysis)
-6. [ ] Phase 2: Validate stage decisions against real PRs (advisory mode)
-7. [ ] Phase 3: Connect to multi-arch-prebuilt workflow plumbing
-8. [ ] Phase 4: Test selection from rebuilt stages
+1. [x] Design — pipeline architecture, feature audit
+2. [ ] Phase 1: Scaffold — dataclasses, pipeline shape, test patterns
+3. [ ] Phase 2: MVP logic — skip gate, target selection, matrix expansion
+4. [ ] Phase 3: Wire into setup.yml, validate output parity
+5. [ ] Phase 4: Stage decisions (topology parsing, source-set analysis)
+6. [ ] Phase 5: Prebuilt integration + structured logging/summary
+7. [ ] Phase 6: Test selection from rebuilt stages
 
 ## Branches
 
