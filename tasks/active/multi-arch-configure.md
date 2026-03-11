@@ -32,6 +32,90 @@ monolithic function.
 - [ ] High test coverage from the start (>90%)
 - [ ] Deprecation path for the `if multi_arch:` branch in `configure_ci.py`
 
+## Feature Audit
+
+Systematic review of every behavior in `configure_ci.py` and whether the
+multi-arch fork needs it.
+
+**Context:** `multi_arch_ci.yml` is about to replace `ci.yml` as *the* CI
+workflow. All trigger types (push, pull_request, workflow_dispatch, schedule)
+will be supported. `build_variant` is currently hardcoded to `"release"` but
+other variants (ASAN, TSAN) may follow.
+
+### DROP — not needed for multi-arch
+
+| Feature | Lines | Why drop |
+|---------|-------|----------|
+| `determine_long_lived_branch` | 240-252 | Push = push. Same family set regardless of branch name. If certain branches shouldn't build certain families, handle via workflow `on.push.branches` filters, not runtime logic. |
+| Single-arch matrix expansion | 467-556 | The new script IS multi-arch. No single-arch codepath. |
+| `use_prebuilt_artifacts` boolean | 580-581, 749-753 | Replaced by per-stage `prebuilt_stages`. |
+| `MULTI_ARCH` env var/flag | 774 | The new script is always multi-arch. No flag needed. |
+| `test_runner:` kernel-specific runner override | 527-546 | Only used in single-arch expansion. If needed later, add as a proper step, not a mid-expansion mutation. |
+| `additional_label_options` | 87-98, 521-526 | Only used for `test_runner:` labels. Goes with it. |
+| ASAN `test-runs-on-sandbox` override | 548-554 | When ASAN is added to multi-arch, handle in variant config data, not as a runtime mutation. |
+| Trigger type → family tier branching | 282-314, 415-443 | Simplify — see below. |
+
+### SIMPLIFY — keep concept but redesign
+
+| Feature | Current | Proposed |
+|---------|---------|----------|
+| **Family tier system** (presubmit/postsubmit/nightly) | Three tiers with trigger-type mappings. `determine_long_lived_branch` selects which tiers. PR labels can opt into higher tiers. | Single "default families" set for push and pull_request. Schedule gets all families. Workflow_dispatch selects from all known families. The tier *data* in `amdgpu_family_matrix.py` stays, but the selection logic simplifies: `push`/`pull_request` → presubmit+postsubmit, `schedule` → all, `workflow_dispatch` → explicit. |
+| **`filter_known_names` validation** | Validates against trigger-type-specific subset, uses `assert`, generic `name_type`. | Validate against all known families. Raise proper exceptions. Separate functions for family vs test validation. |
+| **Punctuation sanitization** (workflow_dispatch) | Replaces all punctuation with spaces. | Comma-split then strip. More explicit. |
+| **Post-hoc matrix mutation** (lines 667-685) | `main()` mutates matrix rows after generation to clear `test-runs-on` based on `run-full-tests-only` and `nightly_check_only_for_family`. | Move into the matrix expansion step or test decision step — don't mutate after the fact. |
+
+### KEEP — port to new script
+
+| Feature | Lines | Notes |
+|---------|-------|-------|
+| **All trigger types** | throughout | push, pull_request, workflow_dispatch, schedule |
+| **workflow_dispatch family + test label inputs** | 316-355 | Core functionality |
+| **PR label: `skip-ci`** | 387-393 | Step 2 gate |
+| **PR label: `run-all-archs-ci`** | 394-403 | Opt into all families |
+| **PR label: `gfx*` opt-in** | 372-377 | Add specific families |
+| **PR label: `test:*`** | 379-384 | Select specific tests, trigger full test mode |
+| **`is_ci_run_required()` path filtering** | 651-660 | Step 2 gate for push/PR |
+| **test_type: smoke vs full** | 637-686 | Submodule changed → full, test labels → full, schedule → full, otherwise → smoke |
+| **Multi-arch matrix grouping** | 138-237 | One entry per build_variant with all families |
+| **`expect_failure` / `expect_pytorch_failure`** | 223-224, 500-508 | Per-family/variant flags |
+| **`build_pytorch` computation** | 507-508, 233 | Derived from expect_failure flags |
+| **Step summary + GITHUB_OUTPUT** | 689-732 | Rewrite as standalone function |
+
+### Per-family data flags (pass-through, not logic)
+
+These are fields in `amdgpu_family_matrix.py` that flow through to
+`matrix_per_family_json`. The new script doesn't need special logic for
+most of them — they're data.
+
+| Flag | Purpose | Needs logic? |
+|------|---------|--------------|
+| `sanity_check_only_for_family` | Limit test scope | No — data |
+| `run-full-tests-only` | Only test when test_type=full | **Yes** — currently mutates matrix in main() |
+| `nightly_check_only_for_family` | Force sanity-check on non-nightly | **Yes** — currently mutates matrix in main() |
+| `bypass_tests_for_releases` | Skip tests for release builds | No — data |
+| `test-runs-on` / multi-gpu / benchmark | Runner labels | No — data |
+| `fetch-gfx-targets` | Per-target artifact fetching | No — data |
+
+The two flags that need logic (`run-full-tests-only`,
+`nightly_check_only_for_family`) currently live as post-hoc mutations in
+`main()`. In the new script they belong in the test decision step.
+
+### DEFER — not needed yet but design for
+
+| Feature | When needed |
+|---------|-------------|
+| Non-release build variants (ASAN, TSAN) | When multi-arch gets variant workflows |
+| `test_runner:` kernel-specific overrides | When multi-arch needs kernel-specific testing |
+
+### Key simplification: push family selection
+
+**Current:** Push to main → presubmit+postsubmit families. Push to other
+branches → presubmit only. This is `determine_long_lived_branch`.
+
+**Proposed:** Push → presubmit+postsubmit families, regardless of branch.
+The postsubmit tier currently only adds gfx950. If you're pushing to
+any branch that multi_arch_ci.yml triggers on, you want the same coverage.
+
 ## Design: Pipeline of Data Transformations
 
 ### Mental Model
@@ -51,14 +135,26 @@ Inputs (environment)         Source Config (code/data)         Outputs (GITHUB_O
 The script is a pipeline of pure transformations between these:
 
 ```
-┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│  1. Gather   │───>│  2. Select   │───>│  3. Decide   │───>│  4. Expand   │───>│  5. Format   │
-│    Inputs    │    │   Targets    │    │    Stages    │    │    Matrix    │    │   Outputs    │
-└──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
-  env vars →          trigger type →      changed files →     families ×          JSON arrays →
-  CIInputs            families +          stages to            variants →          GITHUB_OUTPUT
-                      labels              rebuild/prebuilt     MatrixEntry[]       + step summary
+┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+│ 1. Parse │───>│ 2. Check │───>│ 3. Pick  │───>│ 4. Stage │───>│ 5. Build │───>│ 6. Write │
+│  Inputs  │    │  Skip CI │    │ Targets  │    │ Decisions│    │  Matrix  │    │ Outputs  │
+└──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘
+ env vars →      skip-ci label,  trigger →       changed files   families ×      JSON →
+ CIInputs        docs-only →     families +      → rebuild /     variants →      GITHUB_OUTPUT
+                 early exit?     test names      prebuilt        MatrixEntry[]
 ```
+
+**Step 2 is a gate.** If CI should be skipped (skip-ci label, docs-only
+paths), the pipeline short-circuits: emit `enable_build_jobs=false`, empty
+matrices, and a skip reason. Steps 3-6 don't run.
+
+This is where the current code buries the `skip-ci` label check (inside
+`matrix_generator`'s PR handler, line 387) and `is_ci_run_required()`
+(inside `main()` at line 651, *after* matrix generation — wrong order).
+Making it an explicit step means:
+- One place for all "should we skip entirely?" logic
+- All skip reasons (label, path filter, future heuristics) live together
+- Steps 3-6 don't need to handle the "nothing to do" case
 
 ### Step 1: Gather Inputs → `CIInputs`
 
@@ -106,7 +202,42 @@ class CIInputs:
 **Testability:** Construct `CIInputs` directly in tests. No env var mocking needed
 downstream.
 
-### Step 2: Select Targets → `TargetSelection`
+### Step 2: Check Skip CI → early exit or continue
+
+Should we run CI at all? This is a gate — if the answer is no, we
+short-circuit the pipeline and emit empty outputs.
+
+```python
+@dataclass(frozen=True)
+class SkipDecision:
+    """Whether to skip CI entirely."""
+    skip: bool
+    reason: str  # e.g. "skip-ci label", "only .md files changed", ""
+
+def check_skip_ci(
+    inputs: CIInputs,
+    changed_files: list[str] | None,
+) -> SkipDecision:
+    """Check whether CI should be skipped entirely.
+
+    Skip reasons:
+    - 'skip-ci' PR label
+    - Only skippable paths changed (docs, .md, .gitignore, etc.)
+    - No files changed
+    """
+    ...
+```
+
+**Source config:** `configure_ci_path_filters.py` (skippable path patterns).
+
+**Testability:** Pure function. Test with various combinations of labels
+and file lists. Each skip reason is a distinct test case.
+
+**What this replaces:** The `skip-ci` label check buried inside
+`matrix_generator`'s PR handler (line 387) and `is_ci_run_required()`
+called in `main()` after matrix generation (line 651).
+
+### Step 3: Select Targets → `TargetSelection`
 
 Given trigger type + inputs, determine which GPU families to build/test
 on each platform.
@@ -118,8 +249,6 @@ class TargetSelection:
     linux_families: list[str]     # e.g. ["gfx94x", "gfx110x", "gfx1151", "gfx120x"]
     windows_families: list[str]
     test_names: list[str]         # Explicitly requested test names (from labels)
-    enable_build_jobs: bool       # False only for docs-only / skip-ci
-    skip_reason: str | None       # Why builds disabled, if applicable
 
 def select_targets(inputs: CIInputs) -> TargetSelection:
     """Determine target families based on trigger type and inputs."""
@@ -127,16 +256,16 @@ def select_targets(inputs: CIInputs) -> TargetSelection:
 ```
 
 **Source config:** `amdgpu_family_matrix.py` (family definitions, trigger-type
-grouping), `configure_ci_path_filters.py` (skip patterns for `enable_build_jobs`).
+grouping).
 
 **Testability:** Pure function of `CIInputs`. Test each trigger type path
-independently. Test label parsing (gfx labels, test labels, skip-ci,
+independently. Test label parsing (gfx labels, test labels,
 run-all-archs-ci) with unit tests.
 
 **What this replaces:** The trigger-type dispatch logic currently spread
 across `matrix_generator` lines 270-465.
 
-### Step 3: Decide Stages → `StageDecisions`
+### Step 4: Decide Stages → `StageDecisions`
 
 Given changed files and topology, determine which stages need rebuilding
 vs. using prebuilt artifacts.
@@ -193,11 +322,11 @@ build_stages), submodule paths.
 Provide fake `changed_files` lists. Verify stage decisions without
 touching git or the filesystem.
 
-**What this replaces:** The binary `is_ci_run_required()` check and the
-`test_type` logic in `main()` lines 637-677. Also provides the stage-level
-intelligence that doesn't exist in the current script at all.
+**What this replaces:** The `test_type` logic in `main()` lines 637-677.
+Also provides the stage-level intelligence that doesn't exist in the
+current script at all.
 
-### Step 4: Expand Matrix → `list[MatrixEntry]`
+### Step 5: Expand Matrix → `list[MatrixEntry]`
 
 Given families, build variant, and stage decisions, produce the GitHub
 Actions matrix JSON.
@@ -232,7 +361,7 @@ build variant configs).
 
 **What this replaces:** `generate_multi_arch_matrix()`.
 
-### Step 5: Format Outputs
+### Step 6: Format Outputs
 
 Write results to `GITHUB_OUTPUT` and `GITHUB_STEP_SUMMARY`. This is the
 only step with side effects.
@@ -270,11 +399,17 @@ to not need much testing (or mock the file writes).
 ```python
 def configure(inputs: CIInputs) -> CIOutputs:
     """Main pipeline. Each step feeds the next."""
+    changed_files = get_git_modified_paths(inputs.base_ref)
+
+    # Step 2: Gate — should we skip CI entirely?
+    skip = check_skip_ci(inputs, changed_files)
+    if skip.skip:
+        return CIOutputs.skipped(skip.reason)
+
+    # Steps 3-5: Select targets, decide stages, expand matrix
     targets = select_targets(inputs)
 
     topology = load_topology()
-    changed_files = get_git_modified_paths(inputs.base_ref)
-
     stage_decisions = decide_stages(inputs, targets, topology, changed_files)
 
     linux_matrix = expand_matrix(
@@ -289,7 +424,7 @@ def configure(inputs: CIInputs) -> CIOutputs:
         windows_variants=windows_matrix,
         linux_test_labels=targets.test_names,
         windows_test_labels=targets.test_names,
-        enable_build_jobs=targets.enable_build_jobs,
+        enable_build_jobs=True,
         test_type=stage_decisions.test_type,
         linux_prebuilt_stages=...,
         ...
@@ -307,20 +442,22 @@ a `CIInputs` and asserting on the returned `CIOutputs`.
 ### Why This Architecture
 
 **Adding a new behavior = adding/modifying one step.** Examples:
-- "Skip CI for docs-only PRs" → change in `select_targets`
+- "Skip CI for docs-only PRs" → add a check in `check_skip_ci`
 - "New GPU family" → data change in `amdgpu_family_matrix.py`, nothing
   in the pipeline
 - "Per-stage prebuilt decisions" → change in `decide_stages`
 - "New output field" → add to `CIOutputs` + `write_outputs`
-- "New PR label" → add to `select_targets` label parsing
+- "New PR label for target opt-in" → add to `select_targets` label parsing
 
 **Each step is testable in isolation.** Construct the input dataclass,
 call the function, assert on the output dataclass. No environment variable
-mocking, no git operations, no file I/O (except Step 1 and Step 5).
+mocking, no git operations, no file I/O (except Step 1 and Step 6).
 
 **Data flows in one direction.** No step reaches back to modify a prior
-step's output. `format_variants` (currently a nested function inside
-`main()`) becomes `format_summary`, a standalone pure function.
+step's output. The gate (Step 2) short-circuits cleanly instead of
+clearing lists mid-computation. `format_variants` (currently a nested
+function inside `main()`) becomes `format_summary`, a standalone pure
+function.
 
 ## Implementation Plan
 
