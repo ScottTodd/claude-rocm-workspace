@@ -412,6 +412,7 @@ These workflow issues should always be marked **BLOCKING**:
 2. **Caller not updated** - Reusable workflow gains a new required input but callers don't pass it
 3. **Input source mismatch** - Switching from `github.event.inputs` to `inputs` breaks `workflow_dispatch`
 4. **Complex inline bash** - `run:` blocks with conditionals, loops, string manipulation, or decision trees must be Python scripts per the [style guide](https://github.com/ROCm/TheRock/blob/main/docs/development/style_guides/github_actions_style_guide.md#prefer-python-scripts-over-inline-bash). One-line commands and simple `echo`/`mkdir` are fine.
+5. **Unused checkout** - Workflow checks out multiple repos but a checkout's source is never wired to build/test steps (e.g., missing `-D*_SOURCE_DIR` flag). CI passes but tests the wrong source.
 
 See [guidelines/github_actions.md](guidelines/github_actions.md) for full details.
 
@@ -487,6 +488,7 @@ Before finalizing a review, verify:
 - [ ] All callers of modified reusable workflows updated
 - [ ] Input propagation correct for all trigger types
 - [ ] No complex inline bash (conditionals/loops/string manipulation belong in Python scripts)
+- [ ] Multiple checkouts wired correctly (each checkout's source consumed by intended steps)
 - [ ] `runs-on:` labels pinned (not `*-latest`)
 
 **Security (always check):** See [guidelines/security.md](guidelines/security.md) for full checklist

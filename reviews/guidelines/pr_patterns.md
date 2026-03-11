@@ -245,6 +245,7 @@ Apply full [github_actions.md](github_actions.md) checklist, especially:
 - [ ] No breaking changes to existing callers
 - [ ] Script runtime dependencies available (trace imports of called Python scripts)
 - [ ] No complex inline bash — conditionals, loops, string manipulation belong in Python scripts
+- [ ] Multiple checkouts wired correctly (source from each checkout consumed by intended steps)
 - [ ] `runs-on:` labels pinned to specific versions (not `*-latest`)
 - [ ] Follows [GitHub Actions Style Guide](../../TheRock/docs/development/style_guides/github_actions_style_guide.md)
 - [ ] Permissions are minimal (prefer read-only where possible)

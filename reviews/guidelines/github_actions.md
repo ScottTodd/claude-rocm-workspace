@@ -12,6 +12,7 @@ Checklist for reviewing PRs that modify GitHub Actions workflows.
 | [No breaking changes to callers](#breaking-changes) | No | BLOCKING | Semantic changes are subtle |
 | [Script dependencies satisfied](#script-runtime-dependencies) | No | BLOCKING | Trace imports through script call chain |
 | [No complex inline bash](#no-complex-inline-bash) | Partial | BLOCKING | Conditionals, loops, string manipulation belong in Python scripts |
+| [Multiple checkouts wired correctly](#multiple-checkouts) | No | BLOCKING | Each checkout must feed its intended consumers |
 | [Runners pinned to specific versions](#pinned-runner-versions) | Yes | IMPORTANT | Detect `ubuntu-latest` etc. |
 | [Permissions minimal](#permissions) | Yes | IMPORTANT | Can scan for overly broad permissions |
 | [Actions pinned](#pinned-versions) | Yes | IMPORTANT | Can detect `@main` or `@latest` |
@@ -24,6 +25,7 @@ Checklist for reviewing PRs that modify GitHub Actions workflows.
 - Regression to existing callers when modifying shared workflows
 - Script runtime dependencies (pip packages available in CI environment)
 - Whether inline bash should be a Python script (conditionals, loops, string manipulation)
+- Multiple checkouts actually consumed by their intended steps (not silently unused)
 
 **What automation can help with:**
 - Listing all callers of a reusable workflow
@@ -103,6 +105,75 @@ Any of these in a `run:` block indicate the logic belongs in a Python script:
 
 - Complex inline bash (conditionals, loops, decision trees): **BLOCKING**
 - Simple inline bash (single command, `echo`, `mkdir`): **OK**
+
+---
+
+## Multiple Checkouts
+
+### The Problem
+
+When a workflow checks out multiple repositories (e.g., rocm-systems *and*
+TheRock), each checkout exists for a reason — typically the workflow needs to
+build or test one repo's source using the other repo's build infrastructure.
+If the wiring between checkout and consumer is wrong or missing, the workflow
+silently does the wrong thing: it runs successfully but tests the wrong source.
+
+This is especially dangerous because:
+1. **CI passes** — there's no error, just a green check on untested code
+2. **The diff doesn't show the absence** — a missing CMake flag or env var
+   isn't visible in the diff of what *was* added
+3. **It's easy to cargo-cult** — copying from an existing workflow and
+   forgetting a flag that wires the two checkouts together
+
+### Real Example: rocm-systems#3066
+
+PR #3066 added RCCL CI workflows to rocm-systems. The workflow checked out both
+rocm-systems (the repo under test) and TheRock (the build system). However, it
+never passed `-DTHEROCK_ROCM_SYSTEMS_SOURCE_DIR=../` in `extra_cmake_options`,
+which is the flag that tells TheRock to overlay the rocm-systems source on top
+of its own submodules. Result: every CI run built and tested an unchanging
+snapshot of RCCL from the pinned TheRock commit, completely ignoring the PR's
+changes.
+
+### Check: Multiple Checkout Wiring
+
+When a workflow has more than one `actions/checkout` step:
+
+1. **Identify each checkout's purpose** — what source does it provide?
+2. **Trace how each checkout is consumed** — which subsequent steps reference
+   the checked-out path? Look for:
+   - CMake flags (e.g., `-D*_SOURCE_DIR=...`)
+   - Environment variables (e.g., `PYTHONPATH`, `PATH` additions)
+   - Explicit `working-directory:` on steps
+   - Script arguments that reference the checkout path
+3. **Verify no checkout is silently unused** — if a repo is checked out but
+   no subsequent step references its path, that's a strong signal the wiring
+   is missing
+4. **Compare with existing workflows** — if a similar workflow already exists
+   (e.g., `therock-ci-linux.yml`), diff the checkout + configuration steps to
+   find missing flags or env vars
+
+### Red Flags
+
+| Signal | Likely Bug |
+|--------|------------|
+| Repo checked out into `path: X` but no step references `X/` | Checkout is unused — wiring missing |
+| Existing workflow passes `-DFOO_SOURCE_DIR=../` but new workflow doesn't | Forgot to carry over the source-dir flag |
+| Two checkouts of the same repo at different refs | Probably a copy-paste error (unless intentional, e.g., diff) |
+| Checkout with `path:` but build step uses default working directory | Build is using the wrong source tree |
+
+### Questions to Ask
+
+- "This workflow checks out both X and Y — which steps use X's source vs Y's?"
+- "The existing `foo-ci-linux.yml` passes `-DBAR_SOURCE_DIR=../`. Does this
+  new workflow need the same flag?"
+- "If I remove the first checkout, would the build still succeed? If yes,
+  that checkout isn't wired correctly."
+
+### Severity
+
+- Checkout exists but source is never consumed by build/test steps: **BLOCKING**
+- Checkout path inconsistency (e.g., `path: TheRock` vs hardcoded `./TheRock`): **IMPORTANT**
 
 ---
 
@@ -534,6 +605,7 @@ When modifying workflows with `workflow_call`:
 - [ ] No breaking changes without migration path
 - [ ] Script runtime dependencies available (trace imports of called scripts)
 - [ ] No complex inline bash — logic with conditionals/loops/string manipulation belongs in Python scripts
+- [ ] Multiple checkouts wired correctly (each checkout consumed by intended steps)
 - [ ] `runs-on:` labels pinned to specific versions (not `*-latest`)
 - [ ] Permissions are minimal
 - [ ] Actions are pinned
