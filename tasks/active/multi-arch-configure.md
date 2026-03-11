@@ -5,7 +5,7 @@ repositories:
 
 # Multi-Arch Configure: Source-Aware CI Configuration
 
-- **Status:** Not started (design phase)
+- **Status:** Phase 1 complete, reviewing scaffold
 - **Priority:** P1 (High)
 - **Started:** 2026-03-11
 - **Target:** TBD
@@ -655,6 +655,40 @@ Analyzed the current codebase:
 rocm-systems submodule triggers rebuilds of: compiler-runtime, math-libs,
 comm-libs, profiler-apps, media-libs, etc. This is correct but coarse.
 
+### 2026-03-11 - Phase 1 scaffold committed
+
+Commit `657c8618` on branch `multi-arch-configure`:
+
+**`configure_multi_arch_ci.py` (~280 lines):**
+- 7 frozen dataclasses: `CIInputs`, `SkipDecision`, `TargetSelection`,
+  `StageDecision`, `StageDecisions`, `MatrixEntry`, `CIOutputs`
+- `CIInputs.from_environ()` reads `GITHUB_EVENT_PATH` for event payload
+  (PR labels, workflow_dispatch inputs, push `before` SHA)
+- 5 stub step functions, each with TODO markers
+- `configure()` orchestrator wires steps together with skip gate short-circuit
+- `write_outputs()` uses `gha_set_output` / `gha_append_step_summary`
+
+**`tests/configure_multi_arch_ci_test.py` (~310 lines, 19 tests):**
+- `TestCIInputs` — construction, properties (is_pull_request, etc.), defaults
+- `TestCIInputsFromEnviron` — event payload fixtures via tempfile for
+  workflow_dispatch, pull_request (with labels), push (with before SHA)
+- `TestCheckSkipCI` — stub returns no-skip
+- `TestSelectTargets` — stub returns TargetSelection
+- `TestDecideStages` — stub returns StageDecisions, prebuilt/rebuild partitioning
+- `TestExpandMatrix` — empty families, MatrixEntry.to_dict()
+- `TestFormatSummary` — skipped and normal summary output
+- `TestConfigurePipeline` — skip gate short-circuit, all-steps-called (mocked)
+
+**Design choices made during implementation:**
+- `StageDecision.action` uses `Literal["rebuild", "prebuilt"]` (dropped "skip"
+  from the design doc — a skipped stage is just absent from the decisions dict)
+- `CIOutputs` uses `prebuilt_stages`/`rebuild_stages` as `list[str]` rather than
+  per-platform strings — simpler for now, can split later if needed
+- `changed_files` computed in `configure()` only for push/PR events (not
+  schedule/workflow_dispatch) to avoid unnecessary git operations
+- `BUILD_VARIANT` comes from `os.environ` (workflow_call input), not from
+  `GITHUB_EVENT_PATH` — it's set by the calling workflow, not the event
+
 ## Decisions & Trade-offs
 
 - **Pipeline of pure transformations**: Each step takes typed input, produces
@@ -727,16 +761,40 @@ it's worth noting.
 ## Next Steps
 
 1. [x] Design — pipeline architecture, feature audit
-2. [ ] Phase 1: Scaffold — dataclasses, pipeline shape, test patterns
-3. [ ] Phase 2: MVP logic — skip gate, target selection, matrix expansion
-4. [ ] Phase 3: Wire into setup.yml, validate output parity
-5. [ ] Phase 4: Stage decisions (topology parsing, source-set analysis)
-6. [ ] Phase 5: Prebuilt integration + structured logging/summary
-7. [ ] Phase 6: Test selection from rebuilt stages
+2. [x] Phase 1: Scaffold — dataclasses, pipeline shape, test patterns
+3. [ ] Review and refine scaffold (current)
+4. [ ] Phase 2: MVP logic — skip gate, target selection, matrix expansion
+5. [ ] Phase 3: Wire into workflow, validate output parity
+6. [ ] Phase 4: Stage decisions (topology parsing, source-set analysis)
+7. [ ] Phase 5: Prebuilt integration + structured logging/summary
+8. [ ] Phase 6: Test selection from rebuilt stages
+
+### Review checklist for Phase 1 scaffold
+
+- [ ] Do the step boundaries feel right? Should anything merge or split?
+- [ ] Are the dataclass fields complete for MVP, or are any missing/extra?
+- [ ] Is the `CIInputs.from_environ()` approach (reading `GITHUB_EVENT_PATH`)
+      working well? Any ergonomic issues with the test fixtures?
+- [ ] Does `configure()` orchestration read cleanly?
+- [ ] Test patterns — are the test classes showing the right style for each step?
+- [ ] Anything in the task file design that doesn't match the implemented code?
+
+### Phase 2 priorities (after review)
+
+When moving to MVP logic, implement in this order:
+1. **`select_targets`** — highest value, needed for any real output.
+   Import family data from `amdgpu_family_matrix.py`. Handle all 4 trigger
+   types. PR label parsing for `gfx*`, `test:*`, `run-all-archs-ci`.
+2. **`expand_matrix`** — port `generate_multi_arch_matrix` logic so the
+   script produces actual matrix JSON.
+3. **`check_skip_ci`** — integrate `is_ci_run_required()` from
+   `configure_ci_path_filters.py`. Check `skip-ci` label.
+4. **`decide_stages`** — initially just test_type logic (smoke vs full).
+   Stage rebuild/prebuilt decisions come in Phase 4.
 
 ## Branches
 
-_(none yet)_
+- `multi-arch-configure` — branched from `multi-arch-prebuilt-3`
 
 ## Completion Notes
 
