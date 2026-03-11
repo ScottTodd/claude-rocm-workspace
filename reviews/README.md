@@ -52,7 +52,7 @@ See [REVIEW_TYPES.md](REVIEW_TYPES.md) for detailed descriptions.
 
 1. **You request a review** with specific focus areas
 2. **Claude analyzes** your code with that focus in mind
-3. **Review is written** to `reviews/pr_{NUMBER}.md` or `reviews/local_{COUNTER}_{branch-name}.md` (with `_{TYPE}` suffix for focused reviews)
+3. **Review is written** to `reviews/pr_{REPO}_{NUMBER}.md` or `reviews/local_{COUNTER}_{branch-name}.md` (with `_{TYPE}` suffix for focused reviews)
 4. **You address issues** based on severity (❌ BLOCKING, ⚠️ IMPORTANT, 💡 SUGGESTION)
 5. **Claude can re-review** after you fix blocking issues
 
@@ -102,14 +102,16 @@ Improvements for later:
 
 ### PR Reviews
 ```
-reviews/pr_{NUMBER}.md              # Comprehensive review (no type suffix)
-reviews/pr_{NUMBER}_{TYPE}.md       # Focused review (with type suffix)
+reviews/pr_{REPO}_{NUMBER}.md              # Comprehensive review (no type suffix)
+reviews/pr_{REPO}_{NUMBER}_{TYPE}.md       # Focused review (with type suffix)
 ```
 
+The repository name is extracted from the PR URL (e.g., `TheRock` from `https://github.com/ROCm/TheRock/pull/2761`).
+
 Examples:
-- `reviews/pr_2761.md` - comprehensive review of PR #2761
-- `reviews/pr_2761_style.md` - style-focused review of PR #2761
-- `reviews/pr_2761_tests.md` - test-focused review of PR #2761
+- `reviews/pr_TheRock_2761.md` - comprehensive review of TheRock PR #2761
+- `reviews/pr_TheRock_2761_style.md` - style-focused review of TheRock PR #2761
+- `reviews/pr_rocm-systems_3066.md` - comprehensive review of rocm-systems PR #3066
 
 ### Local Branch Reviews
 
@@ -140,8 +142,8 @@ reviews/
 ├── README.md                          # This file (includes naming conventions)
 ├── REVIEW_GUIDELINES.md              # How to write reviews
 ├── REVIEW_TYPES.md                   # Review type definitions
-├── pr_{NUMBER}.md                    # PR reviews
-├── pr_{NUMBER}_{TYPE}.md             # Focused PR reviews
+├── pr_{REPO}_{NUMBER}.md             # PR reviews
+├── pr_{REPO}_{NUMBER}_{TYPE}.md      # Focused PR reviews
 ├── local_{COUNTER}_{branch-name}.md  # Local branch reviews
 └── remove-pytorch-patch-support.md   # Example (predates convention)
 ```

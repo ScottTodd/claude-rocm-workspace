@@ -286,7 +286,7 @@ Do a security review of my branch
 ```
 
 **Output files:**
-- PR reviews: `reviews/pr_{NUMBER}.md` (or `_style.md`, `_tests.md`, etc.)
+- PR reviews: `reviews/pr_{REPO}_{NUMBER}.md` (or `_style.md`, `_tests.md`, etc.)
 - Branch reviews: `reviews/local_{COUNTER}_{branch-name}.md`
 
 **Severity levels:**

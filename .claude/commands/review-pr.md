@@ -36,7 +36,8 @@ gh pr diff <URL>
 - Read `reviews/REVIEW_GUIDELINES.md` for severity levels, format, and the
   evidence-based review methodology
 - Read `reviews/REVIEW_TYPES.md` if doing focused reviews
-- Determine output filename: `reviews/pr_{NUMBER}.md` or `reviews/pr_{NUMBER}_{TYPE}.md`
+- Extract the repository name from the PR URL (e.g., `TheRock` from `https://github.com/ROCm/TheRock/pull/2761`)
+- Determine output filename: `reviews/pr_{REPO}_{NUMBER}.md` or `reviews/pr_{REPO}_{NUMBER}_{TYPE}.md`
 
 ### 3a. Gather CI Evidence (if available)
 
