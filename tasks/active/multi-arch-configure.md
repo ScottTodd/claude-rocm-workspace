@@ -158,8 +158,20 @@ Making it an explicit step means:
 
 ### Step 1: Gather Inputs → `CIInputs`
 
-Parse environment variables and PR context into a typed dataclass. This is
-the only step that touches `os.environ`. Everything downstream is pure.
+Parse GitHub context into a typed dataclass. This is the only step that
+touches external state. Everything downstream is pure.
+
+The script reads from two sources:
+- `GITHUB_EVENT_PATH` — JSON file with the full event payload (PR info,
+  workflow_dispatch inputs, etc.). Replaces the chain of individual env
+  vars that setup.yml currently passes.
+- A few standard GitHub env vars (`GITHUB_EVENT_NAME`, `GITHUB_OUTPUT`,
+  `GITHUB_STEP_SUMMARY`, `GITHUB_REF_NAME`)
+
+PR labels come from the event payload (for `pull_request` triggers, the
+payload includes `pull_request.labels`). No separate `gh pr view` step
+needed — the label fetching that currently lives in setup.yml YAML
+moves into Python where the format handling can be tested.
 
 ```python
 @dataclass(frozen=True)
@@ -169,20 +181,19 @@ class CIInputs:
     branch_name: str
     base_ref: str                      # For git diff (PR base, or HEAD^1)
     build_variant: str                 # release, asan, tsan
-    pr_labels: list[str]               # Parsed from PR_LABELS JSON
+    pr_labels: list[str]               # From event payload
     # Per-platform workflow_dispatch overrides
     linux_amdgpu_families: str         # Raw comma-separated input
     windows_amdgpu_families: str
     linux_test_labels: str
     windows_test_labels: str
-    additional_label_options: list[str]
     # Prebuilt configuration (from workflow_dispatch)
     prebuilt_stages: str               # Comma-separated stage names
     baseline_run_id: str
 
     @staticmethod
     def from_environ() -> "CIInputs":
-        """Parse from environment variables. Only place os.environ is read."""
+        """Parse from GitHub event context. Only place external state is read."""
         ...
 
     @property
@@ -193,14 +204,13 @@ class CIInputs:
     def is_schedule(self) -> bool: ...
     @property
     def is_workflow_dispatch(self) -> bool: ...
-    @property
-    def is_long_lived_branch(self) -> bool: ...
 ```
 
-**Source config:** None — this is pure environment parsing.
+**Source config:** None — this is pure context parsing.
 
-**Testability:** Construct `CIInputs` directly in tests. No env var mocking needed
-downstream.
+**Testability:** Construct `CIInputs` directly in tests. No env var mocking
+needed downstream. The `from_environ()` factory is the only thing that
+touches the environment.
 
 ### Step 2: Check Skip CI → early exit or continue
 
@@ -512,11 +522,21 @@ of unknown families, the skip gate cases.
 **Deliverable:** Script produces correct matrix output for all trigger
 types. Can be tested locally by constructing `CIInputs` in tests.
 
-### Phase 3: Wire into setup.yml, validate output
+### Phase 3: Wire into workflow, validate output
 
-- `setup.yml` calls the new script when `MULTI_ARCH=true`
-- Verify identical output to current `configure_ci.py` for the same inputs
-- May need a comparison test or manual validation on a workflow_dispatch run
+Fork `setup.yml` → `setup_multi_arch.yml`:
+- Checkout (stays in YAML)
+- Call `configure_multi_arch_ci.py` — no env var pass-through chain,
+  script reads `GITHUB_EVENT_PATH` directly
+- Compute package version (independent, stays)
+
+The `gh pr view` label-fetching step goes away — labels come from
+the event payload, parsed in Python.
+
+`multi_arch_ci.yml` calls the new setup workflow instead of `setup.yml`.
+
+Validate: workflow_dispatch run produces equivalent matrix output to
+current configure_ci.py for the same inputs.
 
 ### Phase 4: Stage decisions + test type
 
@@ -569,10 +589,34 @@ The current `test_matrix` in `fetch_test_configurations.py` has test
 labels like "hip-tests", "rocprim", etc. These correspond roughly to
 artifact groups but there's no formal mapping. Where should this live?
 
-### Q4: setup.yml dispatch
-When `MULTI_ARCH=true`, should setup.yml call the new script instead of
-configure_ci.py? Or should we have a thin dispatcher that routes based on
-mode? Simplest: just call the right script based on an `if:`.
+### Q4: Fork setup.yml too
+
+The current `setup.yml` does three things the Python script could own:
+
+1. **PR label fetching** (lines 68-74) — `gh pr view` shell step writes
+   `PR_LABELS` to `GITHUB_ENV`. The script could do this itself given
+   `GITHUB_TOKEN` and the event context, removing a shell/Python boundary.
+2. **Env var pass-through** (lines 79-87) — 8 env vars that are just
+   `github.event.inputs.*` piped to the script. If the script reads the
+   GitHub event JSON directly (via `GITHUB_EVENT_PATH`), most of these
+   go away.
+3. **The `MULTI_ARCH` flag** — a forked setup workflow just calls the
+   new script. No flag needed.
+
+**Proposed:** Fork to `setup_multi_arch.yml` that does:
+- Checkout (stays in YAML — needs `actions/checkout`)
+- Call `configure_multi_arch_ci.py` with minimal env vars
+- Compute package version (independent, stays)
+
+The script itself handles label fetching and reads inputs from
+`GITHUB_EVENT_PATH` instead of relying on a chain of env var pass-throughs.
+
+This means fewer places where data format assumptions live (currently:
+YAML step formats labels → `GITHUB_ENV` → env var → Python parses JSON)
+and the script becomes more self-contained and testable.
+
+**Alternative:** Keep `setup.yml` shared, branch on `inputs.multi_arch`
+to call the right script. Simpler initially but keeps the env var coupling.
 
 ### Q5: Per-platform stage decisions
 Stage lists might differ by platform (e.g. `media-libs` disabled on Windows).
@@ -622,6 +666,44 @@ comm-libs, profiler-apps, media-libs, etc. This is correct but coarse.
   No hardcoded stage names in Python.
 - **Dataclasses over dicts**: `CIInputs`, `TargetSelection`, `StageDecisions`,
   `MatrixEntry`, `CIOutputs` — each step's interface is explicit.
+
+## Design Considerations
+
+### Workflow ↔ script input contract
+
+The script reads workflow_dispatch inputs and PR labels from
+`GITHUB_EVENT_PATH` (a JSON file GitHub provides to every Actions step)
+instead of having setup.yml pass each value as an individual env var.
+This eliminates boilerplate (10+ env vars → 2-3) but makes the dataflow
+between the YAML workflow and the Python script less visible.
+
+**Risk:** A workflow input is added/removed in YAML but the corresponding
+read in Python is forgotten, or vice versa. Silent mismatch — the input
+is ignored or the script reads a field that no longer exists.
+
+**Mitigations:**
+- `CIInputs.from_environ()` is the only function that reads the event
+  JSON. It validates expected fields per event type and fails fast on
+  missing required fields.
+- A contract test defines the set of event payload fields the script
+  expects per trigger type. If the set changes in code but not in the
+  test (or vice versa), the test fails with a clear message.
+- A comment block in the setup workflow documents which fields the script
+  reads, so the YAML side of the contract is visible to workflow authors.
+
+**Note:** The explicit env var approach has the same drift risk (add an
+env var in YAML, forget to read it in Python), just in a more visible
+format. The contract test catches both directions regardless.
+
+### PR labels: event payload vs `gh pr view`
+
+For `pull_request` events, labels are included in the event payload at
+`event.pull_request.labels`. No `gh pr view` step needed. However, if
+labels are added *after* the event fires (e.g., the `labeled` activity
+type), the payload reflects the state at event time. The current setup.yml
+uses `gh pr view` which fetches live labels. In practice this rarely
+matters since the workflow re-triggers on `labeled` events anyway, but
+it's worth noting.
 
 ## Blockers & Issues
 
