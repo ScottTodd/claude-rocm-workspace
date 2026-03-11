@@ -1,0 +1,64 @@
+{
+  "subprojects": {
+    "therock-zlib": {
+      "build_deps": [],
+      "runtime_deps": []
+    },
+    "therock-zstd": {
+      "build_deps": [],
+      "runtime_deps": []
+    },
+    "therock-sqlite3": {
+      "build_deps": [],
+      "runtime_deps": []
+    },
+    "therock-libdrm": {
+      "build_deps": [],
+      "runtime_deps": []
+    },
+    "therock-spdlog": {
+      "build_deps": ["therock-fmt"],
+      "runtime_deps": ["therock-fmt"]
+    },
+    "rocm_smi_lib": {
+      "build_deps": ["rocm-cmake"],
+      "runtime_deps": ["therock-libdrm"]
+    },
+    "amd-llvm": {
+      "build_deps": [],
+      "runtime_deps": ["therock-zlib", "therock-zstd", "therock-ncurses", "therock-liblzma"]
+    },
+    "hip-clr": {
+      "build_deps": ["rocm-cmake", "hipcc"],
+      "runtime_deps": ["amd-llvm", "ROCR-Runtime", "rocprofiler-register", "therock-zlib", "therock-zstd", "therock-ncurses", "therock-liblzma"]
+    },
+    "rocBLAS": {
+      "build_deps": ["rocm-cmake"],
+      "runtime_deps": ["hip-clr", "therock-host-blas", "amd-llvm", "ROCR-Runtime", "rocprofiler-register", "therock-zlib", "therock-zstd", "therock-ncurses", "therock-liblzma"]
+    },
+    "hipBLAS": {
+      "build_deps": ["rocm-cmake"],
+      "runtime_deps": ["rocBLAS", "hip-clr", "therock-host-blas", "amd-llvm", "ROCR-Runtime", "rocprofiler-register", "therock-zlib", "therock-zstd", "therock-ncurses", "therock-liblzma"]
+    },
+    "hipBLAS-common": {
+      "build_deps": [],
+      "runtime_deps": []
+    },
+    "hipBLASLt": {
+      "build_deps": ["rocm-cmake", "hipBLAS-common"],
+      "runtime_deps": ["hip-clr", "therock-host-blas", "rocBLAS", "amd-llvm", "ROCR-Runtime", "rocprofiler-register", "therock-zlib", "therock-zstd", "therock-ncurses", "therock-liblzma"]
+    },
+    "MIOpen": {
+      "build_deps": ["rocm-cmake", "therock-nlohmann-json", "therock-msgpack-cxx", "composable-kernel"],
+      "runtime_deps": ["hip-clr", "rocBLAS", "hipBLASLt", "therock-host-blas", "therock-sqlite3", "amd-llvm", "ROCR-Runtime", "rocprofiler-register", "therock-zlib", "therock-zstd", "therock-ncurses", "therock-liblzma"]
+    },
+    "rccl": {
+      "build_deps": ["rocm-cmake", "hipcc"],
+      "runtime_deps": ["hip-clr", "amd-llvm", "ROCR-Runtime", "rocprofiler-register", "therock-zlib", "therock-zstd", "therock-ncurses", "therock-liblzma"]
+    },
+    "rccl-tests": {
+      "build_deps": ["therock-googletest"],
+      "runtime_deps": ["rccl", "hip-clr", "amd-llvm", "ROCR-Runtime", "rocprofiler-register", "therock-zlib", "therock-zstd", "therock-ncurses", "therock-liblzma"]
+    }
+  }
+}
