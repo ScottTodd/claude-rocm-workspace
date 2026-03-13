@@ -1,0 +1,371 @@
+project,category,file,line,pattern,severity,status,notes
+rocfft,cmake-build,CMakeLists.txt,34,"set(CMAKE_INSTALL_PREFIX ""/opt/rocm"" CACHE PATH ...)",high,untriaged,Default install prefix; overridden by TheRock via -DCMAKE_INSTALL_PREFIX but problematic for standalone
+rocfft,cmake-build,CMakeLists.txt,55,"find_package(ROCmCMakeBuildTools PATHS ${ROCM_PATH} /opt/rocm)",medium,untriaged,Hardcoded fallback path in find_package
+rocfft,cmake-build,CMakeLists.txt,179,"find_package(hip REQUIRED CONFIG PATHS /opt/rocm/lib/cmake/hip/)",high,untriaged,Could find system hip instead of build-tree hip
+rocfft,cmake-build,CMakeLists.txt,180,"find_package(hiprtc REQUIRED CONFIG PATHS /opt/rocm/lib/cmake/hiprtc/)",high,untriaged,Could find system hiprtc instead of build-tree hiprtc
+rocfft,cmake-build,CMakeLists.txt,275,"set(CMAKE_INSTALL_PREFIX ""C:/hipSDK"" CACHE PATH ... FORCE)",high,untriaged,FORCE overrides user-specified install prefix
+rocfft,cmake-build,clients/CMakeLists.txt,33,"set(CMAKE_INSTALL_PREFIX ""/opt/rocm"" CACHE PATH ...)",medium,untriaged,Default install prefix in clients subdir
+rocfft,cmake-build,clients/CMakeLists.txt,35,"set(CPACK_PACKAGING_INSTALL_PREFIX ""/opt/rocm"" ...)",low,untriaged,CPack prefix; only affects standalone packaging
+rocfft,cmake-build,clients/bench/CMakeLists.txt,31,"set(CMAKE_INSTALL_PREFIX ""/opt/rocm"" CACHE PATH ...)",medium,untriaged,Default install prefix in bench
+rocfft,cmake-build,clients/bench/CMakeLists.txt,56,"find_package(hip REQUIRED PATHS /opt/rocm/lib/cmake/hip/)",medium,untriaged,Hardcoded hip search path
+rocfft,cmake-build,clients/samples/fixed-large/CMakeLists.txt,31,"set(CMAKE_INSTALL_PREFIX ""/opt/rocm"" CACHE PATH ...)",medium,untriaged,Default install prefix
+rocfft,cmake-build,clients/samples/fixed-large/CMakeLists.txt,52,"find_package(hip REQUIRED PATHS /opt/rocm/lib/cmake/hip/)",medium,untriaged,Hardcoded hip search path
+rocfft,cmake-build,clients/samples/fixed-16/CMakeLists.txt,31,"set(CMAKE_INSTALL_PREFIX ""/opt/rocm"" CACHE PATH ...)",medium,untriaged,Default install prefix
+rocfft,cmake-build,clients/samples/fixed-16/CMakeLists.txt,52,"find_package(hip REQUIRED PATHS /opt/rocm/lib/cmake/hip/)",medium,untriaged,Hardcoded hip search path
+rocfft,cmake-build,clients/samples/rocfft/CMakeLists.txt,31,"set(CMAKE_INSTALL_PREFIX ""/opt/rocm"" CACHE PATH ...)",medium,untriaged,Default install prefix
+rocfft,cmake-build,clients/samples/rocfft/CMakeLists.txt,52,"find_package(hip REQUIRED PATHS /opt/rocm/lib/cmake/hip/)",medium,untriaged,Hardcoded hip search path
+rocfft,cmake-build,clients/samples/multi_gpu/CMakeLists.txt,31,"set(CMAKE_INSTALL_PREFIX ""/opt/rocm"" CACHE PATH ...)",medium,untriaged,Default install prefix
+rocfft,cmake-build,clients/samples/multi_gpu/CMakeLists.txt,52,"find_package(hip REQUIRED PATHS /opt/rocm/lib/cmake/hip/)",medium,untriaged,Hardcoded hip search path
+rocfft,cmake-build,clients/samples/CMakeLists.txt,31,"set(CMAKE_INSTALL_PREFIX ""/opt/rocm"" CACHE PATH ...)",medium,untriaged,Default install prefix
+rocfft,cmake-build,clients/samples/mpi/CMakeLists.txt,31,"set(CMAKE_INSTALL_PREFIX ""/opt/rocm"" CACHE PATH ...)",medium,untriaged,Default install prefix
+rocfft,cmake-build,clients/samples/mpi/CMakeLists.txt,52,"find_package(hip REQUIRED PATHS /opt/rocm/lib/cmake/hip/)",medium,untriaged,Hardcoded hip search path
+rocfft,cmake-build,clients/tests/CMakeLists.txt,31,"set(CMAKE_INSTALL_PREFIX ""/opt/rocm"" CACHE PATH ...)",medium,untriaged,Default install prefix
+rocfft,cmake-build,clients/tests/CMakeLists.txt,56,"find_package(hip REQUIRED PATHS /opt/rocm/lib/cmake/hip/)",medium,untriaged,Hardcoded hip search path
+rocfft,cmake-build,clients/tests/CMakeLists.txt,498-499,"find_program(clang-offload-bundler HINTS ${ROCM_PATH}/llvm/bin PATHS /opt/rocm/llvm/bin)",medium,untriaged,Hardcoded tool search path
+rocfft,cmake-build,clients/tests/CMakeLists.txt,506-507,"find_program(llvm-objdump HINTS ${ROCM_PATH}/llvm/bin PATHS /opt/rocm/llvm/bin)",medium,untriaged,Hardcoded tool search path
+rocfft,cmake-build,deps/CMakeLists.txt,32,"set(CMAKE_INSTALL_PREFIX ... FORCE)",high,untriaged,FORCE overrides user-specified install prefix
+rocfft,toolchain,toolchain-linux.cmake,24,"$ENV{ROCM_PATH}/bin",low,untriaged,Env var read in toolchain; TheRock doesn't use this file
+rocfft,toolchain,toolchain-linux.cmake,26-27,"set(ROCM_PATH ""/opt/rocm""); set(rocm_bin ""/opt/rocm/bin"")",low,untriaged,Hardcoded fallback; TheRock doesn't use this file
+rocfft,toolchain,toolchain-windows.cmake,24,"$ENV{HIP_PATH}",low,untriaged,Env var read in toolchain; TheRock doesn't use this file
+rocfft,toolchain,toolchain-windows.cmake,27,"$ENV{HIP_DIR}",low,untriaged,Env var read in toolchain; TheRock doesn't use this file
+rocfft,python,rmake.py,175,"os.getenv('ROCM_PATH', ""/opt/rocm"")",low,untriaged,Standalone build helper; not used by TheRock
+rocfft,python,library/src/device/generator.py,71,"/opt/rocm/llvm/bin/clang-format",low,triaged,Should resolve clang-format relative to current ROCm install; has fallback to skip formatting
+rocfft,python,library/src/device/generator.py,88,"/opt/rocm/llvm/bin/clang-format",low,triaged,Should resolve clang-format relative to current ROCm install; has fallback to skip formatting
+rocfft,python,scripts/perf/perflib/specs.py,124-127,"/opt/rocm/.info/version-utils and /opt/rocm/.info/version",low,untriaged,Hardcoded version info path
+rocfft,shell,install.sh,380,"rocm_path=/opt/rocm",low,untriaged,Standalone install script; not used by TheRock
+rocfft,shell,install.sh,385,"rpath /opt/rocm/lib:/opt/rocm/lib64",medium,untriaged,Hardcoded rpath could cause runtime issues
+rocfft,shell,install.sh,424,"export PATH=${PATH}:/opt/rocm/bin",low,untriaged,Standalone install script
+rocfft,shell,install.sh,492,"CPACK_PACKAGING_INSTALL_PREFIX=/opt/rocm",low,untriaged,Standalone install script
+rocfft,shell,.githooks/pre-commit,7,"/opt/rocm/llvm/bin/clang-format",low,untriaged,Dev tooling; not a build/install issue
+composablekernel,cmake-build,CMakeLists.txt,33,/opt/rocm,medium,untriaged,CMAKE_INSTALL_PREFIX default (overridable)
+composablekernel,cmake-build,CMakeLists.txt,181,/opt/rocm,high,untriaged,find_package(ROCM PATHS /opt/rocm) could find system libs
+composablekernel,cmake-build,CMakeLists.txt,195,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm and env vars
+composablekernel,cmake-build,CMakeLists.txt,195,$ENV{ROCM_PATH},medium,untriaged,env var read appended to CMAKE_PREFIX_PATH
+composablekernel,cmake-build,CMakeLists.txt,195,$ENV{HIP_PATH},medium,untriaged,env var read appended to CMAKE_PREFIX_PATH
+composablekernel,cmake-build,codegen/CMakeLists.txt,18,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm
+composablekernel,cmake-build,codegen/CMakeLists.txt,18,$ENV{ROCM_PATH},medium,untriaged,env var read in CMAKE_PREFIX_PATH
+composablekernel,cmake-build,codegen/test/CMakeLists.txt,4,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm
+composablekernel,cmake-build,client_example/CMakeLists.txt,92,/opt/rocm,high,untriaged,find_package(hip PATHS /opt/rocm)
+composablekernel,cmake-build,dispatcher/CMakeLists.txt,16,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm
+composablekernel,cmake-build,cmake/CppCheck.cmake,12,/opt/rocm,low,untriaged,find_program PATHS for cppcheck
+composablekernel,cmake-build,cmake/ClangTidy.cmake,25,/opt/rocm,low,untriaged,find_program PATHS for clang-tidy
+composablekernel,cpp-install,codegen/test/rtc/src/compile_kernel.cpp,88,/opt/rocm,high,untriaged,hardcoded compiler path in C++ source
+composablekernel,cpp-install,tile_engine/ops/gemm_streamk/gemm_streamk_benchmark.hpp,147,/opt/rocm,medium,untriaged,reads /opt/rocm/.info/version at runtime
+composablekernel,cpp-install,tile_engine/ops/gemm/gemm_universal/gemm_benchmark.hpp,141,/opt/rocm,medium,untriaged,reads /opt/rocm/.info/version at runtime
+composablekernel,cpp-install,tile_engine/ops/gemm/gemm_preshuffle/gemm_preshuffle_benchmark.hpp,142,/opt/rocm,medium,untriaged,reads /opt/rocm/.info/version at runtime
+composablekernel,cpp-install,tile_engine/ops/gemm/gemm_multi_d/gemm_multi_d_benchmark.hpp,144,/opt/rocm,medium,untriaged,reads /opt/rocm/.info/version at runtime
+composablekernel,python,dispatcher/scripts/parallel_kernel_builder.py,24,/opt/rocm,low,untriaged,hardcoded hipcc path fallback
+composablekernel,python,dispatcher/scripts/example_kernel_builder.py,25,/opt/rocm,low,untriaged,hardcoded hipcc path fallback
+composablekernel,python,dispatcher/scripts/example_kernel_builder.py,33,/opt/rocm,low,untriaged,hardcoded llvm-ar path fallback
+composablekernel,python,dispatcher/scripts/compile_gemm_examples.py,77,/opt/rocm,low,untriaged,hardcoded hipcc path fallback
+composablekernel,python,dispatcher/python/ctypes_utils.py,660,/opt/rocm,low,untriaged,hardcoded hipcc path fallback
+composablekernel,python,dispatcher/codegen/generate_kernel_wrappers.py,192,/opt/rocm,medium,untriaged,hardcoded -I/opt/rocm/include and -L/opt/rocm/lib in generated build files
+composablekernel,shell,script/hipclang_opt.sh,8,/opt/rocm,low,untriaged,hardcoded llvm tool paths in dev script
+hipblas,cmake-build,CMakeLists.txt,36,/opt/rocm,medium,untriaged,CMAKE_INSTALL_PREFIX default (overridable)
+hipblas,cmake-build,CMakeLists.txt,51,/opt/rocm,high,untriaged,CMAKE_MODULE_PATH appends /opt/rocm paths
+hipblas,cmake-build,CMakeLists.txt,54,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm paths
+hipblas,cmake-build,CMakeLists.txt,86,/opt/rocm,high,untriaged,find_package(hip PATHS /opt/rocm)
+hipblas,cmake-build,CMakeLists.txt,218,CMAKE_INSTALL_PREFIX FORCE,high,untriaged,FORCE override on Windows (C:/hipSDK)
+hipblas,cmake-build,CMakeLists.txt,285,/opt/rocm,low,untriaged,find_program(clang-offload-bundler) PATHS /opt/rocm/llvm/bin
+hipblas,cmake-build,CMakeLists.txt,293,/opt/rocm,low,untriaged,find_program(llvm-objcopy) PATHS /opt/rocm/llvm/bin
+hipblas,cmake-build,library/src/CMakeLists.txt,75,/opt/rocm,high,untriaged,find_package(rocblas PATHS /opt/rocm)
+hipblas,cmake-build,library/src/CMakeLists.txt,98,/opt/rocm,high,untriaged,find_package(rocsolver PATHS /opt/rocm)
+hipblas,cmake-build,clients/CMakeLists.txt,110,/opt/rocm,medium,untriaged,CMAKE_INSTALL_PREFIX default for clients
+hipblas,cmake-build,deps/CMakeLists.txt,32,CMAKE_INSTALL_PREFIX FORCE,medium,untriaged,FORCE to build-tree package dir (deps only)
+hipblas,toolchain,toolchain-linux.cmake,10,/opt/rocm,low,untriaged,rocm_bin default path
+hipblas,toolchain,toolchain-linux.cmake,8,$ENV{ROCM_PATH},low,untriaged,env var read for rocm_bin
+hipblas,toolchain,toolchain-windows.cmake,3,$ENV{HIP_PATH},low,untriaged,env var read for HIP_DIR
+hipblas,toolchain,toolchain-windows.cmake,6,$ENV{HIP_DIR},low,untriaged,env var read fallback for HIP_DIR
+hipblas,python,rmake.py,187,/opt/rocm,low,untriaged,ROCM_PATH env fallback to /opt/rocm
+hipblas,python,rmake.py,295,/opt/rocm,low,untriaged,ROCM_RPATH env fallback to /opt/rocm/lib
+hipblas,shell,install.sh,403,/opt/rocm,low,untriaged,rocm_path default
+hipblas-common,cmake-build,CMakeLists.txt,20,CMAKE_INSTALL_PREFIX FORCE,high,untriaged,FORCE overrides user CMAKE_INSTALL_PREFIX to /opt/rocm
+hipblas-common,python,rmake.py,105,/opt/rocm,low,untriaged,ROCM_PATH env fallback to /opt/rocm
+hipblaslt,cmake-build,CMakeLists.txt,49,CMAKE_INSTALL_PREFIX FORCE,high,untriaged,FORCE overrides user CMAKE_INSTALL_PREFIX to /opt/rocm
+hipblaslt,cmake-build,CMakeLists.txt,617,/opt/rocm,low,untriaged,find_program(clang-offload-bundler) PATHS
+hipblaslt,cmake-build,CMakeLists.txt,624,/opt/rocm,low,untriaged,find_program(llvm-objcopy) PATHS
+hipblaslt,cmake-build,deps/CMakeLists.txt,34,CMAKE_INSTALL_PREFIX FORCE,medium,untriaged,FORCE to build-tree package dir (deps only)
+hipblaslt,cpp-install,library/src/amd_detail/hipblaslt-ext-op.cpp,117,/opt/rocm,high,untriaged,hardcoded runtime library path for ExtOpLibrary.dat
+hipblaslt,cpp-install,library/src/amd_detail/rocblaslt/src/tensile_host.cpp,71,/opt/rocm,high,untriaged,#define HIPBLASLT_LIB_PATH /opt/rocm/lib
+hipblaslt,cpp-install,library/src/amd_detail/rocblaslt/src/rocblaslt_transform.cpp,53,/opt/rocm,high,untriaged,hardcoded runtime path for hipblasltTransform.hsaco
+hipblaslt,cpp-install,library/src/amd_detail/rocblaslt/src/rocroller/custom_kernels.cpp,48,/opt/rocm,high,untriaged,hardcoded default_lib_path fallback
+hipblaslt,python,tensilelite/Tensile/Toolchain/Validators.py,33,/opt/rocm,medium,untriaged,DEFAULT_ROCM_BIN_PATH_POSIX fallback
+hipblaslt,python,tensilelite/Tensile/Common/GlobalParameters.py,579,/opt/rocm,medium,untriaged,ROCmPath default parameter
+hipblaslt,python,tensilelite/rocisa/setup.py,18,/opt/rocm,low,untriaged,ROCM_PATH env fallback
+hipblaslt,shell,install.sh,457,/opt/rocm,low,untriaged,rocm_path default
+hipblaslt,shell,install.sh,730,/opt/rocm,low,untriaged,hardcoded rpath
+hipcub,cmake-build,CMakeLists.txt,38,/opt/rocm,medium,untriaged,CMAKE_INSTALL_PREFIX default (overridable)
+hipcub,cmake-build,CMakeLists.txt,87,/opt/rocm,medium,untriaged,ROCM_ROOT default to /opt/rocm
+hipcub,cmake-build,CMakeLists.txt,85,$ENV{HIP_PATH},medium,untriaged,ROCM_ROOT from HIP_PATH env on Windows
+hipcub,cmake-build,CMakeLists.txt,213,/opt/rocm,high,untriaged,find_package(rocprim PATHS /opt/rocm)
+hipcub,cmake-build,CMakeLists.txt,218,/opt/rocm,high,untriaged,find_package(hipcub PATHS /opt/rocm)
+hipcub,cmake-build,cmake/Dependencies.cmake,407,/opt/rocm,high,untriaged,ExternalProject CMAKE_PREFIX_PATH=/opt/rocm
+hipcub,cmake-build,test/extra/CMakeLists.txt,34,/opt/rocm,medium,untriaged,ROCM_ROOT default
+hipcub,cmake-build,test/extra/CMakeLists.txt,32,$ENV{HIP_PATH},medium,untriaged,ROCM_ROOT from HIP_PATH env
+hipcub,cmake-build,test/CMakeLists.txt,90,/opt/rocm,low,untriaged,find_program PATHS for clang-offload-bundler
+hipcub,cmake-build,test/CMakeLists.txt,98,/opt/rocm,low,untriaged,find_program PATHS for llvm-objcopy
+hipcub,toolchain,toolchain-linux.cmake,5,/opt/rocm,low,untriaged,ROCM_PATH default
+hipcub,toolchain,toolchain-linux.cmake,3,$ENV{ROCM_PATH},low,untriaged,env var for rocm_bin
+hipcub,toolchain,toolchain-windows.cmake,7,$ENV{HIP_PATH},low,untriaged,env var for HIP_DIR
+hipcub,toolchain,toolchain-windows.cmake,10,$ENV{HIP_DIR},low,untriaged,env var fallback for HIP_DIR
+hipcub,python,rmake.py,115,/opt/rocm,low,untriaged,ROCM_PATH env fallback
+hipcub,shell,install,34,/opt/rocm,low,untriaged,rocm_path default
+hipdnn,cmake-build,CMakeLists.txt,47,CMAKE_INSTALL_PREFIX FORCE,medium,untriaged,FORCE to ROCM_PATH (variable not hardcoded)
+hipdnn,cmake-build,CMakeLists.txt,50,CMAKE_INSTALL_PREFIX FORCE,medium,untriaged,FORCE to ROCM_CMAKE_PATH (variable not hardcoded)
+hipdnn,cmake-build,cmake/CheckToolVersion.cmake,27,/opt/rocm,low,untriaged,LLVM_TOOL_PATHS includes /opt/rocm/llvm/bin
+hipdnn,cmake-build,cmake/ClangToolChain.cmake,44,/opt/rocm,medium,untriaged,DEFAULT_ROCM_CMAKE_PATH set to /opt/rocm
+hipdnn,cmake-build,cmake/ClangToolChain.cmake,84,$ENV{ROCM_PATH},low,untriaged,env var in error message
+hipfft,cmake-build,CMakeLists.txt,36,/opt/rocm,medium,untriaged,CMAKE_INSTALL_PREFIX default (overridable)
+hipfft,cmake-build,CMakeLists.txt,244,CMAKE_INSTALL_PREFIX FORCE,high,untriaged,FORCE on Windows (C:/hipSDK)
+hipfft,cmake-build,cmake/dependencies.cmake,68,/opt/rocm,high,untriaged,find_package(ROCmCMakeBuildTools PATHS /opt/rocm)
+hipfft,cmake-build,clients/CMakeLists.txt,40,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH includes /opt/rocm
+hipfft,cmake-build,clients/tests/CMakeLists.txt,31,/opt/rocm,medium,untriaged,CMAKE_INSTALL_PREFIX default for test client
+hipfft,cmake-build,clients/tests/CMakeLists.txt,37,/opt/rocm,high,untriaged,find_package(ROCmCMakeBuildTools PATHS /opt/rocm)
+hipfft,cmake-build,clients/tests/CMakeLists.txt,359,/opt/rocm,low,untriaged,find_program PATHS for clang-offload-bundler
+hipfft,cmake-build,clients/tests/CMakeLists.txt,367,/opt/rocm,low,untriaged,find_program PATHS for llvm-objcopy
+hipfft,cmake-build,deps/CMakeLists.txt,34,CMAKE_INSTALL_PREFIX FORCE,medium,untriaged,FORCE to build-tree package dir (deps only)
+hipfft,toolchain,toolchain-linux.cmake,26,/opt/rocm,low,untriaged,rocm_bin default
+hipfft,toolchain,toolchain-linux.cmake,27,/opt/rocm,low,untriaged,ROCM_PATH default
+hipfft,toolchain,toolchain-linux.cmake,24,$ENV{ROCM_PATH},low,untriaged,env var for rocm_bin
+hipfft,toolchain,toolchain-windows.cmake,24,$ENV{HIP_PATH},low,untriaged,env var for HIP_DIR
+hipfft,toolchain,toolchain-windows.cmake,27,$ENV{HIP_DIR},low,untriaged,env var fallback for HIP_DIR
+hipfft,python,rmake.py,111,/opt/rocm,low,untriaged,ROCM_PATH env fallback
+hiprand,cmake-build,CMakeLists.txt,39,/opt/rocm,medium,untriaged,ROCM_PATH default to /opt/rocm
+hiprand,cmake-build,CMakeLists.txt,37,$ENV{ROCM_PATH},medium,untriaged,env var read for ROCM_PATH cache var
+hiprand,cmake-build,cmake/Dependencies.cmake,276,/opt/rocm,high,untriaged,ExternalProject CMAKE_PREFIX_PATH=/opt/rocm
+hiprand,cmake-build,test/CMakeLists.txt,76,/opt/rocm,low,untriaged,find_program PATHS for clang-offload-bundler
+hiprand,cmake-build,test/CMakeLists.txt,84,/opt/rocm,low,untriaged,find_program PATHS for llvm-objcopy
+hiprand,cmake-build,test/package/CMakeLists.txt,29,/opt/rocm,medium,untriaged,ROCM_PATH default
+hiprand,cmake-build,test/package/CMakeLists.txt,27,$ENV{ROCM_PATH},medium,untriaged,env var for ROCM_PATH
+hiprand,cmake-install,library/src/hiprand-fortran-config.cmake.in,32,/opt/rocm,medium,untriaged,/opt/rocm in config template comments (PATHS example)
+hiprand,toolchain,toolchain-linux.cmake,9,/opt/rocm,low,untriaged,rocm_bin default
+hiprand,toolchain,toolchain-linux.cmake,7,$ENV{ROCM_PATH},low,untriaged,env var for rocm_bin
+hiprand,toolchain,toolchain-windows.cmake,7,$ENV{HIP_PATH},low,untriaged,env var for HIP_DIR
+hiprand,toolchain,toolchain-windows.cmake,10,$ENV{HIP_DIR},low,untriaged,env var fallback for HIP_DIR
+hiprand,python,rmake.py,104,/opt/rocm,low,untriaged,ROCM_PATH env fallback
+hiprand,python,python/hiprand/hiprand/hip.py,61,/opt/rocm,medium,untriaged,hardcoded library search path for HIP runtime
+hiprand,shell,install,32,/opt/rocm,low,untriaged,rocm_path default
+hiprand,shell,install,109,/opt/rocm,low,untriaged,hardcoded rpath
+hipsolver,cmake-build,CMakeLists.txt,30,/opt/rocm,medium,untriaged,CMAKE_INSTALL_PREFIX default (overridable)
+hipsolver,cmake-build,CMakeLists.txt,52,/opt/rocm,high,untriaged,find_package(ROCM PATHS /opt/rocm)
+hipsolver,cmake-build,CMakeLists.txt,94,/opt/rocm,high,untriaged,HIP_PATH hardcoded fallback
+hipsolver,cmake-build,CMakeLists.txt,96,$ENV{HIP_PATH},medium,untriaged,env var for HIP_PATH
+hipsolver,cmake-build,CMakeLists.txt,100,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm paths
+hipsolver,cmake-build,CMakeLists.txt,152,/opt/rocm,high,untriaged,find_package(hip PATHS /opt/rocm)
+hipsolver,cmake-build,CMakeLists.txt,275,CMAKE_INSTALL_PREFIX FORCE,high,untriaged,FORCE on Windows (C:/hipSDK)
+hipsolver,cmake-build,CMakeLists.txt,328,/opt/rocm,low,untriaged,find_program PATHS for clang-offload-bundler
+hipsolver,cmake-build,CMakeLists.txt,336,/opt/rocm,low,untriaged,find_program PATHS for llvm-objcopy
+hipsolver,cmake-build,library/CMakeLists.txt,27,/opt/rocm,high,untriaged,CMAKE_MODULE_PATH appends /opt/rocm paths
+hipsolver,cmake-build,library/CMakeLists.txt,50,/opt/rocm,high,untriaged,find_package(hip PATHS /opt/rocm)
+hipsolver,cmake-build,library/src/CMakeLists.txt,128,/opt/rocm,high,untriaged,find_package(rocblas PATHS /opt/rocm)
+hipsolver,cmake-build,library/src/CMakeLists.txt,139,/opt/rocm,high,untriaged,find_package(rocsolver PATHS /opt/rocm)
+hipsolver,cmake-build,library/src/CMakeLists.txt,158,/opt/rocm,high,untriaged,find_package(rocsparse PATHS /opt/rocm)
+hipsolver,cmake-build,clients/CMakeLists.txt,28,/opt/rocm,medium,untriaged,CMAKE_INSTALL_PREFIX default for clients
+hipsolver,cmake-build,clients/CMakeLists.txt,67,/opt/rocm,high,untriaged,find_package(hipsolver PATHS /opt/rocm)
+hipsolver,cmake-build,clients/gtest/CMakeLists.txt,31,/opt/rocm,high,untriaged,find_package(hipblas PATHS /opt/rocm)
+hipsolver,cmake-build,clients/gtest/CMakeLists.txt,42,/opt/rocm,high,untriaged,find_package(hipsparse PATHS /opt/rocm)
+hipsolver,cmake-build,clients/benchmarks/CMakeLists.txt,29,/opt/rocm,high,untriaged,find_package(hipsparse PATHS /opt/rocm)
+hipsolver,cmake-build,deps/CMakeLists.txt,34,CMAKE_INSTALL_PREFIX FORCE,medium,untriaged,FORCE to build-tree package dir (deps only)
+hipsolver,python,rmake.py,133,/opt/rocm,low,untriaged,ROCM_PATH env fallback
+hipsolver,shell,install.sh,370,/opt/rocm,low,untriaged,cmake_prefix_path default
+hipsolver,shell,install.sh,372,/opt/rocm,low,untriaged,rocm_path default
+hipsolver,shell,install.sh,512,/opt/rocm,low,untriaged,hardcoded rpath
+hipsparse,cmake-build,CMakeLists.txt,34,CMAKE_INSTALL_PREFIX FORCE,high,untriaged,FORCE overrides user CMAKE_INSTALL_PREFIX to /opt/rocm
+hipsparse,cmake-build,CMakeLists.txt,32,CMAKE_INSTALL_PREFIX FORCE,medium,untriaged,FORCE to build-tree package dir on deps build
+hipsparse,cmake-build,cmake/hipsparse_clientmatrices.cmake,4,/opt/rocm,medium,untriaged,find_program(hipsparse_mtx2csr PATHS /opt/rocm/bin)
+hipsparse,toolchain,toolchain-linux.cmake,9,/opt/rocm,low,untriaged,ROCM_PATH default
+hipsparse,toolchain,toolchain-linux.cmake,7,$ENV{ROCM_PATH},low,untriaged,env var for rocm_bin
+hipsparse,toolchain,toolchain-windows.cmake,3,$ENV{HIP_PATH},low,untriaged,env var for HIP_DIR
+hipsparse,toolchain,toolchain-windows.cmake,6,$ENV{HIP_DIR},low,untriaged,env var fallback for HIP_DIR
+hipsparse,python,rmake.py,122,/opt/rocm,low,untriaged,ROCM_PATH env fallback
+hipsparse,python,rmake.py,184,/opt/rocm,low,untriaged,rocsparse_path default fallback
+hipsparse,shell,install.sh,278,/opt/rocm,low,untriaged,rocm_path default
+hipsparse,shell,install.sh,385,/opt/rocm,low,untriaged,hardcoded rpath
+hipsparse,shell,install.sh,533,/opt/rocm,low,untriaged,CPACK_PACKAGING_INSTALL_PREFIX=/opt/rocm
+hipsparselt,cmake-build,CMakeLists.txt,37,CMAKE_INSTALL_PREFIX FORCE,high,untriaged,FORCE overrides user CMAKE_INSTALL_PREFIX to /opt/rocm
+hipsparselt,cmake-build,CMakeLists.txt,35,CMAKE_INSTALL_PREFIX FORCE,high,untriaged,FORCE on Windows (C:/hipSDK)
+hipsparselt,cpp-install,library/src/hcc_detail/rocsparselt/src/tensile_host.cpp,66,/opt/rocm,high,untriaged,#define ROCSPARSELT_LIB_PATH hardcoded
+hipsparselt,cpp-install,library/src/hcc_detail/rocsparselt/src/spmm/hip/kernel_launcher.cpp,52,/opt/rocm,high,untriaged,#define ROCSPARSELT_LIB_PATH hardcoded
+hipsparselt,shell,install.sh,320,/opt/rocm,low,untriaged,rocm_path default
+hipsparselt,shell,install.sh,559,/opt/rocm,low,untriaged,hardcoded rpath
+hiptensor,cmake-build,CMakeLists.txt,39,/opt/rocm,medium,untriaged,CMAKE_INSTALL_PREFIX default (overridable)
+hiptensor,cmake-build,CMakeLists.txt,47,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm
+hiptensor,cmake-build,CMakeLists.txt,47,$ENV{ROCM_PATH},medium,untriaged,env var in CMAKE_PREFIX_PATH
+hiptensor,cmake-build,samples/CMakeLists.txt,72,/opt/rocm,medium,untriaged,CMAKE_CXX_COMPILER hardcoded to /opt/rocm/bin/amdclang++
+hiptensor,cmake-build,samples/CMakeLists.txt,82,/opt/rocm,high,untriaged,find_package(hiptensor PATHS /opt/rocm)
+hiptensor,cmake-build,samples/CMakeLists.txt,85,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm
+hiptensor,cmake-build,samples/CMakeLists.txt,85,$ENV{ROCM_PATH},medium,untriaged,env var in CMAKE_PREFIX_PATH
+miopen,cmake-build,CMakeLists.txt,52,/opt/rocm,medium,untriaged,CMAKE_INSTALL_PREFIX default (overridable)
+miopen,cmake-build,CMakeLists.txt,145,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm paths
+miopen,cmake-build,CMakeLists.txt,201,/opt/rocm,high,untriaged,find_path PATHS /opt/rocm/llvm
+miopen,cmake-build,CMakeLists.txt,227,/opt/rocm,high,untriaged,find_package(hip PATHS /opt/rocm)
+miopen,cmake-build,CMakeLists.txt,344,/opt/rocm,high,untriaged,find_path PATHS /opt/rocm
+miopen,cmake-build,CMakeLists.txt,363,/opt/rocm,high,untriaged,find_package(rocblas PATHS /opt/rocm)
+miopen,cmake-build,CMakeLists.txt,373,/opt/rocm,high,untriaged,find_package(hipblaslt PATHS /opt/rocm)
+miopen,cmake-build,CMakeLists.txt,373,$ENV{HIP_PATH},medium,untriaged,env var in find_package PATHS
+miopen,cmake-build,CMakeLists.txt,375,/opt/rocm,high,untriaged,find_package(hipblas-common PATHS /opt/rocm)
+miopen,cmake-build,CMakeLists.txt,375,$ENV{HIP_PATH},medium,untriaged,env var in find_package PATHS
+miopen,cmake-build,CMakeLists.txt,394,/opt/rocm,high,untriaged,find_path PATHS /opt/rocm/llvm
+miopen,cmake-build,CMakeLists.txt,449,/opt/rocm,high,untriaged,find_path PATHS /opt/rocm
+miopen,cmake-build,cmake/rocm-path.cmake,28,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm
+miopen,cmake-build,cmake/FindOpenCL.cmake,37,/opt/rocm,high,untriaged,PATHS /opt/rocm/opencl/include
+miopen,cmake-build,cmake/FindOpenCL.cmake,56,/opt/rocm,high,untriaged,PATHS /opt/rocm/opencl/lib
+miopen,cmake-build,cmake/CppCheck.cmake,35,/opt/rocm,low,untriaged,find_program PATHS /opt/rocm/bin
+miopen,cmake-build,cmake/ClangTidy.cmake,46,/opt/rocm,low,untriaged,find_program PATHS /opt/rocm/llvm/bin
+miopen,cmake-build,install_deps.cmake,83,/opt/rocm,high,untriaged,PATHS /opt/rocm for dependency detection
+miopen,cmake-build,test/CMakeLists.txt,32,/opt/rocm,high,untriaged,find_package(hipblaslt PATHS /opt/rocm)
+miopen,cmake-build,test/CMakeLists.txt,32,$ENV{HIP_PATH},medium,untriaged,env var in find_package PATHS
+miopen,cmake-build,test/CMakeLists.txt,36,/opt/rocm,high,untriaged,find_package(rocblas PATHS /opt/rocm)
+miopen,cmake-build,test/CMakeLists.txt,36,$ENV{HIP_PATH},medium,untriaged,env var in find_package PATHS
+miopen,cmake-build,test/CMakeLists.txt,117,/opt/rocm,high,untriaged,PATHS /opt/rocm in find commands
+miopen,cmake-build,test/CMakeLists.txt,119,$ENV{ROCM_PATH},medium,untriaged,env var in PATHS
+miopen,cmake-build,test/CMakeLists.txt,120,$ENV{HIP_PATH},medium,untriaged,env var in PATHS
+miopen,cmake-build,test/gtest/CMakeLists.txt,6,/opt/rocm,high,untriaged,find_package(hipblaslt PATHS /opt/rocm)
+miopen,cmake-build,test/gtest/CMakeLists.txt,6,$ENV{HIP_PATH},medium,untriaged,env var in find_package PATHS
+miopen,cmake-build,test/gtest/CMakeLists.txt,10,/opt/rocm,high,untriaged,find_package(rocblas PATHS /opt/rocm)
+miopen,cmake-build,test/gtest/CMakeLists.txt,10,$ENV{HIP_PATH},medium,untriaged,env var in find_package PATHS
+miopen,cmake-build,samples/cba_fused_infer/CMakeLists.txt,31,/opt/rocm,medium,untriaged,CMAKE_INSTALL_PREFIX default
+miopen,cmake-build,samples/cba_fused_infer/CMakeLists.txt,37,/opt/rocm,high,untriaged,HIP_PATH hardcoded
+miopen,cmake-build,samples/cba_fused_infer/CMakeLists.txt,46,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm paths
+miopen,cmake-build,fin/CMakeLists.txt,38,/opt/rocm,medium,untriaged,CMAKE_INSTALL_PREFIX default
+miopen,cmake-build,fin/CMakeLists.txt,43,/opt/rocm,high,untriaged,find_package(ROCM PATHS /opt/rocm)
+miopen,cmake-build,fin/CMakeLists.txt,92,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm
+miopen,cmake-build,fin/CMakeLists.txt,100,/opt/rocm,high,untriaged,find_package(hip PATHS /opt/rocm)
+miopen,cmake-build,fin/CMakeLists.txt,109,/opt/rocm,high,untriaged,find_package PATHS /opt/rocm
+miopen,cmake-build,fin/CMakeLists.txt,149,/opt/rocm,high,untriaged,find_package PATHS /opt/rocm
+miopen,cmake-build,fin/src/CMakeLists.txt,27,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm
+miopen,cmake-build,fin/cmake/rocm-path.cmake,28,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm
+miopen,cmake-build,fin/cmake/FindOpenCL.cmake,37,/opt/rocm,high,untriaged,PATHS /opt/rocm/opencl
+miopen,cmake-build,fin/cmake/ClangTidy.cmake,46,/opt/rocm,low,untriaged,find_program PATHS
+miopen,cmake-build,fin/cmake/CppCheck.cmake,35,/opt/rocm,low,untriaged,find_program PATHS
+miopen,cmake-build,fin/install_deps.cmake,56,/opt/rocm,high,untriaged,PATHS /opt/rocm for deps
+miopen,python,test/test_perf.py,74,/opt/rocm,low,untriaged,hardcoded rocminfo path
+miopen,shell,utils/install_precompiled_kernels.sh,33,/opt/rocm,low,untriaged,ROCMINFO default path
+rocblas,cmake-build,CMakeLists.txt,76,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm paths
+rocblas,cmake-build,CMakeLists.txt,149,/opt/rocm,medium,untriaged,hipblaslt_path default to /opt/rocm
+rocblas,cmake-build,CMakeLists.txt,229,/opt/rocm,high,untriaged,find_package(hip PATHS /opt/rocm)
+rocblas,cmake-build,CMakeLists.txt,352,CMAKE_INSTALL_PREFIX FORCE,high,untriaged,FORCE on Windows (C:/hipSDK)
+rocblas,cmake-build,CMakeLists.txt,415,/opt/rocm,low,untriaged,find_program PATHS for clang-offload-bundler
+rocblas,cmake-build,CMakeLists.txt,423,/opt/rocm,low,untriaged,find_program PATHS for llvm-objcopy
+rocblas,cmake-build,library/CMakeLists.txt,94,/opt/rocm,high,untriaged,target_include_directories /opt/rocm/include for roctx
+rocblas,cmake-build,library/CMakeLists.txt,104,/opt/rocm,high,untriaged,find_library PATHS /opt/rocm/lib for roctx
+rocblas,cmake-build,clients/CMakeLists.txt,150,/opt/rocm,high,untriaged,find_package(rocblas PATHS /opt/rocm)
+rocblas,cmake-build,clients/CMakeLists.txt,154,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm
+rocblas,cmake-build,next-cmake/CMakeLists.txt,36,CMAKE_INSTALL_PREFIX FORCE,high,untriaged,FORCE overrides user CMAKE_INSTALL_PREFIX to /opt/rocm
+rocblas,cpp-install,library/src/tensile_host.cpp,76,/opt/rocm,high,untriaged,#define ROCBLAS_LIB_PATH /opt/rocm/lib
+rocblas,toolchain,toolchain-linux.cmake,10,/opt/rocm,low,untriaged,rocm_bin default
+rocblas,toolchain,toolchain-linux.cmake,8,$ENV{ROCM_PATH},low,untriaged,env var for rocm_bin
+rocblas,toolchain,toolchain-windows.cmake,3,$ENV{HIP_PATH},low,untriaged,env var for HIP_DIR
+rocblas,toolchain,toolchain-windows.cmake,6,$ENV{HIP_DIR},low,untriaged,env var fallback for HIP_DIR
+rocblas,python,rmake.py,370,/opt/rocm,low,untriaged,ROCM_PATH env fallback
+rocblas,python,rmake.py,458,/opt/rocm,low,untriaged,ROCM_RPATH env fallback
+rocblas,python,scripts/performance/blas/getspecs.py,70,/opt/rocm,low,untriaged,hardcoded amd-smi path
+rocblas,python,scripts/performance/blas/getspecs.py,76,/opt/rocm,low,untriaged,hardcoded rocm_agent_enumerator path
+rocblas,python,scripts/performance/blas/getspecs.py,138,/opt/rocm,low,untriaged,reads /opt/rocm/.info/version-utils
+rocblas,shell,header_compilation_tests.sh,42,/opt/rocm,low,untriaged,rocm_path default
+rocprim,cmake-build,CMakeLists.txt,27,/opt/rocm,medium,untriaged,CMAKE_INSTALL_PREFIX default (overridable)
+rocprim,cmake-build,CMakeLists.txt,58,/opt/rocm,medium,untriaged,ROCM_ROOT default
+rocprim,cmake-build,CMakeLists.txt,56,$ENV{HIP_PATH},medium,untriaged,ROCM_ROOT from HIP_PATH env on Windows
+rocprim,cmake-build,CMakeLists.txt,101,$ENV{HIP_PATH},medium,untriaged,ROCM_ROOT from HIP_PATH env on Windows
+rocprim,cmake-build,CMakeLists.txt,103,/opt/rocm,medium,untriaged,ROCM_ROOT default
+rocprim,cmake-build,CMakeLists.txt,184,/opt/rocm,high,untriaged,find_package(hip PATHS /opt/rocm)
+rocprim,cmake-build,CMakeLists.txt,205,/opt/rocm,high,untriaged,find_package(rocprim PATHS /opt/rocm)
+rocprim,cmake-build,CMakeLists.txt,294,/opt/rocm,low,untriaged,find_program PATHS for clang-offload-bundler
+rocprim,cmake-build,CMakeLists.txt,302,/opt/rocm,low,untriaged,find_program PATHS for llvm-objcopy
+rocprim,cmake-build,cmake/VerifyCompiler.cmake,24,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm
+rocprim,cmake-build,cmake/VerifyCompiler.cmake,25,/opt/rocm,high,untriaged,find_package(hip PATHS /opt/rocm)
+rocprim,cmake-build,cmake/Dependencies.cmake,185,/opt/rocm,high,untriaged,ExternalProject CMAKE_PREFIX_PATH=/opt/rocm
+rocprim,cmake-build,test/extra/CMakeLists.txt,43,/opt/rocm,high,untriaged,CMAKE_MODULE_PATH appends /opt/rocm paths
+rocprim,cmake-build,test/extra/CMakeLists.txt,57,/opt/rocm,high,untriaged,find_package(rocprim PATHS /opt/rocm)
+rocprim,toolchain,toolchain-linux.cmake,5,/opt/rocm,low,untriaged,ROCM_PATH default
+rocprim,toolchain,toolchain-linux.cmake,3,$ENV{ROCM_PATH},low,untriaged,env var for rocm_bin
+rocprim,toolchain,toolchain-windows.cmake,7,$ENV{HIP_PATH},low,untriaged,env var for HIP_DIR
+rocprim,toolchain,toolchain-windows.cmake,10,$ENV{HIP_DIR},low,untriaged,env var fallback for HIP_DIR
+rocprim,python,rmake.py,118,/opt/rocm,low,untriaged,ROCM_PATH env fallback
+rocprim,python,tuning/tuning_scripts/base_tuner.py,397,/opt/rocm,medium,untriaged,hardcoded -I/opt/rocm/include in compiler flags
+rocprim,python,scripts/autotune-search/main.py,236,/opt/rocm,medium,untriaged,hardcoded clang++ path
+rocprim,shell,install,43,/opt/rocm,low,untriaged,rocm_path default
+rocrand,cmake-build,CMakeLists.txt,42,/opt/rocm,high,untriaged,set(ENV{ROCM_PATH} /opt/rocm) modifies environment
+rocrand,cmake-build,CMakeLists.txt,46,$ENV{ROCM_PATH},medium,untriaged,CMAKE_INSTALL_PREFIX from env var
+rocrand,cmake-build,CMakeLists.txt,58,$ENV{ROCM_PATH},medium,untriaged,CMAKE_INSTALL_PREFIX from env var
+rocrand,cmake-build,CMakeLists.txt,61,$ENV{ROCM_PATH},high,untriaged,CMAKE_PREFIX_PATH from env var
+rocrand,cmake-build,CMakeLists.txt,72,$ENV{ROCM_PATH},high,untriaged,CMAKE_MODULE_PATH from env var
+rocrand,cmake-build,CMakeLists.txt,210,$ENV{ROCM_PATH},high,untriaged,find_package(rocrand PATHS from env var)
+rocrand,cmake-build,cmake/VerifyCompiler.cmake,23,$ENV{ROCM_PATH},high,untriaged,CMAKE_PREFIX_PATH from env var
+rocrand,cmake-build,cmake/VerifyCompiler.cmake,26,$ENV{ROCM_PATH},high,untriaged,find_package(hip PATHS from env var)
+rocrand,cmake-build,test/cpp_wrapper/CMakeLists.txt,29,$ENV{ROCM_PATH},high,untriaged,CMAKE_PREFIX_PATH from env var
+rocrand,cmake-build,test/cpp_wrapper/CMakeLists.txt,49,$ENV{ROCM_PATH},high,untriaged,find_package(rocrand PATHS from env var)
+rocrand,cmake-build,test/parity/CMakeLists.txt,31,$ENV{ROCM_PATH},high,untriaged,CMAKE_PREFIX_PATH from env var
+rocrand,cmake-build,test/parity/CMakeLists.txt,38,$ENV{ROCM_PATH},high,untriaged,find_package(hip PATHS from env var)
+rocrand,cmake-build,test/parity/CMakeLists.txt,70,$ENV{ROCM_PATH},high,untriaged,find_package(rocrand PATHS from env var)
+rocrand,cmake-build,test/package/CMakeLists.txt,29,$ENV{ROCM_PATH},high,untriaged,CMAKE_PREFIX_PATH from env var
+rocrand,cmake-build,test/package/CMakeLists.txt,45,$ENV{ROCM_PATH},high,untriaged,find_package(hip PATHS from env var)
+rocrand,cmake-build,test/package/CMakeLists.txt,60,$ENV{ROCM_PATH},high,untriaged,find_package(rocrand PATHS from env var)
+rocrand,cmake-install,library/src/rocrand-fortran-config.cmake.in,32,/opt/rocm,medium,untriaged,/opt/rocm in config template comments
+rocrand,toolchain,toolchain-linux.cmake,7,/opt/rocm,low,untriaged,ENV{ROCM_PATH} default
+rocrand,toolchain,toolchain-linux.cmake,10,$ENV{ROCM_PATH},low,untriaged,env var for rocm_bin
+rocrand,toolchain,toolchain-linux.cmake,12,$ENV{ROCM_PATH},low,untriaged,env var in CMAKE_PREFIX_PATH
+rocrand,toolchain,toolchain-windows.cmake,7,$ENV{HIP_PATH},low,untriaged,env var for HIP_DIR
+rocrand,toolchain,toolchain-windows.cmake,10,$ENV{HIP_DIR},low,untriaged,env var fallback for HIP_DIR
+rocrand,python,rmake.py,112,/opt/rocm,low,untriaged,ROCM_PATH env fallback
+rocrand,python,python/rocrand/rocrand/hip.py,61,/opt/rocm,medium,untriaged,hardcoded library search path for HIP runtime
+rocrand,shell,install,32,/opt/rocm,low,untriaged,rocm_path default
+rocrand,shell,install,109,/opt/rocm,low,untriaged,hardcoded rpath
+rocsolver,cmake-build,CMakeLists.txt,103,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm paths
+rocsolver,cmake-build,CMakeLists.txt,207,/opt/rocm,high,untriaged,find_package(hip PATHS /opt/rocm)
+rocsolver,cmake-build,CMakeLists.txt,278,CMAKE_INSTALL_PREFIX FORCE,high,untriaged,FORCE on Windows (C:/hipSDK)
+rocsolver,cmake-build,CMakeLists.txt,329,/opt/rocm,low,untriaged,find_program PATHS for clang-offload-bundler
+rocsolver,cmake-build,CMakeLists.txt,337,/opt/rocm,low,untriaged,find_program PATHS for llvm-objcopy
+rocsolver,cmake-build,clients/CMakeLists.txt,38,/opt/rocm,high,untriaged,find_package(rocsolver PATHS /opt/rocm)
+rocsolver,cmake-build,cmake/get-rocm-cmake.cmake,8,/opt/rocm,high,untriaged,ROCM_PATH default to /opt/rocm
+rocsolver,toolchain,toolchain-linux.cmake,4,/opt/rocm,low,untriaged,ROCM_PATH default
+rocsolver,toolchain,toolchain-linux.cmake,2,$ENV{ROCM_PATH},low,untriaged,env var for rocm_bin
+rocsolver,python,rmake.py,134,/opt/rocm,low,untriaged,ROCM_PATH env fallback
+rocsolver,shell,install.sh,307,/opt/rocm,low,untriaged,rocm_path default
+rocsolver,shell,install.sh,603,/opt/rocm,low,untriaged,hardcoded rpath
+rocsparse,cmake-build,CMakeLists.txt,32,/opt/rocm,medium,untriaged,CMAKE_INSTALL_PREFIX default (overridable)
+rocsparse,cmake-build,CMakeLists.txt,36,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm
+rocsparse,cmake-build,CMakeLists.txt,39,/opt/rocm,high,untriaged,CMAKE_MODULE_PATH appends /opt/rocm paths
+rocsparse,cmake-build,CMakeLists.txt,221,/opt/rocm,high,untriaged,find_package(hip PATHS /opt/rocm)
+rocsparse,cmake-build,CMakeLists.txt,324,CMAKE_INSTALL_PREFIX FORCE,high,untriaged,FORCE on Windows (C:/hipSDK)
+rocsparse,cmake-build,CMakeLists.txt,380,/opt/rocm,low,untriaged,find_program PATHS for clang-offload-bundler
+rocsparse,cmake-build,CMakeLists.txt,388,/opt/rocm,low,untriaged,find_program PATHS for llvm-objcopy
+rocsparse,cmake-build,library/CMakeLists.txt,113,/opt/rocm,high,untriaged,target_include_directories /opt/rocm/include for roctx
+rocsparse,cmake-build,library/CMakeLists.txt,124,/opt/rocm,high,untriaged,find_library PATHS /opt/rocm/lib for roctx
+rocsparse,cmake-build,cmake/Dependencies.cmake,30,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm
+rocsparse,cmake-build,cmake/rocsparse_clientmatrices.cmake,25,/opt/rocm,medium,untriaged,find_program PATHS /opt/rocm/bin
+rocsparse,cmake-build,clients/CMakeLists.txt,61,/opt/rocm,medium,untriaged,CMAKE_INSTALL_PREFIX default for clients
+rocsparse,cmake-build,clients/CMakeLists.txt,135,/opt/rocm,high,untriaged,find_package(rocsparse PATHS /opt/rocm)
+rocsparse,cmake-build,clients/CMakeLists.txt,143,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm
+rocsparse,cmake-build,deps/CMakeLists.txt,35,CMAKE_INSTALL_PREFIX FORCE,medium,untriaged,FORCE to build-tree package dir (deps only)
+rocsparse,toolchain,toolchain-linux.cmake,27,/opt/rocm,low,untriaged,ROCM_PATH default
+rocsparse,toolchain,toolchain-linux.cmake,25,$ENV{ROCM_PATH},low,untriaged,env var for rocm_bin
+rocsparse,toolchain,toolchain-windows.cmake,25,$ENV{HIP_PATH},low,untriaged,env var for HIP_DIR
+rocsparse,toolchain,toolchain-windows.cmake,28,$ENV{HIP_DIR},low,untriaged,env var fallback for HIP_DIR
+rocsparse,python,rmake.py,173,/opt/rocm,low,untriaged,ROCM_PATH env fallback
+rocsparse,shell,install.sh,309,/opt/rocm,low,untriaged,rocm_path default
+rocsparse,shell,install.sh,539,/opt/rocm,low,untriaged,hardcoded rpath
+rocthrust,cmake-build,CMakeLists.txt,24,/opt/rocm,medium,untriaged,CMAKE_INSTALL_PREFIX default (overridable)
+rocthrust,cmake-build,CMakeLists.txt,101,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm
+rocthrust,cmake-build,CMakeLists.txt,106,/opt/rocm,high,untriaged,CMAKE_MODULE_PATH appends /opt/rocm paths
+rocthrust,cmake-build,CMakeLists.txt,246,/opt/rocm,high,untriaged,find_package(rocprim PATHS /opt/rocm)
+rocthrust,cmake-build,CMakeLists.txt,250,/opt/rocm,high,untriaged,find_package(rocthrust PATHS /opt/rocm)
+rocthrust,cmake-build,cmake/VerifyCompiler.cmake,24,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm
+rocthrust,cmake-build,cmake/VerifyCompiler.cmake,25,/opt/rocm,high,untriaged,find_package(hip PATHS /opt/rocm)
+rocthrust,cmake-build,cmake/Dependencies.cmake,249,/opt/rocm,high,untriaged,ExternalProject CMAKE_PREFIX_PATH=/opt/rocm
+rocthrust,cmake-build,cmake/Dependencies.cmake,427,/opt/rocm,high,untriaged,ExternalProject CMAKE_PREFIX_PATH=/opt/rocm
+rocthrust,cmake-build,extra/CMakeLists.txt,14,/opt/rocm,high,untriaged,CMAKE_MODULE_PATH appends /opt/rocm paths
+rocthrust,cmake-build,extra/CMakeLists.txt,49,/opt/rocm,high,untriaged,find_package(rocthrust PATHS /opt/rocm)
+rocthrust,toolchain,toolchain-linux.cmake,9,/opt/rocm,low,untriaged,ROCM_PATH default
+rocthrust,toolchain,toolchain-linux.cmake,7,$ENV{ROCM_PATH},low,untriaged,env var for rocm_bin
+rocthrust,toolchain,toolchain-windows.cmake,7,$ENV{HIP_PATH},low,untriaged,env var for HIP_DIR
+rocthrust,toolchain,toolchain-windows.cmake,10,$ENV{HIP_DIR},low,untriaged,env var fallback for HIP_DIR
+rocthrust,python,rmake.py,109,/opt/rocm,low,untriaged,ROCM_PATH env fallback
+rocthrust,shell,install,34,/opt/rocm,low,untriaged,rocm_path default
+rocwmma,cmake-build,CMakeLists.txt,69,CMAKE_INSTALL_PREFIX FORCE,high,untriaged,FORCE overrides user CMAKE_INSTALL_PREFIX to /opt/rocm
+rocwmma,cmake-build,CMakeLists.txt,78,/opt/rocm,high,untriaged,CMAKE_PREFIX_PATH appends /opt/rocm
+rocwmma,cmake-build,CMakeLists.txt,78,$ENV{ROCM_PATH},medium,untriaged,env var in CMAKE_PREFIX_PATH
+rocwmma,cmake-build,test/gemm/CMakeLists.txt,36,/opt/rocm,high,untriaged,find_package(rocblas PATHS /opt/rocm)
+rocwmma,cpp-install,samples/hipRTC_gemm.cpp,193,/opt/rocm,high,untriaged,ROCM_PATH env fallback to /opt/rocm in C++ source
+rocwmma,cpp-install,test/regression/reg_common.hpp,90,/opt/rocm,high,untriaged,hardcoded /opt/rocm/include fallback
+rocwmma,cpp-install,test/regression/reg_common.hpp,102,/opt/rocm,high,untriaged,hardcoded -I/opt/rocm/include

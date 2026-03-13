@@ -1,0 +1,28 @@
+project,category,file,line,pattern,severity,status,notes
+llvm-project,cpp-install,clang/lib/Driver/ToolChains/AMDGPU.cpp,219,getenv("ROCM_PATH"),high,untriaged,Clang driver reads ROCM_PATH env var for ROCm detection
+llvm-project,cpp-install,clang/lib/Driver/ToolChains/AMDGPU.cpp,280,/opt/rocm,high,untriaged,Hardcoded /opt/rocm as fallback ROCm search path
+llvm-project,cpp-install,clang/lib/Driver/ToolChains/AMDGPU.cpp,298,/opt/rocm,high,untriaged,Scans /opt for rocm-{version} directories
+llvm-project,cpp-install,clang/lib/Driver/ToolChains/AMDGPU.cpp,316,/opt/rocm,high,untriaged,Uses latest /opt/rocm-{release} as search candidate
+llvm-project,cpp-install,clang/lib/Driver/ToolChains/AMDGPU.cpp,465,getenv("HIP_PATH"),high,untriaged,Clang driver reads HIP_PATH env var for HIP runtime detection
+llvm-project,cmake-build,clang/tools/amdgpu-arch/CMakeLists.txt,11,/opt/rocm,medium,untriaged,find_package(hsa-runtime64) with hardcoded PATHS /opt/rocm
+llvm-project,cpp-install,amd/hipcc/src/hipBin_base.h,281,getenv("HIP_PATH"),high,untriaged,hipcc reads HIP_PATH env var
+llvm-project,cpp-install,amd/hipcc/src/hipBin_base.h,285,getenv("ROCM_PATH"),high,untriaged,hipcc reads ROCM_PATH env var
+llvm-project,cpp-install,amd/hipcc/src/hipBin_base.h,472,/opt/rocm,medium,untriaged,Help text references /opt/rocm as default ROCM_PATH
+llvm-project,cmake-build,amd/comgr/test/CMakeLists.txt,205,PATHS.*rocm,low,untriaged,find_package(hip) with PATHS in test CMake
+llvm-project,cmake-build,compiler-rt/CMakeLists.txt,519,/opt/rocm,medium,untriaged,find_path(HSA_INCLUDE) with HINTS /opt/rocm/include
+llvm-project,cmake-build,compiler-rt/CMakeLists.txt,527,/opt/rocm,medium,untriaged,find_path(COMgr_INCLUDE) with HINTS /opt/rocm/include
+llvm-project,cmake-build,offload/plugins-nextgen/amdgpu/CMakeLists.txt,18,/opt/rocm,medium,untriaged,find_library(HSA_RUNTIME) with PATHS /opt/rocm
+llvm-project,cmake-build,offload/plugins-nextgen/amdgpu/CMakeLists.txt,29,/opt/rocm,medium,untriaged,find_package(hsa-runtime64) with PATHS /opt/rocm
+llvm-project,cmake-build,offload/CMakeLists.txt,459,/opt/rocm,medium,untriaged,find_package(amd_comgr) with PATHS /opt/rocm
+llvm-project,cmake-build,offload/unittests/CMakeLists.txt,83,/opt/rocm,low,untriaged,find_package(AMDDeviceLibs) with PATHS /opt/rocm in test CMake
+llvm-project,cmake-build,llvm/tools/llvm-gpu-loader/CMakeLists.txt,27,/opt/rocm,medium,untriaged,find_package(hsa-runtime64) with PATHS /opt/rocm
+llvm-project,cmake-build,libc/benchmarks/gpu/src/math/CMakeLists.txt,18,/opt/rocm,low,untriaged,find_package(AMDDeviceLibs) with PATHS /opt/rocm in benchmark CMake
+llvm-project,cmake-build,mlir/lib/Target/LLVM/CMakeLists.txt,194,{ROCM_PATH},medium,untriaged,Reads ROCM_PATH env var for DEFAULT_ROCM_PATH
+llvm-project,cmake-build,mlir/lib/Target/LLVM/CMakeLists.txt,202,/opt/rocm,high,untriaged,Hardcodes /opt/rocm as DEFAULT_ROCM_PATH compiled into binary
+llvm-project,cmake-build,mlir/lib/ExecutionEngine/CMakeLists.txt,326,{ROCM_PATH},medium,untriaged,Reads ROCM_PATH env var for ROCm runner config
+llvm-project,cmake-build,mlir/lib/ExecutionEngine/CMakeLists.txt,327,/opt/rocm,high,untriaged,Defaults ROCM_PATH to /opt/rocm if env var unset
+llvm-project,cmake-build,mlir/lib/ExecutionEngine/CMakeLists.txt,342,ROCM_PATH,medium,untriaged,Uses ROCM_PATH to find rocm_agent_enumerator
+llvm-project,toolchain,clang/test/Driver/rocm-detect.hip,91,/opt/rocm,low,untriaged,Test file for ROCm detection
+llvm-project,toolchain,clang/test/Driver/rocm-detect.hip,92,/opt/rocm,low,untriaged,Test file for ROCm detection
+llvm-project,toolchain,clang/test/Driver/hip-runtime-libs-linux.hip,30,/opt/rocm,low,untriaged,Test file for runtime libs
+llvm-project,toolchain,clang/test/Driver/hip-runtime-libs-linux.hip,31,/opt/rocm,low,untriaged,Test file for runtime libs

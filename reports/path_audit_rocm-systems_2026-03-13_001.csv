@@ -1,0 +1,490 @@
+project,category,file,line,pattern,severity,status,notes
+amdsmi,cmake-build,cmake_modules/help_package.cmake,8,/opt/rocm,medium,untriaged,default ROCM_DIR cache variable overridable
+amdsmi,cmake-build,example/CMakeLists.txt,31,/opt/rocm,medium,untriaged,default ROCM_DIR cache variable overridable
+amdsmi,cmake-build,example/CMakeLists.txt,81,/opt/rocm,high,untriaged,hardcoded include/link directories in target_include_directories
+amdsmi,cmake-build,example/CMakeLists.txt,82,/opt/rocm,high,untriaged,hardcoded link directory in target_link_directories
+amdsmi,cmake-build,example/CMakeLists.txt,29,$ENV{ROCM_PATH},medium,untriaged,env var read for ROCM_DIR fallback
+amdsmi,python,tools/amdsmi_quick_start.py,44,/opt/rocm,high,untriaged,hardcoded sys.path.append for libexec
+amdsmi,python,tools/amdsmi_quick_start.py,45,/opt/rocm,high,untriaged,hardcoded sys.path.append for amdsmi_cli
+amdsmi,python,py-interface/amdsmi_interface.py,7052,/opt/rocm,high,untriaged,hardcoded os.path.exists check for librocm-core.so
+amdsmi,python,py-interface/amdsmi_interface.py,7053,/opt/rocm,high,untriaged,hardcoded path appended to possible_locations
+amdsmi,python,tests/python_unittest/__init__.py,2,/opt/rocm,low,untriaged,test file hardcoded sys.path.append
+amdsmi,python,tests/python_unittest/unit_tests.py,30,/opt/rocm,low,untriaged,test file default path with env override
+amdsmi,python,tests/python_unittest/integration_test.py,41,/opt/rocm,low,untriaged,test file default path with env override
+amdsmi,python,tests/python_unittest/common.py,29,/opt/rocm,low,untriaged,test file default path with env override
+amdsmi,python,tests/python_unittest/cli_unit_test.py,33,/opt/rocm,low,untriaged,test file default path with env override
+amdsmi,python,tests/python_unittest/perf_tests.py,30,/opt/rocm,low,untriaged,test file hardcoded sys.path.append
+amdsmi,python,tests/python_unittest/perf_cputests.py,31,/opt/rocm,low,untriaged,test file hardcoded sys.path.append
+amdsmi,cpp-install,goamdsmi_shim/smiwrapper/amdsmi_go_shim.c,41,/opt/rocm,high,untriaged,hardcoded #define for library path
+amdsmi,cpp-install,goamdsmi_shim/smiwrapper/amdsmi_go_shim.c,42,/opt/rocm,high,untriaged,hardcoded #define for lib64 library path
+amdsmi,cpp-install,goamdsmi.go,27,/opt/rocm,high,untriaged,hardcoded cgo CFLAGS include path
+amdsmi,cpp-install,goamdsmi.go,28,/opt/rocm,high,untriaged,hardcoded cgo LDFLAGS library paths
+amdsmi,cmake-install,py-interface/pyproject.toml.in,33,/opt/rocm,high,untriaged,config template embeds hardcoded pythonpath
+amdsmi,cmake-build,DEBIAN/x86_64-libamd_smi_lib.conf,1,/opt/rocm,low,untriaged,packaging ldconfig path
+aqlprofile,cmake-build,dashboard.cmake,40,/opt/rocm,medium,untriaged,default ROCM_PATH in dashboard config
+aqlprofile,cmake-build,dashboard.cmake,51,/opt/rocm,high,untriaged,hardcoded CMAKE_PREFIX_PATH and CMAKE_INSTALL_PREFIX and CPACK
+aqlprofile,cmake-build,cmake_modules/env.cmake,73,/opt/rocm,high,untriaged,find_package PATHS /opt/rocm for hsa-runtime64
+aqlprofile,cmake-build,test/integration/CMakeLists.txt,11,/opt/rocm,low,untriaged,test CMakeLists HINTS /opt/rocm
+aqlprofile,cmake-build,test/integration/CMakeLists.txt,12,/opt/rocm,low,untriaged,test CMakeLists PATHS /opt/rocm
+aqlprofile,cmake-build,test/integration/CMakeLists.txt,22,/opt/rocm,low,untriaged,test CMakeLists HINTS /opt/rocm
+aqlprofile,cmake-build,test/integration/CMakeLists.txt,23,/opt/rocm,low,untriaged,test CMakeLists PATHS /opt/rocm
+aqlprofile,cmake-build,test/integration/CMakeLists.txt,41,/opt/rocm,low,untriaged,test CMakeLists HINTS fallback
+aqlprofile,cmake-build,test/integration/CMakeLists.txt,42,/opt/rocm,low,untriaged,test CMakeLists PATHS fallback
+aqlprofile,cmake-build,test/integration/CMakeLists.txt,64,/opt/rocm,low,untriaged,test hardcoded target_include_directories
+aqlprofile,cmake-build,src/core/tests/CMakeLists.txt,15,/opt/rocm,low,untriaged,test CMakeLists HINTS /opt/rocm
+aqlprofile,cmake-build,src/core/tests/CMakeLists.txt,16,/opt/rocm,low,untriaged,test CMakeLists PATHS /opt/rocm
+aqlprofile,shell,build.sh,23,/opt/rocm,low,untriaged,standalone build script default ROCM_PATH
+clr,cmake-build,rocclr/cmake/ROCclrLC.cmake,23,/opt/rocm,high,untriaged,find_package PATHS fallback for device-libs
+clr,cmake-build,rocclr/cmake/ROCclrLC.cmake,32,/opt/rocm,high,untriaged,find_package PATHS fallback for amd_comgr
+clr,cmake-build,rocclr/cmake/ROCclrHSA.cmake,24,/opt/rocm,high,untriaged,find_package PATHS fallback for hsa-runtime64
+clr,cmake-build,rocclr/cmake/ROCclrHSA.cmake,60,/opt/rocm,high,untriaged,find_path PATHS fallback for hsa headers
+clr,cmake-build,rocclr/cmake/ROCclrHSA.cmake,69,/opt/rocm,high,untriaged,find_path PATHS fallback for hsa ext headers
+clr,cmake-build,rocclr/cmake/ROCclrHSA.cmake,84,/opt/rocm,high,untriaged,find_library PATHS fallback for hsa-runtime64
+clr,cmake-build,opencl/cmake/FindAMD_ICD.cmake,57,/opt/rocm,high,untriaged,find_library PATHS fallback for OpenCL
+clr,cmake-build,opencl/CMakeLists.txt,63,/opt/rocm,medium,untriaged,find_package ROCM PATHS /opt/rocm
+clr,cmake-build,opencl/CMakeLists.txt,102,/opt/rocm,low,untriaged,CPACK_PACKAGING_INSTALL_PREFIX
+clr,cmake-build,hipamd/CMakeLists.txt,54,/opt/rocm,medium,untriaged,default HIPCC_BIN_DIR cache variable
+clr,cmake-build,hipamd/CMakeLists.txt,292,/opt/rocm,medium,untriaged,default ROCM_PATH cache variable overridable
+clr,cmake-build,hipamd/CMakeLists.txt,301,CMAKE_INSTALL_PREFIX FORCE,high,untriaged,FORCE override of CMAKE_INSTALL_PREFIX (guarded by INITIALIZED_TO_DEFAULT)
+clr,cmake-build,hipamd/src/CMakeLists.txt,317,/opt/rocm,high,untriaged,find_package PATHS /opt/rocm
+clr,cmake-build,CMakeLists.txt,79,/opt/rocm,medium,untriaged,default HIPCC_BIN_DIR set in parent CMakeLists
+clr,cmake-build,CMakeLists.txt,137,/opt/rocm,medium,untriaged,find_program clang-format PATHS /opt/rocm
+clr,cmake-install,hipamd/hip-config-amd.cmake.in,66,/opt/rocm,high,untriaged,installed config finds AMDDeviceLibs with PATHS /opt/rocm
+clr,cmake-install,hipamd/hip-config-amd.cmake.in,125,/opt/rocm,high,untriaged,installed config finds amd_comgr with PATHS /opt/rocm
+clr,cmake-install,hipamd/hip-config-amd.cmake.in,134,/opt/rocm,high,untriaged,installed config finds hsa-runtime64 with PATHS /opt/rocm
+clr,cmake-build,opencl/packaging/rocm-opencl.conf,3,/opt/rocm,low,untriaged,packaging ldconfig path
+cuid,cmake-build,CMakeLists.txt,27,CMAKE_INSTALL_PREFIX FORCE,medium,untriaged,FORCE install prefix to Program Files/AMD/AMDCUID (Windows)
+cuid,cmake-build,CMakeLists.txt,29,CMAKE_INSTALL_PREFIX FORCE,medium,untriaged,FORCE install prefix to /opt/amdcuid (Linux) not /opt/rocm
+hip,cmake-build,cmake/FindHIP.cmake,109,$ENV{ROCM_PATH},medium,untriaged,env var read for HIP_PATH search
+hip,cmake-build,cmake/FindHIP.cmake,110,$ENV{ROCM_PATH},medium,untriaged,env var read for HIP_PATH/hip search
+hip,cmake-build,cmake/FindHIP.cmake,283,$ENV{ROCM_PATH},medium,untriaged,env var read for HIP_CLANG_PATH
+hip,cmake-build,cmake/FindHIP.cmake,285,$ENV{HIP_PATH},medium,untriaged,env var read for HIP_CLANG_PATH fallback
+hip,cmake-build,cmake/FindHIP.cmake,286,$ENV{HIP_PATH},medium,untriaged,env var set HIP_CLANG_PATH
+hip,cmake-build,cmake/FindHIP.cmake,288,$ENV{HIP_PATH},medium,untriaged,env var set HIP_CLANG_PATH alternate
+hip,cmake-build,cmake/FindHIP.cmake,713,$ENV{ROCM_PATH},medium,untriaged,env var read for HIP_CLANG_PATH duplicate block
+hip,cmake-build,cmake/FindHIP.cmake,715,$ENV{HIP_PATH},medium,untriaged,env var read for HIP_CLANG_PATH duplicate
+hip,cmake-build,cmake/FindHIP.cmake,716,$ENV{HIP_PATH},medium,untriaged,env var set HIP_CLANG_PATH duplicate
+hip,cmake-build,cmake/FindHIP.cmake,718,$ENV{HIP_PATH},medium,untriaged,env var set HIP_CLANG_PATH duplicate alternate
+hip,shell,docs/gen_clang_option_doc.sh,24,/opt/rocm,low,untriaged,doc generation script hardcoded clang path
+hip-tests,cmake-build,samples/CMakeLists.txt,33,$ENV{ROCM_PATH},low,untriaged,test samples env var read for ROCM_PATH
+hip-tests,cmake-build,samples/CMakeLists.txt,40,$ENV{HIP_PATH},low,untriaged,test samples env var read for HIP_PATH
+hip-tests,cmake-build,samples/CMakeLists.txt,55,$ENV{HIP_PATH},low,untriaged,test samples env var read for HIP_PATH fallback
+hip-tests,cmake-build,samples/CMakeLists.txt,61,/opt/rocm,low,untriaged,test samples default HIP_PATH
+hip-tests,cmake-build,samples/CMakeLists.txt,62,/opt/rocm,low,untriaged,test samples default ROCM_PATH
+hip-tests,cmake-build,samples/common/DetectGPUArchs.cmake,39,$ENV{ROCM_PATH},low,untriaged,test helper env var read
+hip-tests,cmake-build,samples/common/DetectGPUArchs.cmake,41,/opt/rocm,low,untriaged,test helper default ROCM_PATH
+hip-tests,cmake-build,samples/packaging/CMakeLists.txt,36,/opt/rocm,low,untriaged,test packaging CPACK_INSTALL_PREFIX
+hip-tests,cmake-build,catch/packaging/CMakeLists.txt,81,/opt/rocm,low,untriaged,test packaging CPACK_INSTALL_PREFIX
+hip-tests,cmake-build,catch/CMakeLists.txt,52,/opt/rocm,low,untriaged,test default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/9_unroll/CMakeLists.txt,26,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/9_unroll/CMakeLists.txt,28,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/8_peer2peer/CMakeLists.txt,26,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/8_peer2peer/CMakeLists.txt,28,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/7_streams/CMakeLists.txt,26,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/7_streams/CMakeLists.txt,28,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/6_dynamic_shared/CMakeLists.txt,26,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/6_dynamic_shared/CMakeLists.txt,28,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/5_2dshfl/CMakeLists.txt,26,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/5_2dshfl/CMakeLists.txt,28,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/4_shfl/CMakeLists.txt,26,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/4_shfl/CMakeLists.txt,28,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/3_shared_memory/CMakeLists.txt,26,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/3_shared_memory/CMakeLists.txt,28,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/23_cmake_hiprtc/CMakeLists.txt,27,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/23_cmake_hiprtc/CMakeLists.txt,29,$ENV{HIP_PATH},low,untriaged,test sample env var read HIP_PATH
+hip-tests,cmake-build,samples/2_Cookbook/23_cmake_hiprtc/CMakeLists.txt,39,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/23_cmake_hiprtc/CMakeLists.txt,41,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/22_cmake_hip_lang/CMakeLists.txt,27,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/22_cmake_hip_lang/CMakeLists.txt,29,$ENV{HIP_PATH},low,untriaged,test sample env var read HIP_PATH
+hip-tests,cmake-build,samples/2_Cookbook/22_cmake_hip_lang/CMakeLists.txt,41,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/21_cmake_hip_cxx_clang/CMakeLists.txt,27,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/21_cmake_hip_cxx_clang/CMakeLists.txt,29,$ENV{HIP_PATH},low,untriaged,test sample env var read HIP_PATH
+hip-tests,cmake-build,samples/2_Cookbook/21_cmake_hip_cxx_clang/CMakeLists.txt,39,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/21_cmake_hip_cxx_clang/CMakeLists.txt,41,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/1_hipEvent/CMakeLists.txt,26,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/1_hipEvent/CMakeLists.txt,28,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/19_cmake_lang/CMakeLists.txt,19,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/19_cmake_lang/CMakeLists.txt,21,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/18_cmake_hip_device/CMakeLists.txt,27,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/18_cmake_hip_device/CMakeLists.txt,29,$ENV{HIP_PATH},low,untriaged,test sample env var read HIP_PATH
+hip-tests,cmake-build,samples/2_Cookbook/18_cmake_hip_device/CMakeLists.txt,39,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/18_cmake_hip_device/CMakeLists.txt,41,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/17_llvm_ir_to_executable/CMakeLists.txt,27,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/17_llvm_ir_to_executable/CMakeLists.txt,29,$ENV{HIP_PATH},low,untriaged,test sample env var read HIP_PATH
+hip-tests,cmake-build,samples/2_Cookbook/17_llvm_ir_to_executable/CMakeLists.txt,39,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/17_llvm_ir_to_executable/CMakeLists.txt,41,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/17_llvm_ir_to_executable/CMakeLists.txt,48,$ENV{HIP_PATH},low,untriaged,test sample env var for HIP install path
+hip-tests,cmake-build,samples/2_Cookbook/16_assembly_to_executable/CMakeLists.txt,27,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/16_assembly_to_executable/CMakeLists.txt,29,$ENV{HIP_PATH},low,untriaged,test sample env var read HIP_PATH
+hip-tests,cmake-build,samples/2_Cookbook/16_assembly_to_executable/CMakeLists.txt,42,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/16_assembly_to_executable/CMakeLists.txt,44,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/16_assembly_to_executable/CMakeLists.txt,51,$ENV{HIP_PATH},low,untriaged,test sample env var for HIP install path
+hip-tests,cmake-build,samples/2_Cookbook/15_static_library/host_functions/CMakeLists.txt,26,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/15_static_library/host_functions/CMakeLists.txt,28,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/15_static_library/host_functions/CMakeLists.txt,48,$ENV{HIP_PATH},low,untriaged,test sample find_program env hint
+hip-tests,cmake-build,samples/2_Cookbook/15_static_library/host_functions/CMakeLists.txt,49,$ENV{ROCM_PATH},low,untriaged,test sample find_program env hint
+hip-tests,cmake-build,samples/2_Cookbook/15_static_library/host_functions/CMakeLists.txt,64,$ENV{HIP_PATH},low,untriaged,test sample find_program env hint
+hip-tests,cmake-build,samples/2_Cookbook/15_static_library/host_functions/CMakeLists.txt,65,$ENV{ROCM_PATH},low,untriaged,test sample find_program env hint
+hip-tests,cmake-build,samples/2_Cookbook/15_static_library/device_functions/CMakeLists.txt,26,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/15_static_library/device_functions/CMakeLists.txt,28,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/15_static_library/device_functions/CMakeLists.txt,48,$ENV{HIP_PATH},low,untriaged,test sample find_program env hint
+hip-tests,cmake-build,samples/2_Cookbook/15_static_library/device_functions/CMakeLists.txt,49,$ENV{ROCM_PATH},low,untriaged,test sample find_program env hint
+hip-tests,cmake-build,samples/2_Cookbook/15_static_library/device_functions/CMakeLists.txt,64,$ENV{HIP_PATH},low,untriaged,test sample find_program env hint
+hip-tests,cmake-build,samples/2_Cookbook/15_static_library/device_functions/CMakeLists.txt,65,$ENV{ROCM_PATH},low,untriaged,test sample find_program env hint
+hip-tests,cmake-build,samples/2_Cookbook/14_gpu_arch/CMakeLists.txt,26,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/14_gpu_arch/CMakeLists.txt,28,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/13_occupancy/CMakeLists.txt,26,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/13_occupancy/CMakeLists.txt,28,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/12_cmake_hip_add_executable/CMakeLists.txt,25,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/12_cmake_hip_add_executable/CMakeLists.txt,27,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/12_cmake_hip_add_executable/CMakeLists.txt,36,$ENV{HIP_PATH},low,untriaged,test sample env var for HIP install path
+hip-tests,cmake-build,samples/2_Cookbook/11_texture_driver/CMakeLists.txt,26,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/11_texture_driver/CMakeLists.txt,28,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/10_inline_asm/CMakeLists.txt,26,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/10_inline_asm/CMakeLists.txt,28,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/2_Cookbook/0_MatrixTranspose/CMakeLists.txt,26,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/2_Cookbook/0_MatrixTranspose/CMakeLists.txt,28,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/0_Intro/square/CMakeLists.txt,29,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/0_Intro/square/CMakeLists.txt,31,$ENV{HIP_PATH},low,untriaged,test sample env var read HIP_PATH
+hip-tests,cmake-build,samples/0_Intro/square/CMakeLists.txt,63,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/0_Intro/square/CMakeLists.txt,65,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/0_Intro/square/CMakeLists.txt,106,$ENV{HIP_PATH},low,untriaged,test sample find_program env hint
+hip-tests,cmake-build,samples/0_Intro/module_api_global/CMakeLists.txt,26,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/0_Intro/module_api_global/CMakeLists.txt,28,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/1_Utils/hipInfo/CMakeLists.txt,26,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/1_Utils/hipInfo/CMakeLists.txt,28,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/1_Utils/hipDispatchLatency/CMakeLists.txt,26,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/1_Utils/hipDispatchLatency/CMakeLists.txt,28,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/0_Intro/module_api/CMakeLists.txt,26,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/0_Intro/module_api/CMakeLists.txt,28,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/0_Intro/generic_target/CMakeLists.txt,26,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/0_Intro/generic_target/CMakeLists.txt,28,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,cmake-build,samples/0_Intro/bit_extract/CMakeLists.txt,34,$ENV{ROCM_PATH},low,untriaged,test sample env var read
+hip-tests,cmake-build,samples/0_Intro/bit_extract/CMakeLists.txt,36,/opt/rocm,low,untriaged,test sample default ROCM_PATH
+hip-tests,python,catch/cmake/relative_paths.py,36,/opt/rocm,low,untriaged,test helper generates cmake with hardcoded path
+rccl,toolchain,toolchain-linux.cmake,3,$ENV{ROCM_PATH},low,untriaged,toolchain env var read for compiler path
+rccl,toolchain,toolchain-linux.cmake,5,/opt/rocm,low,untriaged,toolchain default ROCM_PATH
+rccl,toolchain,toolchain-linux.cmake,6,/opt/rocm,low,untriaged,toolchain default compiler bin path
+rccl,cmake-build,cmake/Dependencies.cmake,84,/opt/rocm,high,untriaged,find_package ROCM PATHS /opt/rocm
+rccl,cmake-build,cmake/Dependencies.cmake,140,/opt/rocm,medium,untriaged,find_program rocm_agent_enumerator HINTS /opt/rocm
+rccl,cmake-build,tools/topo_expl/get_rocm_version.cmake,5,/opt/rocm,medium,untriaged,default ROCM_PATH cache variable
+rccl,cmake-build,CMakeLists.txt,201,/opt/rocm,medium,untriaged,default ROCM_PATH set
+rccl,cmake-build,test/CMakeLists.txt,21,/opt/rocm,low,untriaged,test find_package hsa-runtime64 PATHS
+rccl,cmake-build,test/CMakeLists.txt,30,/opt/rocm,low,untriaged,test find_path PATHS for ROCR headers
+rccl,cmake-build,test/CMakeLists.txt,34,/opt/rocm,low,untriaged,test find_library PATHS for ROCR lib
+rccl,python,tools/scripts/test_runner/lib/test_executor.py,155,/opt/rocm,low,untriaged,test runner default rocm_path
+rccl,python,tools/scripts/test_runner/lib/test_executor.py,208,/opt/rocm,low,untriaged,test runner default rocm_path
+rccl,python,tools/scripts/test_runner/lib/test_executor.py,714,/opt/rocm,low,untriaged,test runner default rocm_path
+rccl,python,tools/scripts/rcclDiagnostics.py,183,/opt/rocm,medium,untriaged,hardcoded cat /opt/rocm/.info/version
+rccl,shell,tools/scripts/ucx_ompi_rccl_rccltests_TB_script.sh,7,/opt/rocm,low,untriaged,script hardcoded MY_ROCM_DIR
+rccl,shell,tools/scripts/ucx_ompi_rccl_rccltests_TB_script.sh,10,/opt/rocm,low,untriaged,script hardcoded MY_HIP_DIR
+rccl,shell,tools/scripts/ucx_ompi_rccl_rccltests_TB_script.sh,55,/opt/rocm,low,untriaged,script hardcoded rocm_agent_enumerator path
+rccl,shell,install.sh,7,/opt/rocm,low,untriaged,standalone install script default ROCM_PATH
+rccl-tests,toolchain,toolchain-linux.cmake,4,$ENV{ROCM_PATH},low,untriaged,toolchain env var read
+rccl-tests,toolchain,toolchain-linux.cmake,5,$ENV{ROCM_PATH},low,untriaged,toolchain env var compiler bin
+rccl-tests,toolchain,toolchain-linux.cmake,7,/opt/rocm,low,untriaged,toolchain default ROCM_PATH
+rccl-tests,toolchain,toolchain-linux.cmake,8,/opt/rocm,low,untriaged,toolchain default compiler bin
+rccl-tests,cmake-build,CMakeLists.txt,82,/opt/rocm,low,untriaged,test default ROCM_PATH
+rccl-tests,shell,install.sh,104,/opt/rocm,low,untriaged,install script default fallback
+rccl-tests,shell,install.sh,105,/opt/rocm,low,untriaged,install script default fallback set
+rdc,cmake-build,CMakeLists.txt,37,/opt/rocm,medium,untriaged,default ROCM_DIR cache variable
+rdc,cmake-build,cmake_modules/Findrvs.cmake,7,/opt/rocm,medium,untriaged,default ROCM_DIR in find module
+rdc,cmake-build,cmake_modules/Findrocprofiler.cmake,7,/opt/rocm,medium,untriaged,default ROCM_DIR in find module
+rdc,cmake-build,example/CMakeLists.txt,74,$ENV{ROCM_PATH},low,untriaged,example env var read
+rdc,cmake-build,example/CMakeLists.txt,76,/opt/rocm,low,untriaged,example default ROCM_DIR
+rdc,shell,server/run_build.sh,8,/opt/rocm,low,untriaged,build script hardcoded cmake arg
+rocdbgapi,cmake-build,CMakeLists.txt,307,/opt/rocm,high,untriaged,find_package amd_comgr PATHS /opt/rocm
+rocdbgapi,cmake-build,CMakeLists.txt,440,/opt/rocm,high,untriaged,find_package hsa-runtime64 PATHS /opt/rocm
+rocdecode,cmake-build,CMakeLists.txt,27,$ENV{ROCM_PATH},medium,untriaged,env var read for ROCM_PATH
+rocdecode,cmake-build,CMakeLists.txt,31,/opt/rocm,medium,untriaged,default ROCM_PATH cache variable
+rocdecode,cmake-build,CMakeLists.txt,69,CMAKE_INSTALL_PREFIX FORCE,high,untriaged,FORCE install prefix to ROCM_PATH (guarded by INITIALIZED_TO_DEFAULT)
+rocdecode,cmake-build,src/rocdecode-host/CMakeLists.txt,27,$ENV{ROCM_PATH},medium,untriaged,env var read for ROCM_PATH
+rocdecode,cmake-build,src/rocdecode-host/CMakeLists.txt,31,/opt/rocm,medium,untriaged,default ROCM_PATH cache variable
+rocdecode,cmake-build,test/CMakeLists.txt,36,$ENV{ROCM_PATH},low,untriaged,test env var read
+rocdecode,cmake-build,test/CMakeLists.txt,40,/opt/rocm,low,untriaged,test default ROCM_PATH
+rocdecode,cmake-build,test/rocDecodeNegativeApiTests/CMakeLists.txt,27,$ENV{ROCM_PATH},low,untriaged,test env var read
+rocdecode,cmake-build,test/rocDecodeNegativeApiTests/CMakeLists.txt,31,/opt/rocm,low,untriaged,test default ROCM_PATH
+rocdecode,cmake-build,samples/videoToSequence/CMakeLists.txt,27,$ENV{ROCM_PATH},low,untriaged,sample env var read
+rocdecode,cmake-build,samples/videoToSequence/CMakeLists.txt,31,/opt/rocm,low,untriaged,sample default ROCM_PATH
+rocdecode,cmake-build,samples/videoDecodeRGB/CMakeLists.txt,27,$ENV{ROCM_PATH},low,untriaged,sample env var read
+rocdecode,cmake-build,samples/videoDecodeRGB/CMakeLists.txt,31,/opt/rocm,low,untriaged,sample default ROCM_PATH
+rocdecode,cmake-build,samples/videoDecodeRaw/CMakeLists.txt,27,$ENV{ROCM_PATH},low,untriaged,sample env var read
+rocdecode,cmake-build,samples/videoDecodeRaw/CMakeLists.txt,31,/opt/rocm,low,untriaged,sample default ROCM_PATH
+rocdecode,cmake-build,samples/videoDecodeMem/CMakeLists.txt,28,$ENV{ROCM_PATH},low,untriaged,sample env var read
+rocdecode,cmake-build,samples/videoDecodeMem/CMakeLists.txt,32,/opt/rocm,low,untriaged,sample default ROCM_PATH
+rocdecode,cmake-build,samples/videoDecodePicFiles/CMakeLists.txt,27,$ENV{ROCM_PATH},low,untriaged,sample env var read
+rocdecode,cmake-build,samples/videoDecodePicFiles/CMakeLists.txt,31,/opt/rocm,low,untriaged,sample default ROCM_PATH
+rocdecode,cmake-build,samples/videoDecodeBatch/CMakeLists.txt,27,$ENV{ROCM_PATH},low,untriaged,sample env var read
+rocdecode,cmake-build,samples/videoDecodeBatch/CMakeLists.txt,31,/opt/rocm,low,untriaged,sample default ROCM_PATH
+rocdecode,cmake-build,samples/videoDecodePerf/CMakeLists.txt,27,$ENV{ROCM_PATH},low,untriaged,sample env var read
+rocdecode,cmake-build,samples/videoDecodePerf/CMakeLists.txt,31,/opt/rocm,low,untriaged,sample default ROCM_PATH
+rocdecode,cmake-build,samples/videoDecode/CMakeLists.txt,27,$ENV{ROCM_PATH},low,untriaged,sample env var read
+rocdecode,cmake-build,samples/videoDecode/CMakeLists.txt,31,/opt/rocm,low,untriaged,sample default ROCM_PATH
+rocdecode,cmake-build,samples/videoDecodeMultiFiles/CMakeLists.txt,27,$ENV{ROCM_PATH},low,untriaged,sample env var read
+rocdecode,cmake-build,samples/videoDecodeMultiFiles/CMakeLists.txt,31,/opt/rocm,low,untriaged,sample default ROCM_PATH
+rocdecode,cmake-build,samples/rocdecDecode/CMakeLists.txt,27,$ENV{ROCM_PATH},low,untriaged,sample env var read
+rocdecode,cmake-build,samples/rocdecDecode/CMakeLists.txt,31,/opt/rocm,low,untriaged,sample default ROCM_PATH
+rocdecode,python,rocDecode-setup.py,46,/opt/rocm,low,untriaged,setup script default --rocm_path arg
+rocjpeg,cmake-build,CMakeLists.txt,28,$ENV{ROCM_PATH},medium,untriaged,env var read for ROCM_PATH
+rocjpeg,cmake-build,CMakeLists.txt,32,/opt/rocm,medium,untriaged,default ROCM_PATH cache variable
+rocjpeg,cmake-build,CMakeLists.txt,78,CMAKE_INSTALL_PREFIX FORCE,high,untriaged,FORCE install prefix to ROCM_PATH (guarded by INITIALIZED_TO_DEFAULT)
+rocjpeg,cmake-build,test/CMakeLists.txt,36,$ENV{ROCM_PATH},low,untriaged,test env var read
+rocjpeg,cmake-build,test/CMakeLists.txt,40,/opt/rocm,low,untriaged,test default ROCM_PATH
+rocjpeg,cmake-build,test/rocjpeg_negative_api_tests/CMakeLists.txt,27,$ENV{ROCM_PATH},low,untriaged,test env var read
+rocjpeg,cmake-build,test/rocjpeg_negative_api_tests/CMakeLists.txt,31,/opt/rocm,low,untriaged,test default ROCM_PATH
+rocjpeg,cmake-build,samples/jpegDecodePerf/CMakeLists.txt,28,$ENV{ROCM_PATH},low,untriaged,sample env var read
+rocjpeg,cmake-build,samples/jpegDecodePerf/CMakeLists.txt,32,/opt/rocm,low,untriaged,sample default ROCM_PATH
+rocjpeg,cmake-build,samples/jpegDecodeBatched/CMakeLists.txt,28,$ENV{ROCM_PATH},low,untriaged,sample env var read
+rocjpeg,cmake-build,samples/jpegDecodeBatched/CMakeLists.txt,32,/opt/rocm,low,untriaged,sample default ROCM_PATH
+rocjpeg,cmake-build,samples/jpegDecode/CMakeLists.txt,28,$ENV{ROCM_PATH},low,untriaged,sample env var read
+rocjpeg,cmake-build,samples/jpegDecode/CMakeLists.txt,32,/opt/rocm,low,untriaged,sample default ROCM_PATH
+rocjpeg,python,rocJPEG-setup.py,46,/opt/rocm,low,untriaged,setup script default --rocm_path arg
+rocm-core,cmake-build,CMakeLists.txt,43,/opt/rocm,low,untriaged,CPACK_PACKAGING_INSTALL_PREFIX
+rocm-core,python,rdhc/rdhc.py,257,/opt/rocm,medium,untriaged,default ROCM_PATH fallback in health check tool
+rocm-core,python,rdhc/rdhc.py,2307,/opt/rocm,medium,untriaged,default ROCM_PATH fallback in main
+rocminfo,cmake-build,.github/ISSUE_TEMPLATE/issue_report.yml,16,/opt/rocm,low,untriaged,issue template references /opt/rocm/bin/rocminfo
+rocm-smi-lib,cmake-build,cmake_modules/help_package.cmake,9,/opt/rocm,medium,untriaged,default ROCM_DIR cache variable
+rocm-smi-lib,cmake-build,CMakeLists.txt,81,/opt/rocm,medium,untriaged,CMAKE_INSTALL_PREFIX default (no FORCE)
+rocm-smi-lib,cmake-build,CMakeLists.txt,309,/opt/rocm,low,untriaged,CPACK_PACKAGING_INSTALL_PREFIX
+rocm-smi-lib,cmake-build,DEBIAN/x86_64-librocm_smi_lib.conf,1,/opt/rocm,low,untriaged,packaging ldconfig path
+rocm-smi-lib,cmake-install,python_smi_tools/rsmiBindingsInit.py.in,32,/opt/rocm,medium,untriaged,installed template fallback path search
+rocm-smi-lib,cmake-install,python_smi_tools/rsmiBindings.py.in,32,/opt/rocm,medium,untriaged,installed template fallback path search
+rocprofiler,cmake-build,cmake_modules/rocprofiler_env.cmake,45,/opt/rocm,medium,untriaged,default ROCM_PATH cache variable
+rocprofiler,cmake-build,CMakeLists.txt,63,/opt/rocm,medium,untriaged,default ROCM_PATH in main CMakeLists
+rocprofiler,cmake-build,CMakeLists.txt,186,/opt/rocm,high,untriaged,find_path PATHS /opt/rocm/include
+rocprofiler,shell,build.sh,27,/opt/rocm,low,untriaged,standalone build script default ROCM_PATH
+rocprofiler,shell,bin/build_kernel.sh,26,/opt/rocm,low,untriaged,build script default ROCM_DIR
+rocprofiler,shell,samples/run_samples.sh,7,/opt/rocm,low,untriaged,sample run script default ROCM_PATH
+rocprofiler,shell,test/run.sh,66,/opt/rocm,low,untriaged,test script LD_LIBRARY_PATH includes /opt/rocm
+rocprofiler,cpp-install,src/tools/rocsys/rocsys.cpp,105,/opt/rocm,high,untriaged,hardcoded bin_path fallback
+rocprofiler,cpp-install,src/tools/rocprofv2/rocprofv2.cpp,58,/opt/rocm,high,untriaged,hardcoded rocm_path default
+rocprofiler,cpp-install,src/tools/rocprofv2/rocprofv2.cpp,82,/opt/rocm,high,untriaged,creates symlink to /opt/rocm
+rocprofiler,cpp-install,tests-v2/featuretests/tracer/tracer_gtest.cpp,41,/opt/rocm,low,untriaged,test log message
+rocprofiler,cpp-install,tests-v2/featuretests/profiler/profiler_gtest.cpp,55,/opt/rocm,low,untriaged,test log message
+rocprofiler-compute,cmake-build,CMakeLists.txt,4,$ENV{ROCM_PATH},medium,untriaged,env var read for CMAKE_PREFIX_PATH
+rocprofiler-compute,cmake-build,CMakeLists.txt,4,/opt/rocm,medium,untriaged,hardcoded CMAKE_PREFIX_PATH fallback
+rocprofiler-compute,cmake-build,CMakeLists.txt,80,CMAKE_INSTALL_PREFIX FORCE,high,untriaged,FORCE install prefix to /opt/rocm unconditionally
+rocprofiler-compute,cmake-build,src/lib/CMakeLists.txt,6,$ENV{ROCM_PATH},medium,untriaged,env var read for CMAKE_PREFIX_PATH
+rocprofiler-compute,cmake-build,src/lib/CMakeLists.txt,6,/opt/rocm,medium,untriaged,hardcoded CMAKE_PREFIX_PATH fallback
+rocprofiler-compute,cmake-build,src/lib/CMakeLists.txt,10,$ENV{ROCM_PATH},medium,untriaged,env var HINTS for find_package
+rocprofiler-compute,cmake-build,src/lib/CMakeLists.txt,10,/opt/rocm,medium,untriaged,hardcoded HINTS fallback
+rocprofiler-compute,python,src/utils/specs.py,855,/opt/rocm,medium,untriaged,default rocm_base_path with env override
+rocprofiler-compute,python,src/utils/inject_roctx.py,41,/opt/rocm,medium,untriaged,default rocm_root with env override
+rocprofiler-compute,python,src/utils/amdsmi_interface.py,50,/opt/rocm,medium,untriaged,default path with env override for amdsmi import
+rocprofiler-compute,python,src/argparser.py,532,/opt/rocm,medium,untriaged,default ROCM_PATH with env override
+rocprofiler-compute,python,src/hip/hiprtc.py,38,/opt/rocm,high,untriaged,hardcoded ctypes.CDLL path for libhiprtc.so
+rocprofiler-compute,python,src/hip/hip.py,42,/opt/rocm,high,untriaged,hardcoded ctypes.CDLL path for libamdhip64.so
+rocprofiler-compute,python,tests/conftest.py,63,/opt/rocm,low,untriaged,test default ROCM_PATH
+rocprofiler-compute,python,tests/test_utils.py,2573,/opt/rocm,low,untriaged,test hardcoded ROCP_TOOL_LIBRARIES
+rocprofiler-compute,python,tests/test_utils.py,3164,/opt/rocm,low,untriaged,test hardcoded ROCP_TOOL_LIBRARIES
+rocprofiler-register,cmake-build,tests/bin/CMakeLists.txt,16,/opt/rocm,low,untriaged,test HINTS /opt/rocm for hip find_package
+rocprofiler-register,cmake-build,tests/bin/CMakeLists.txt,21,/opt/rocm,low,untriaged,test PATHS /opt/rocm for hip find_package
+rocprofiler-sdk,cmake-build,cmake/rocprofiler_config_packaging.cmake,256,/opt/rocm,medium,untriaged,find_program HINTS /opt/rocm for dpkg
+rocprofiler-sdk,cmake-build,cmake/rocprofiler_config_packaging.cmake,261,/opt/rocm,medium,untriaged,find_program HINTS /opt/rocm for rpmbuild
+rocprofiler-sdk,cmake-build,cmake/rocprofiler_config_packaging.cmake,266,/opt/rocm,medium,untriaged,find_program HINTS /opt/rocm for makeself
+rocprofiler-sdk,cmake-build,cmake/rocprofiler_config_interfaces.cmake,29,/opt/rocm,medium,untriaged,appended to CMAKE_PREFIX_PATH as fallback
+rocprofiler-sdk,cmake-build,cmake/Modules/rocprofiler-sdk-utilities.cmake,19,/opt/rocm,medium,untriaged,HINTS /opt/rocm for rocm_version find
+rocprofiler-sdk,cmake-build,cmake/Modules/rocprofiler-sdk-utilities.cmake,20,/opt/rocm,medium,untriaged,PATHS /opt/rocm for rocm_version find
+rocprofiler-sdk,cmake-build,cmake/Modules/Findrocm_version.cmake,247,/opt/rocm,medium,untriaged,PATHS /opt/rocm for rocm version search
+rocprofiler-sdk,cmake-build,tests/thread-trace/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/thread-trace/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/lib/vector-operations/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/lib/vector-operations/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/lib/transpose/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/lib/transpose/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/vector-operations/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/vector-operations/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/transpose/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/transpose/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/transpose/CMakeLists.txt,68,/opt/rocm,low,untriaged,test HINTS /opt/rocm for hip_DIR
+rocprofiler-sdk,cmake-build,tests/bin/transpose/CMakeLists.txt,69,/opt/rocm,low,untriaged,test PATHS /opt/rocm for hip_DIR
+rocprofiler-sdk,cmake-build,tests/bin/simple-transpose/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/simple-transpose/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/hip-graph/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/hip-graph/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/scratch-memory/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/scratch-memory/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/attachment-test/CMakeLists.txt,11,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/attachment-test/CMakeLists.txt,12,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/rocjpeg/CMakeLists.txt,30,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/rocjpeg/CMakeLists.txt,31,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/rocdecode/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/rocdecode/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/late-start-tracing/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/late-start-tracing/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/reproducible-runtime/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/reproducible-runtime/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/pc_sampling/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/pc_sampling/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/hsa-queue-dependency/CMakeLists.txt,16,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/hsa-queue-dependency/CMakeLists.txt,17,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/hsa-memory-allocation/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/hsa-memory-allocation/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/reproducible-dispatch-count/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/reproducible-dispatch-count/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/hsa-code-object/CMakeLists.txt,37,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/hsa-code-object/CMakeLists.txt,38,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/hip-streams-per-thread/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/hip-streams-per-thread/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/pc-sampling/exec-mask-manipulation/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/pc-sampling/exec-mask-manipulation/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/hip-streams/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/hip-streams/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/multistream/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/multistream/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/module-loading-test/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/module-loading-test/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/module-loading-test/CMakeLists.txt,41,/opt/rocm,low,untriaged,test HINTS /opt/rocm/lib for find_library
+rocprofiler-sdk,cmake-build,tests/bin/openmp/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,tests/bin/openmp/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,source/lib/tests/common/CMakeLists.txt,33,/opt/rocm,low,untriaged,test LD_LIBRARY_PATH includes /opt/rocm
+rocprofiler-sdk,cmake-build,source/lib/tests/codeobj/CMakeLists.txt,31,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,source/lib/tests/codeobj/CMakeLists.txt,81,/opt/rocm,low,untriaged,test LD_LIBRARY_PATH includes /opt/rocm
+rocprofiler-sdk,cmake-build,source/lib/tests/buffering/CMakeLists.txt,22,/opt/rocm,low,untriaged,test LD_LIBRARY_PATH includes /opt/rocm
+rocprofiler-sdk,cmake-build,source/lib/rocprofiler-sdk/thread_trace/tests/CMakeLists.txt,33,/opt/rocm,low,untriaged,test LD_LIBRARY_PATH includes /opt/rocm
+rocprofiler-sdk,cmake-build,source/lib/rocprofiler-sdk/pc_sampling/tests/CMakeLists.txt,29,/opt/rocm,low,untriaged,test LD_LIBRARY_PATH includes /opt/rocm
+rocprofiler-sdk,cmake-build,source/lib/rocprofiler-sdk/pc_sampling/parser/tests/CMakeLists.txt,42,/opt/rocm,low,untriaged,test LD_LIBRARY_PATH includes /opt/rocm
+rocprofiler-sdk,cmake-build,source/lib/rocprofiler-sdk/pc_sampling/parser/tests/CMakeLists.txt,62,/opt/rocm,low,untriaged,test LD_LIBRARY_PATH includes /opt/rocm
+rocprofiler-sdk,cmake-build,source/lib/rocprofiler-sdk/pc_sampling/parser/tests/CMakeLists.txt,97,/opt/rocm,low,untriaged,test LD_LIBRARY_PATH includes /opt/rocm
+rocprofiler-sdk,cmake-build,source/lib/rocprofiler-sdk/pc_sampling/parser/tests/CMakeLists.txt,118,/opt/rocm,low,untriaged,test LD_LIBRARY_PATH includes /opt/rocm
+rocprofiler-sdk,cmake-build,source/lib/rocprofiler-sdk/kfd/tests/CMakeLists.txt,45,/opt/rocm,low,untriaged,test LD_LIBRARY_PATH includes /opt/rocm
+rocprofiler-sdk,cmake-build,source/lib/rocprofiler-sdk/counters/tests/CMakeLists.txt,10,/opt/rocm,low,untriaged,test HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,source/lib/rocprofiler-sdk/counters/tests/CMakeLists.txt,11,/opt/rocm,low,untriaged,test PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,source/lib/rocprofiler-sdk/counters/tests/CMakeLists.txt,95,/opt/rocm,low,untriaged,test LD_LIBRARY_PATH includes /opt/rocm
+rocprofiler-sdk,cmake-build,source/lib/rocprofiler-sdk/counters/tests/CMakeLists.txt,123,/opt/rocm,low,untriaged,test LD_LIBRARY_PATH includes /opt/rocm
+rocprofiler-sdk,cmake-build,source/lib/rocprofiler-sdk/counters/parser/tests/CMakeLists.txt,27,/opt/rocm,low,untriaged,test LD_LIBRARY_PATH includes /opt/rocm
+rocprofiler-sdk,cmake-build,source/lib/rocprofiler-sdk/aql/tests/CMakeLists.txt,31,/opt/rocm,low,untriaged,test LD_LIBRARY_PATH includes /opt/rocm
+rocprofiler-sdk,cmake-build,source/lib/att-tool/waitcnt/tests/CMakeLists.txt,28,/opt/rocm,low,untriaged,test LD_LIBRARY_PATH includes /opt/rocm
+rocprofiler-sdk,cmake-build,samples/thread_trace/CMakeLists.txt,10,/opt/rocm,low,untriaged,sample HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,samples/thread_trace/CMakeLists.txt,11,/opt/rocm,low,untriaged,sample PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,samples/pc_sampling/CMakeLists.txt,10,/opt/rocm,low,untriaged,sample HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,samples/pc_sampling/CMakeLists.txt,11,/opt/rocm,low,untriaged,sample PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,samples/openmp_target/CMakeLists.txt,10,/opt/rocm,low,untriaged,sample HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,samples/openmp_target/CMakeLists.txt,11,/opt/rocm,low,untriaged,sample PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,samples/intercept_table/CMakeLists.txt,10,/opt/rocm,low,untriaged,sample HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,samples/intercept_table/CMakeLists.txt,11,/opt/rocm,low,untriaged,sample PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,samples/code_object_isa_decode/CMakeLists.txt,10,/opt/rocm,low,untriaged,sample HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,samples/code_object_isa_decode/CMakeLists.txt,11,/opt/rocm,low,untriaged,sample PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,samples/api_callback_tracing/CMakeLists.txt,10,/opt/rocm,low,untriaged,sample HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,samples/api_callback_tracing/CMakeLists.txt,11,/opt/rocm,low,untriaged,sample PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,samples/external_correlation_id_request/CMakeLists.txt,10,/opt/rocm,low,untriaged,sample HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,samples/external_correlation_id_request/CMakeLists.txt,11,/opt/rocm,low,untriaged,sample PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,samples/api_buffered_tracing/CMakeLists.txt,10,/opt/rocm,low,untriaged,sample HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,samples/api_buffered_tracing/CMakeLists.txt,11,/opt/rocm,low,untriaged,sample PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,samples/counter_collection/CMakeLists.txt,10,/opt/rocm,low,untriaged,sample HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,samples/counter_collection/CMakeLists.txt,11,/opt/rocm,low,untriaged,sample PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,samples/code_object_tracing/CMakeLists.txt,10,/opt/rocm,low,untriaged,sample HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,samples/code_object_tracing/CMakeLists.txt,11,/opt/rocm,low,untriaged,sample PATHS /opt/rocm
+rocprofiler-sdk,cmake-build,benchmark/source/bin/mandelbrot/CMakeLists.txt,7,/opt/rocm,low,untriaged,benchmark HINTS /opt/rocm
+rocprofiler-sdk,cmake-build,benchmark/source/bin/mandelbrot/CMakeLists.txt,8,/opt/rocm,low,untriaged,benchmark PATHS /opt/rocm
+rocprofiler-sdk,cpp-install,tests/thread-trace/trace_callbacks.cpp,112,/opt/rocm,low,untriaged,test hardcoded decoder path
+rocprofiler-sdk,cpp-install,source/lib/rocprofiler-sdk/tests/agent.cpp,129,/opt/rocm,low,untriaged,test hardcoded rocminfo fallback
+rocprofiler-sdk,cpp-install,source/include/rocprofiler-sdk/experimental/thread-trace/trace_decoder.h,47,/opt/rocm,medium,untriaged,public header doc suggests /opt/rocm/lib
+rocprofiler-sdk,cpp-install,samples/thread_trace/agent.cpp,308,/opt/rocm,medium,untriaged,sample hardcoded lib_path default
+rocprofiler-sdk,python,source/scripts/run-ci.py,45,/opt/rocm,low,untriaged,CI script default ROCM_PATH
+rocprofiler-systems,cmake-build,cmake/Packages.cmake,113,/opt/rocm,medium,untriaged,ROCPROFSYS_DEFAULT_ROCM_PATH cache variable
+rocprofiler-systems,cmake-build,cmake/Modules/FindROCmVersion.cmake,308,/opt/rocm,medium,untriaged,PATHS /opt/rocm for ROCm version
+rocprofiler-systems,cmake-build,cmake/MacroUtilities.cmake,608,/opt/rocm,medium,untriaged,HINTS /opt/rocm for find_package
+rocprofiler-systems,cmake-build,cmake/MacroUtilities.cmake,609,/opt/rocm,medium,untriaged,PATHS /opt/rocm for find_package
+rocprofiler-systems,cmake-build,examples/hpc/hpc-helper.cmake,14,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/hpc/hpc-helper.cmake,17,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/hpc/hpc-helper.cmake,27,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/hpc/hpc-helper.cmake,30,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/hpc/hpc-helper.cmake,41,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/hpc/hpc-helper.cmake,44,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/transpose/CMakeLists.txt,26,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/transpose/CMakeLists.txt,29,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/openmp/target/CMakeLists.txt,17,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/openmp/target/CMakeLists.txt,20,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/openmp/target/CMakeLists.txt,63,$ENV{ROCM_PATH},low,untriaged,example env var for llvm lib
+rocprofiler-systems,cmake-build,examples/openmp/target/CMakeLists.txt,64,$ENV{ROCM_PATH},low,untriaged,example env var for llvm lib
+rocprofiler-systems,cmake-build,examples/openmp/target/CMakeLists.txt,65,/opt/rocm,low,untriaged,example hardcoded llvm lib path
+rocprofiler-systems,cmake-build,examples/openmp/target/CMakeLists.txt,66,/opt/rocm,low,untriaged,example hardcoded llvm lib path
+rocprofiler-systems,cmake-build,examples/transferBench/CMakeLists.txt,26,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/transferBench/CMakeLists.txt,29,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/transferBench/CMakeLists.txt,67,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/transferBench/CMakeLists.txt,70,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/transferBench/CMakeLists.txt,79,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/transferBench/CMakeLists.txt,82,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/sdma_test/CMakeLists.txt,26,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/sdma_test/CMakeLists.txt,29,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/scratch-memory/CMakeLists.txt,24,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/scratch-memory/CMakeLists.txt,27,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/scratch-memory/CMakeLists.txt,61,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/scratch-memory/CMakeLists.txt,64,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/roctx/CMakeLists.txt,26,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/roctx/CMakeLists.txt,29,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/hpc/jacobi-fortran-targetdata-markers/CMakeLists.txt,47,$ENV{ROCM_PATH},low,untriaged,example env var for hipfort include
+rocprofiler-systems,cmake-build,examples/hpc/jacobi-fortran-targetdata-markers/CMakeLists.txt,48,/opt/rocm,low,untriaged,example hardcoded hipfort include
+rocprofiler-systems,cmake-build,examples/fork/CMakeLists.txt,39,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/fork/CMakeLists.txt,42,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/rccl/CMakeLists.txt,21,/opt/rocm,low,untriaged,example find_package hip HINTS /opt/rocm
+rocprofiler-systems,cmake-build,examples/rccl/CMakeLists.txt,28,/opt/rocm,low,untriaged,example find_package rccl HINTS /opt/rocm
+rocprofiler-systems,cmake-build,examples/openmp/external/CMakeLists.txt,155,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/openmp/external/CMakeLists.txt,158,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/openmp/external/CMakeLists.txt,175,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/openmp/external/CMakeLists.txt,178,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/lulesh/CMakeLists.txt,44,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/lulesh/CMakeLists.txt,47,/opt/rocm,low,untriaged,example PATHS /opt/rocm
+rocprofiler-systems,cmake-build,examples/lulesh/external/kokkos/cmake/kokkos_arch.cmake,221,$ENV{ROCM_PATH},low,untriaged,vendored kokkos env var read
+rocprofiler-systems,cpp-install,source/lib/common/environment.hpp,213,/opt/rocm,high,untriaged,hardcoded default ROCM_PATH in get_env
+rocprofiler-systems,cpp-install,source/lib/common/environment.hpp,232,/opt/rocm,high,untriaged,hardcoded push_unique for llvm lib path
+rocprofiler-systems,cpp-install,source/lib/common/environment.hpp,233,/opt/rocm,high,untriaged,hardcoded push_unique for llvm lib path alternate
+rocprofiler-systems,cpp-install,source/bin/common/common_utils.hpp,265,/opt/rocm,high,untriaged,hardcoded access() check for hipconfig
+rocprofiler-systems,cpp-install,source/lib/common/tests/test_update_env.cpp,212,/opt/rocm,low,untriaged,test data string
+rocprofiler-systems,cpp-install,source/lib/common/tests/test_update_env.cpp,216,/opt/rocm,low,untriaged,test expected string
+rocprofiler-systems,cpp-install,source/lib/common/tests/test_update_env.cpp,224,/opt/rocm,low,untriaged,test data string
+rocprofiler-systems,cpp-install,source/lib/common/tests/test_update_env.cpp,229,/opt/rocm,low,untriaged,test expected string
+rocprofiler-systems,cpp-install,source/lib/common/tests/test_path.cpp,348,/opt/rocm,low,untriaged,test data string
+rocprofiler-systems,cpp-install,source/lib/common/tests/test_path.cpp,349,/opt/rocm,low,untriaged,test expected string
+rocprofiler-systems,cpp-install,source/lib/common/tests/test_path.cpp,374,/opt/rocm,low,untriaged,test data string
+rocprofiler-systems,cpp-install,source/lib/common/tests/test_path.cpp,376,/opt/rocm,low,untriaged,test expected string
+rocprofiler-systems,cpp-install,source/lib/common/tests/test_discover_llvm_libdir.cpp,224,/opt/rocm,low,untriaged,test expected paths
+rocprofiler-systems,cpp-install,source/lib/common/tests/test_discover_llvm_libdir.cpp,372,/opt/rocm,low,untriaged,test expected paths
+rocprofiler-systems,python,tests/pytest/rocprofsys/config.py,328,/opt/rocm,low,untriaged,test default path
+rocprofiler-systems,python,cmake/Templates/rocprof-sys-install.py.in,15,/opt/rocm,medium,untriaged,install template default _rocm_path
+rocprofiler-systems,shell,tests/pytest/build_standalone.sh,126,/opt/rocm,low,untriaged,test script help text
+rocprofiler-systems,shell,scripts/test-release.sh,116,/opt/rocm,low,untriaged,test script LD_LIBRARY_PATH
+rocprof-trace-decoder,cmake-build,CMakeLists.txt,48,/opt/rocm,high,untriaged,FORCE CMAKE_INSTALL_PREFIX to /opt/rocm (guarded by INITIALIZED_TO_DEFAULT)
+rocprof-trace-decoder,cmake-build,source/CMakeLists.txt,43,/opt/rocm,high,untriaged,FORCE CMAKE_INSTALL_PREFIX to /opt/rocm (guarded by INITIALIZED_TO_DEFAULT)
+rocprof-trace-decoder,cmake-build,test/att-tool/CMakeLists.txt,4,/opt/rocm,low,untriaged,test find_library HINTS /opt/rocm/lib
+rocprof-trace-decoder,cmake-build,test/att-tool/CMakeLists.txt,22,/opt/rocm,low,untriaged,test hardcoded include dir
+rocr-debug-agent,cmake-build,cmake/modules/FindROCR.cmake,7,/opt/rocm,high,untriaged,find_path HINTS /opt/rocm for hsa headers
+rocr-debug-agent,cmake-build,cmake/modules/FindROCR.cmake,8,/opt/rocm,high,untriaged,find_library HINTS /opt/rocm for hsa-runtime64
+rocr-debug-agent,cmake-build,CMakeLists.txt,123,/opt/rocm,high,untriaged,find_package amd_comgr PATHS /opt/rocm
+rocr-debug-agent,cmake-build,test/CMakeLists.txt,81,/opt/rocm,low,untriaged,test CMAKE_MODULE_PATH default
+rocr-debug-agent,cmake-build,test/CMakeLists.txt,90,/opt/rocm,low,untriaged,test error message mentioning path
+rocr-runtime,cmake-build,runtime/hsa-runtime-tools/CMakeLists.txt,59,/opt/rocm,high,untriaged,get_include_path PATHS /opt/rocm for hsakmt
+rocr-runtime,cmake-build,runtime/hsa-runtime-tools/CMakeLists.txt,60,/opt/rocm,high,untriaged,get_library_path PATHS /opt/rocm for hsakmt
+rocr-runtime,cmake-build,runtime/hsa-runtime-tools/CMakeLists.txt,65,/opt/rocm,high,untriaged,get_include_path PATHS /opt/rocm for ROCr
+rocr-runtime,cmake-build,runtime/hsa-runtime-tools/CMakeLists.txt,66,/opt/rocm,high,untriaged,get_library_path PATHS /opt/rocm for ROCr
+rocr-runtime,cmake-build,runtime/hsa-runtime/image/blit_src/CMakeLists.txt,46,/opt/rocm,high,untriaged,find_package Clang PATHS /opt/rocm/llvm
+rocr-runtime,cmake-build,runtime/hsa-runtime/core/runtime/trap_handler/CMakeLists.txt,46,/opt/rocm,high,untriaged,find_package Clang PATHS /opt/rocm/llvm
+rocr-runtime,cmake-build,runtime/hsa-runtime/core/runtime/trap_handler/CMakeLists.txt,47,/opt/rocm,high,untriaged,find_package LLVM PATHS /opt/rocm/llvm
+rocr-runtime,cmake-build,runtime/hsa-runtime/core/runtime/blit_shaders/CMakeLists.txt,48,/opt/rocm,high,untriaged,find_package Clang PATHS /opt/rocm/llvm
+rocr-runtime,cmake-build,runtime/hsa-runtime/core/runtime/blit_shaders/CMakeLists.txt,49,/opt/rocm,high,untriaged,find_package LLVM PATHS /opt/rocm/llvm
+rocr-runtime,cmake-build,libhsakmt/CMakeLists.txt,289,/opt/rocm,high,untriaged,default CMAKE_INSTALL_PREFIX set to /opt/rocm
+rocr-runtime,cmake-build,libhsakmt/CMakeLists.txt,291,CMAKE_INSTALL_PREFIX FORCE,high,untriaged,FORCE CMAKE_INSTALL_PREFIX (re-sets current value)
+rocr-runtime,cmake-build,libhsakmt/tests/kfdtest/CMakeLists.txt,80,/opt/rocm,low,untriaged,test CMAKE_INSTALL_PREFIX default
+rocr-runtime,cmake-build,libhsakmt/tests/kfdtest/CMakeLists.txt,109,/opt/rocm,low,untriaged,test set ENV PKG_CONFIG_PATH
+rocr-runtime,cmake-build,libhsakmt/tests/rdma/simple/app/CMakeLists.txt,17,/opt/rocm,low,untriaged,test set ENV PKG_CONFIG_PATH
+rocr-runtime,shell,libhsakmt/tests/kfdtest/scripts/run_kfdtest.sh,36,/opt/rocm,low,untriaged,test script default share dir
+rocr-runtime,shell,libhsakmt/tests/kfdtest/scripts/run_kfdtest.sh,64,/opt/rocm,low,untriaged,test script default BIN_DIR
+rocshmem,cmake-build,cmake/setup_project.cmake,47,/opt/rocm,high,untriaged,find_package hip PATHS /opt/rocm
+rocshmem,cmake-build,cmake/setup_project.cmake,72,/opt/rocm,high,untriaged,find_program hipcc PATHS /opt/rocm
+rocshmem,cmake-build,cmake/rocm_local_targets.cmake,29,/opt/rocm,medium,untriaged,find_program rocm_agent_enumerator HINTS /opt/rocm
+rocshmem,cmake-build,CMakeLists.txt,90,/opt/rocm,medium,untriaged,find_package ROCmCMakeBuildTools PATHS /opt/rocm
+rocshmem,cmake-build,CMakeLists.txt,172,/opt/rocm,high,untriaged,find_package hip REQUIRED PATHS /opt/rocm
+rocshmem,cmake-build,tests/unit_tests/CMakeLists.txt,86,/opt/rocm,low,untriaged,test find_package hip PATHS /opt/rocm
+rocshmem,cmake-build,tests/unit_tests/CMakeLists.txt,90,/opt/rocm,low,untriaged,test find_package rocshmem PATHS /opt/rocm
+rocshmem,cmake-build,tests/functional_tests/CMakeLists.txt,78,/opt/rocm,low,untriaged,test find_package hip PATHS /opt/rocm
+rocshmem,cmake-build,tests/functional_tests/CMakeLists.txt,81,/opt/rocm,low,untriaged,test find_package rocshmem PATHS /opt/rocm
+rocshmem,cmake-build,examples/CMakeLists.txt,33,/opt/rocm,low,untriaged,example find_package hip PATHS /opt/rocm
+rocshmem,cmake-build,examples/CMakeLists.txt,35,/opt/rocm,low,untriaged,example find_package rocshmem PATHS /opt/rocm
+rocshmem,cpp-install,tests/functional_tests/hipmodule_init_tester.cpp,106,/opt/rocm,low,untriaged,test hardcoded include path string
+rocshmem,shell,scripts/install_dependencies.sh,31,/opt/rocm,low,untriaged,install script default _ROCM_DIR
+roctracer,cmake-build,CMakeLists.txt,39,/opt/rocm,medium,untriaged,default ROCM_PATH cache variable
+roctracer,cmake-build,plugin/file/CMakeLists.txt,25,/opt/rocm,high,untriaged,find_package amd_comgr PATHS /opt/rocm
+roctracer,shell,build_static.sh,27,/opt/rocm,low,untriaged,standalone build script default ROCM_PATH
+roctracer,shell,build.sh,27,/opt/rocm,low,untriaged,standalone build script default ROCM_PATH
+roctracer,shell,run_test.sh,25,/opt/rocm,low,untriaged,test script default ROCM_PATH
