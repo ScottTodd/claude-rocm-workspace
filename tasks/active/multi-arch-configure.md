@@ -689,6 +689,39 @@ Commit `657c8618` on branch `multi-arch-configure`:
 - `BUILD_VARIANT` comes from `os.environ` (workflow_call input), not from
   `GITHUB_EVENT_PATH` — it's set by the calling workflow, not the event
 
+### 2026-03-13 - Scaffold review + select_targets implementation
+
+**Scaffold refinements (5e1c23c5, 3eaaf719, a3914256):**
+- `StageDecisions` → job graph model: `JobGroupDecision` base with
+  `BuildRocmDecision` (per-stage granularity) and `TestRocmDecision`
+  (test type) subclasses. `JobDecisions` has explicit named fields for
+  each job group node in the DAG.
+- Renamed `enable_build_jobs` → `is_ci_enabled` internally (output key
+  unchanged for workflow compat).
+- Style guide compliance: removed `from __future__ import annotations`,
+  moved imports to top, named args on multi-param calls.
+- Reordered steps: decide_jobs (3) before select_targets (4) so target
+  selection and matrix expansion are adjacent.
+- Test cleanup: shared `_run_from_environ` helper, inline CIInputs
+  construction, collapsed property tests.
+
+**select_targets implementation (6b401588):**
+- 588 lines script, 553 lines tests (28 tests, 1 skipped)
+- Trigger-type dispatch: workflow_dispatch (per-platform), pull_request
+  (presubmit + label opt-ins), push (presubmit+postsubmit), schedule (all)
+- PR labels: `gfx*` adds family, `run-all-archs-ci` selects all
+- Input parsing at boundary: `CIInputs.linux_amdgpu_families` is `list[str]`
+- Fail-fast validation: unknown families raise `ValueError`
+- Platform filtering: families without platform entry excluded
+
+**Key design decisions:**
+- PR defaults to presubmit only (not postsubmit) — matches original configure_ci.py
+- Dropped `determine_long_lived_branch` — push always gets presubmit+postsubmit
+- Prebuilt only for PRs (version embedding makes prebuilt risky for push/schedule)
+- Job graph model: build-rocm → test-rocm → build-rocm-python → build-pytorch etc.
+- Test determination is a separate concern from job decisions (future: per-job-group
+  target determinator, similar to pytorch upstream)
+
 ## Job Graph Model
 
 The CI pipeline is a DAG of job groups:
@@ -879,35 +912,25 @@ it's worth noting.
 
 1. [x] Design — pipeline architecture, feature audit
 2. [x] Phase 1: Scaffold — dataclasses, pipeline shape, test patterns
-3. [ ] Review and refine scaffold (current)
-4. [ ] Phase 2: MVP logic — skip gate, target selection, matrix expansion
+3. [x] Review and refine scaffold
+4. [ ] Phase 2: MVP logic (in progress)
+   - [x] `select_targets` — trigger dispatch, PR labels, platform filtering
+   - [ ] `expand_matrix` — port `generate_multi_arch_matrix` logic
+   - [ ] `check_skip_ci` — skip-ci label, path filtering
+   - [ ] `decide_jobs` — trigger-type policy (push/schedule=run all, PR=run all for now)
 5. [ ] Phase 3: Wire into workflow, validate output parity
-6. [ ] Phase 4: Stage decisions (topology parsing, source-set analysis)
+6. [ ] Phase 4: Job graph decisions (topology parsing, source-set analysis)
 7. [ ] Phase 5: Prebuilt integration + structured logging/summary
-8. [ ] Phase 6: Test selection from rebuilt stages
+8. [ ] Phase 6: Test determination (per-job-group, pytorch target determinator)
 
-### Review checklist for Phase 1 scaffold
+### Known issues / follow-ups
 
-- [ ] Do the step boundaries feel right? Should anything merge or split?
-- [ ] Are the dataclass fields complete for MVP, or are any missing/extra?
-- [ ] Is the `CIInputs.from_environ()` approach (reading `GITHUB_EVENT_PATH`)
-      working well? Any ergonomic issues with the test fixtures?
-- [ ] Does `configure()` orchestration read cleanly?
-- [ ] Test patterns — are the test classes showing the right style for each step?
-- [ ] Anything in the task file design that doesn't match the implemented code?
-
-### Phase 2 priorities (after review)
-
-When moving to MVP logic, implement in this order:
-1. **`select_targets`** — highest value, needed for any real output.
-   Import family data from `amdgpu_family_matrix.py`. Handle all 4 trigger
-   types. PR label parsing for `gfx*`, `test:*`, `run-all-archs-ci`.
-2. **`expand_matrix`** — port `generate_multi_arch_matrix` logic so the
-   script produces actual matrix JSON.
-3. **`check_skip_ci`** — integrate `is_ci_run_required()` from
-   `configure_ci_path_filters.py`. Check `skip-ci` label.
-4. **`decide_stages`** — initially just test_type logic (smoke vs full).
-   Stage rebuild/prebuilt decisions come in Phase 4.
+- workflow_dispatch per-platform filtering silently drops families unavailable
+  on the requested platform (e.g. gfx950 on windows). Should validate per-platform
+  and raise. Tracked by skipped test `test_workflow_dispatch_wrong_platform_raises`.
+- PR #3653 rewrites amdgpu_family_matrix with dataclasses. When it lands,
+  `select_targets` internals swap to the new API (canonical keys, typed entries).
+  The pipeline boundary (`TargetSelection`) stays the same.
 
 ## Branches
 
