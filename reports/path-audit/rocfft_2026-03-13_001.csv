@@ -1,0 +1,39 @@
+project,category,file,line,pattern,severity,status,notes
+rocfft,cmake-build,CMakeLists.txt,34,"set(CMAKE_INSTALL_PREFIX ""/opt/rocm"" CACHE PATH ...)",high,untriaged,Default install prefix; overridden by TheRock via -DCMAKE_INSTALL_PREFIX but problematic for standalone
+rocfft,cmake-build,CMakeLists.txt,55,"find_package(ROCmCMakeBuildTools PATHS ${ROCM_PATH} /opt/rocm)",medium,untriaged,Hardcoded fallback path in find_package
+rocfft,cmake-build,CMakeLists.txt,179,"find_package(hip REQUIRED CONFIG PATHS /opt/rocm/lib/cmake/hip/)",high,untriaged,Could find system hip instead of build-tree hip
+rocfft,cmake-build,CMakeLists.txt,180,"find_package(hiprtc REQUIRED CONFIG PATHS /opt/rocm/lib/cmake/hiprtc/)",high,untriaged,Could find system hiprtc instead of build-tree hiprtc
+rocfft,cmake-build,CMakeLists.txt,275,"set(CMAKE_INSTALL_PREFIX ""C:/hipSDK"" CACHE PATH ... FORCE)",high,untriaged,FORCE overrides user-specified install prefix
+rocfft,cmake-build,clients/CMakeLists.txt,33,"set(CMAKE_INSTALL_PREFIX ""/opt/rocm"" CACHE PATH ...)",medium,untriaged,Default install prefix in clients subdir
+rocfft,cmake-build,clients/CMakeLists.txt,35,"set(CPACK_PACKAGING_INSTALL_PREFIX ""/opt/rocm"" ...)",low,untriaged,CPack prefix; only affects standalone packaging
+rocfft,cmake-build,clients/bench/CMakeLists.txt,31,"set(CMAKE_INSTALL_PREFIX ""/opt/rocm"" CACHE PATH ...)",medium,untriaged,Default install prefix in bench
+rocfft,cmake-build,clients/bench/CMakeLists.txt,56,"find_package(hip REQUIRED PATHS /opt/rocm/lib/cmake/hip/)",medium,untriaged,Hardcoded hip search path
+rocfft,cmake-build,clients/samples/fixed-large/CMakeLists.txt,31,"set(CMAKE_INSTALL_PREFIX ""/opt/rocm"" CACHE PATH ...)",medium,untriaged,Default install prefix
+rocfft,cmake-build,clients/samples/fixed-large/CMakeLists.txt,52,"find_package(hip REQUIRED PATHS /opt/rocm/lib/cmake/hip/)",medium,untriaged,Hardcoded hip search path
+rocfft,cmake-build,clients/samples/fixed-16/CMakeLists.txt,31,"set(CMAKE_INSTALL_PREFIX ""/opt/rocm"" CACHE PATH ...)",medium,untriaged,Default install prefix
+rocfft,cmake-build,clients/samples/fixed-16/CMakeLists.txt,52,"find_package(hip REQUIRED PATHS /opt/rocm/lib/cmake/hip/)",medium,untriaged,Hardcoded hip search path
+rocfft,cmake-build,clients/samples/rocfft/CMakeLists.txt,31,"set(CMAKE_INSTALL_PREFIX ""/opt/rocm"" CACHE PATH ...)",medium,untriaged,Default install prefix
+rocfft,cmake-build,clients/samples/rocfft/CMakeLists.txt,52,"find_package(hip REQUIRED PATHS /opt/rocm/lib/cmake/hip/)",medium,untriaged,Hardcoded hip search path
+rocfft,cmake-build,clients/samples/multi_gpu/CMakeLists.txt,31,"set(CMAKE_INSTALL_PREFIX ""/opt/rocm"" CACHE PATH ...)",medium,untriaged,Default install prefix
+rocfft,cmake-build,clients/samples/multi_gpu/CMakeLists.txt,52,"find_package(hip REQUIRED PATHS /opt/rocm/lib/cmake/hip/)",medium,untriaged,Hardcoded hip search path
+rocfft,cmake-build,clients/samples/CMakeLists.txt,31,"set(CMAKE_INSTALL_PREFIX ""/opt/rocm"" CACHE PATH ...)",medium,untriaged,Default install prefix
+rocfft,cmake-build,clients/samples/mpi/CMakeLists.txt,31,"set(CMAKE_INSTALL_PREFIX ""/opt/rocm"" CACHE PATH ...)",medium,untriaged,Default install prefix
+rocfft,cmake-build,clients/samples/mpi/CMakeLists.txt,52,"find_package(hip REQUIRED PATHS /opt/rocm/lib/cmake/hip/)",medium,untriaged,Hardcoded hip search path
+rocfft,cmake-build,clients/tests/CMakeLists.txt,31,"set(CMAKE_INSTALL_PREFIX ""/opt/rocm"" CACHE PATH ...)",medium,untriaged,Default install prefix
+rocfft,cmake-build,clients/tests/CMakeLists.txt,56,"find_package(hip REQUIRED PATHS /opt/rocm/lib/cmake/hip/)",medium,untriaged,Hardcoded hip search path
+rocfft,cmake-build,clients/tests/CMakeLists.txt,498-499,"find_program(clang-offload-bundler HINTS ${ROCM_PATH}/llvm/bin PATHS /opt/rocm/llvm/bin)",medium,untriaged,Hardcoded tool search path
+rocfft,cmake-build,clients/tests/CMakeLists.txt,506-507,"find_program(llvm-objdump HINTS ${ROCM_PATH}/llvm/bin PATHS /opt/rocm/llvm/bin)",medium,untriaged,Hardcoded tool search path
+rocfft,cmake-build,deps/CMakeLists.txt,32,"set(CMAKE_INSTALL_PREFIX ... FORCE)",high,untriaged,FORCE overrides user-specified install prefix
+rocfft,toolchain,toolchain-linux.cmake,24,"$ENV{ROCM_PATH}/bin",low,untriaged,Env var read in toolchain; TheRock doesn't use this file
+rocfft,toolchain,toolchain-linux.cmake,26-27,"set(ROCM_PATH ""/opt/rocm""); set(rocm_bin ""/opt/rocm/bin"")",low,untriaged,Hardcoded fallback; TheRock doesn't use this file
+rocfft,toolchain,toolchain-windows.cmake,24,"$ENV{HIP_PATH}",low,untriaged,Env var read in toolchain; TheRock doesn't use this file
+rocfft,toolchain,toolchain-windows.cmake,27,"$ENV{HIP_DIR}",low,untriaged,Env var read in toolchain; TheRock doesn't use this file
+rocfft,python,rmake.py,175,"os.getenv('ROCM_PATH', ""/opt/rocm"")",low,untriaged,Standalone build helper; not used by TheRock
+rocfft,python,library/src/device/generator.py,71,"/opt/rocm/llvm/bin/clang-format",low,triaged,Should resolve clang-format relative to current ROCm install; has fallback to skip formatting
+rocfft,python,library/src/device/generator.py,88,"/opt/rocm/llvm/bin/clang-format",low,triaged,Should resolve clang-format relative to current ROCm install; has fallback to skip formatting
+rocfft,python,scripts/perf/perflib/specs.py,124-127,"/opt/rocm/.info/version-utils and /opt/rocm/.info/version",low,untriaged,Hardcoded version info path
+rocfft,shell,install.sh,380,"rocm_path=/opt/rocm",low,untriaged,Standalone install script; not used by TheRock
+rocfft,shell,install.sh,385,"rpath /opt/rocm/lib:/opt/rocm/lib64",medium,untriaged,Hardcoded rpath could cause runtime issues
+rocfft,shell,install.sh,424,"export PATH=${PATH}:/opt/rocm/bin",low,untriaged,Standalone install script
+rocfft,shell,install.sh,492,"CPACK_PACKAGING_INSTALL_PREFIX=/opt/rocm",low,untriaged,Standalone install script
+rocfft,shell,.githooks/pre-commit,7,"/opt/rocm/llvm/bin/clang-format",low,untriaged,Dev tooling; not a build/install issue
