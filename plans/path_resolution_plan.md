@@ -2,6 +2,8 @@
 
 Status: **Under discussion** — not approved for implementation.
 
+Tracking issue: https://github.com/ROCm/TheRock/issues/3976
+
 ## Problem Summary
 
 ROCm sub-projects have ~74 `PATHS /opt/rocm` call sites across rocm-systems
