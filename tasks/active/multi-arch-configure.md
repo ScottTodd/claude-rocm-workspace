@@ -689,6 +689,114 @@ Commit `657c8618` on branch `multi-arch-configure`:
 - `BUILD_VARIANT` comes from `os.environ` (workflow_call input), not from
   `GITHUB_EVENT_PATH` — it's set by the calling workflow, not the event
 
+## Job Graph Model
+
+The CI pipeline is a DAG of job groups:
+
+```
+build-rocm → test-rocm
+           → build-rocm-python → build-pytorch → test-pytorch
+                               → build-jax     → test-jax
+                               → build-<framework> → test-<framework>
+```
+
+### Subgraph selection from changed files
+
+Changed files determine **where we enter** the DAG and **how far we
+propagate**. Everything upstream of the entry point uses prebuilt
+artifacts. Everything not reachable from the change is skipped.
+
+**Example: change to a ROCm subproject (e.g. HIP runtime)**
+Most ROCm changes propagate through to python packages and frameworks:
+```
+[prebuilt] foundation → [rebuild] compiler-runtime → ... → [test] rocm
+                                                         → [rebuild] rocm-python → [rebuild] pytorch → [test] pytorch
+                                                                                → [rebuild] jax → [test] jax
+```
+
+**Example: change to pytorch packaging code only**
+ROCm artifacts are unchanged — start from prebuilt rocm-python:
+```
+[prebuilt rocm-python] → [rebuild] pytorch → [test] pytorch
+                       ↛ build-jax (not affected)
+                       ↛ test-rocm (rocm unchanged)
+```
+
+**Example: change to jax packaging code only**
+```
+[prebuilt rocm-python] → [rebuild] jax → [test] jax
+                       ↛ build-pytorch (not affected)
+```
+
+**Example: change to CI workflow YAML or docs**
+May not require building anything — handled by the skip-CI gate.
+
+### Two levels of granularity
+
+1. **Job group level** — the nodes above (build-rocm, test-rocm,
+   build-rocm-python, build-pytorch, test-pytorch, build-jax, etc.).
+   Small DAG, could be hardcoded or defined in simple config.
+2. **Stage level** (within build-rocm) — foundation, compiler-runtime,
+   math-libs, etc. BUILD_TOPOLOGY.toml defines this sub-DAG.
+
+### Implications for the pipeline step
+
+The old "Step 4: Decide Stages" mixed build stages with test type — these
+are separate concerns. The replacement is a **job decisions** step that
+determines, for the whole job graph:
+- Which job groups run (entry point + reachability)
+- Within build-rocm: which stages rebuild vs use prebuilt
+- Test type per test group (smoke vs full)
+
+Initially: all job groups run, all stages rebuild, test type uses existing
+smoke/full logic. The subgraph selection is added later without changing
+the data structure.
+
+### Prebuilt eligibility by trigger type
+
+Prebuilt artifacts have embedded version information (package filenames,
+wheel metadata, etc.). Mixing prebuilt artifacts from one commit with
+freshly-built artifacts from another commit creates version mismatches.
+
+**Policy:** Only pull_request triggers use prebuilt artifacts. PR builds
+are ephemeral — versions are `0.0.1.dev+<hash>`, nobody installs them,
+and slight version mismatches between prebuilt and rebuilt components
+are acceptable. Push and schedule builds produce artifacts that go to
+release/nightly channels, where version consistency matters.
+
+| Trigger            | Prebuilt eligible? | Rationale |
+|--------------------|-------------------|-----------|
+| `pull_request`     | Yes | Ephemeral builds, versions are dev hashes, goal is fast feedback |
+| `push`             | No  | Produces release/nightly artifacts, version consistency required |
+| `schedule`         | No  | Full nightly builds, version consistency required |
+| `workflow_dispatch` | Explicit only | User sets `prebuilt_stages` — they know what they're doing |
+
+This simplifies `decide_jobs`:
+- push/schedule → everything runs, no prebuilt analysis needed
+- workflow_dispatch with explicit prebuilt_stages → trust the user
+- pull_request → analyze changed files, use prebuilt where possible
+
+### Testing strategy for decide_jobs
+
+The goal of the configure_ci refactoring is to make policy decisions
+visible in code and easy to test. Each policy is a pure function test:
+
+**Trigger type policy (simple):**
+- push → all job groups run, no prebuilt
+- schedule → all job groups run, no prebuilt
+- workflow_dispatch with prebuilt_stages → explicit override applied
+- workflow_dispatch without prebuilt_stages → all run
+
+**Changed-file analysis (pull_request only, the interesting cases):**
+- Files only in pytorch packaging → build_rocm=prebuilt, test_rocm=skip, build_rocm_python=prebuilt, build_pytorch=run, test_pytorch=run
+- Files only in rocm-python packaging → build_rocm=prebuilt, test_rocm=skip, build_rocm_python=run, build_pytorch=run, test_pytorch=run
+- Files in a ROCm submodule → build_rocm=run (specific stages), everything downstream=run
+- Files only in CI YAML/docs → caught by skip gate (step 2), never reaches decide_jobs
+- Infra files (non-submodule, non-skippable) → everything runs (conservative)
+
+Each test constructs a CIInputs + changed_files list and asserts on the
+returned JobDecisions. No git, no filesystem, no environment.
+
 ## Decisions & Trade-offs
 
 - **Pipeline of pure transformations**: Each step takes typed input, produces
@@ -698,8 +806,17 @@ Commit `657c8618` on branch `multi-arch-configure`:
   295-line function would make both harder to maintain.
 - **Topology-driven**: All stage/source_set logic reads from BUILD_TOPOLOGY.toml.
   No hardcoded stage names in Python.
-- **Dataclasses over dicts**: `CIInputs`, `TargetSelection`, `StageDecisions`,
+- **Dataclasses over dicts**: `CIInputs`, `TargetSelection`, `JobDecisions`,
   `MatrixEntry`, `CIOutputs` — each step's interface is explicit.
+- **Job graph, not flat stages**: The CI pipeline is a DAG of job groups.
+  Decisions operate on the graph (entry point + reachability), not a flat
+  list. "Stages" is a build-rocm-specific refinement within the graph.
+- **Prebuilt only for PRs**: Version embedding in packages makes prebuilt
+  reuse risky for push/schedule/release builds. PRs use dev versions where
+  slight mismatches are acceptable, so prebuilt analysis only runs there.
+- **Policy as testable code**: Each trigger-type policy and changed-file
+  mapping is a pure function, testable with constructed inputs and no
+  environment dependencies.
 
 ## Design Considerations
 
