@@ -967,9 +967,19 @@ it's worth noting.
 5. [x] Phase 3: Wire into workflow
    - [x] `setup_multi_arch.yml` — new setup workflow calling configure_multi_arch_ci.py
    - [x] `multi_arch_ci.yml` — uses setup_multi_arch.yml, fromJSON on per-platform build configs
-6. [ ] Validation: run test jobs on fork (workflow_dispatch, push, various configs)
-7. [ ] Iterate on logging + `format_summary` markdown based on test run output
-8. [ ] Phase 4: Job graph decisions (topology parsing, source-set analysis)
+6. [ ] Pre-PR cleanup: fix stale docstring (test_type values), replace sys.exit
+   with raise in from_environ(), rename lookup_matrix in _filter_families_by_platform
+7. [ ] Explore consolidating setup_multi_arch.yml outputs into fewer JSON objects.
+   Currently 11 individual outputs — could bundle into e.g. one `ci_config` JSON
+   object that multi_arch_ci.yml unpacks with fromJSON. Would also reduce the
+   repeated fromJSON calls on linux_build_config/windows_build_config (7× each).
+   Need to understand: how does GitHub Actions handle large JSON in outputs?
+   Is there a size limit? Does fromJSON on a workflow output work reliably
+   with nested objects? What happens when the JSON is empty/null — does the
+   `if:` guard still work? Prototype on fork before committing to the pattern.
+8. [ ] Validation: run test jobs on fork (workflow_dispatch, push, various configs)
+9. [ ] Iterate on logging + `format_summary` markdown based on test run output
+10. [ ] Phase 4: Job graph decisions (topology parsing, source-set analysis)
 9. [ ] Phase 5: Prebuilt integration (auto-derive baseline_run_id, DAG expansion)
 10. [ ] Phase 6: Test determination (per-job-group, pytorch target determinator)
 
