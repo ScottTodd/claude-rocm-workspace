@@ -718,6 +718,52 @@ Commit `657c8618` on branch `multi-arch-configure`:
 - PR defaults to presubmit only (not postsubmit) — matches original configure_ci.py
 - Dropped `determine_long_lived_branch` — push always gets presubmit+postsubmit
 - Prebuilt only for PRs (version embedding makes prebuilt risky for push/schedule)
+
+### 2026-03-16 — Phase 2 + 3 complete (MVP)
+
+Implemented all pipeline steps and wired into workflows. 13 commits on
+`multi-arch-configure` branch.
+
+**expand_build_configs (was expand_matrix):**
+- Simplified from variant-grouping loop to flat membership check (single
+  build_variant per workflow run)
+- `expand_build_configs()` returns `BuildConfigs` dataclass with
+  `linux: BuildConfig | None`, `windows: BuildConfig | None`
+- Removed matrix array output — per-platform JSON object instead
+- Added `amdgpu_family_matrix_test.py` for data invariant validation
+  (no duplicate families, required fields, non-empty build_variants)
+
+**check_skip_ci:**
+- skip-ci PR label (priority), then delegates to `is_ci_run_required()`
+- Mocks `is_ci_run_required` in tests to avoid duplicating path filter coverage
+
+**decide_jobs:**
+- test_type: quick (default) → comprehensive (schedule) → full (submodule
+  change or test labels). `test_filter:` PR label overrides any level.
+- Adopted test type names from PR #3992 (quick/standard/comprehensive/full)
+- Early returns with explicit priority order, fail-fast on invalid test_filter
+- prebuilt_stages parsed into `BuildRocmDecision.stage_decisions`
+- baseline_run_id on `BuildRocmDecision` (passthrough for now, will derive
+  automatically later)
+
+**GitContext dataclass:**
+- Separated git-derived data (changed_files, submodule_paths) from CIInputs
+- `configure()` is fully pure — takes CIInputs + GitContext, no git calls
+- Tests construct GitContext directly, no git dependency
+
+**Workflow integration:**
+- New `setup_multi_arch.yml`: checkout, configure_multi_arch_ci.py, package version
+- Script reads GITHUB_EVENT_PATH directly (no env var pass-through chain)
+- `multi_arch_ci.yml` calls setup_multi_arch.yml, uses `fromJSON()` property
+  access on per-platform build config objects instead of matrix strategy
+
+**Code quality:**
+- Structured logging via `log()` methods on all pipeline dataclasses
+- Explicit field access everywhere (no getattr)
+- Structural tests (not change-detector) for expand_build_configs
+- 919 lines script, 322 statements, 90% coverage, 43 tests
+- All uncovered code is I/O boundary (from_environ, from_repo, write_outputs, main)
+- Prebuilt only for PRs (version embedding makes prebuilt risky for push/schedule)
 - Job graph model: build-rocm → test-rocm → build-rocm-python → build-pytorch etc.
 - Test determination is a separate concern from job decisions (future: per-job-group
   target determinator, similar to pytorch upstream)
@@ -913,15 +959,19 @@ it's worth noting.
 1. [x] Design — pipeline architecture, feature audit
 2. [x] Phase 1: Scaffold — dataclasses, pipeline shape, test patterns
 3. [x] Review and refine scaffold
-4. [ ] Phase 2: MVP logic (in progress)
+4. [x] Phase 2: MVP logic
    - [x] `select_targets` — trigger dispatch, PR labels, platform filtering
-   - [ ] `expand_matrix` — port `generate_multi_arch_matrix` logic
-   - [ ] `check_skip_ci` — skip-ci label, path filtering
-   - [ ] `decide_jobs` — trigger-type policy (push/schedule=run all, PR=run all for now)
-5. [ ] Phase 3: Wire into workflow, validate output parity
-6. [ ] Phase 4: Job graph decisions (topology parsing, source-set analysis)
-7. [ ] Phase 5: Prebuilt integration + structured logging/summary
-8. [ ] Phase 6: Test determination (per-job-group, pytorch target determinator)
+   - [x] `expand_build_configs` — per-platform BuildConfig (was `expand_matrix`)
+   - [x] `check_skip_ci` — skip-ci label, path filtering
+   - [x] `decide_jobs` — test_type (quick/comprehensive/full), prebuilt stages, baseline_run_id
+5. [x] Phase 3: Wire into workflow
+   - [x] `setup_multi_arch.yml` — new setup workflow calling configure_multi_arch_ci.py
+   - [x] `multi_arch_ci.yml` — uses setup_multi_arch.yml, fromJSON on per-platform build configs
+6. [ ] Validation: run test jobs on fork (workflow_dispatch, push, various configs)
+7. [ ] Iterate on logging + `format_summary` markdown based on test run output
+8. [ ] Phase 4: Job graph decisions (topology parsing, source-set analysis)
+9. [ ] Phase 5: Prebuilt integration (auto-derive baseline_run_id, DAG expansion)
+10. [ ] Phase 6: Test determination (per-job-group, pytorch target determinator)
 
 ### Known issues / follow-ups
 
@@ -931,6 +981,10 @@ it's worth noting.
 - PR #3653 rewrites amdgpu_family_matrix with dataclasses. When it lands,
   `select_targets` internals swap to the new API (canonical keys, typed entries).
   The pipeline boundary (`TargetSelection`) stays the same.
+- PR #3992 expands test filter options: renames `smoke` → `quick`, `full` →
+  `comprehensive`, adds `test_filter:standard` PR label. Our test_type logic
+  already adopts the new names and `test_filter:` label — when #3992 merges,
+  the downstream consumers (fetch_test_configurations.py etc.) will match.
 
 ## Branches
 
