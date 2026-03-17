@@ -763,6 +763,79 @@ Implemented all pipeline steps and wired into workflows. 13 commits on
 - Structural tests (not change-detector) for expand_build_configs
 - 919 lines script, 322 statements, 90% coverage, 43 tests
 - All uncovered code is I/O boundary (from_environ, from_repo, write_outputs, main)
+
+### PR #3653 Analysis: new_amdgpu_family_matrix dataclass rewrite
+
+**What it does:** Replaces the nested dict format in `new_amdgpu_family_matrix.py`
+with typed dataclasses: `MatrixEntry` → `PlatformConfig` → `BuildConfig` /
+`TestConfig` / `ReleaseConfig`. Auto-discovers entries from module-level
+`_GFX*` variables. Case-insensitive key lookup, family-level defaults,
+group resolution via `get_entries_for_groups()`.
+
+**What it changes for us:** Our `select_targets` and `expand_build_configs`
+currently import from the old `amdgpu_family_matrix.py` and work with
+raw dicts (`all_families[family_name][platform]["family"]`, etc.). After
+#3653 lands, we'd switch to the new typed API.
+
+**Switching cost for configure_multi_arch_ci.py (low):**
+
+- `select_targets`: Replace `get_all_families_for_trigger_types(["presubmit"])`
+  with `matrix.get_entries_for_groups(["amdgpu_presubmit"])`. The group
+  names use family-level keys (e.g. "gfx94X-dcgpu") instead of our current
+  target names (e.g. "gfx94x"). `_validate_family_names` and
+  `_filter_families_by_platform` become simpler — the new API handles
+  case-insensitive lookup and reports unmatched keys.
+
+- `expand_build_configs` / `_expand_build_config_for_platform`: Replace
+  dict indexing (`platform_info["family"]`, `platform_info["test-runs-on"]`)
+  with typed field access (`entry.linux.test.runs_on.test`,
+  `entry.linux.build.build_variants`). The `all_build_variants` dict
+  import goes away — variant info lives on `BuildVariantInfo` dataclass.
+
+- `TargetSelection` stays the same — it's our pipeline boundary, not tied
+  to the matrix format.
+
+**Architectural feedback for PR #3653:**
+
+Strengths:
+- Typed fields with defaults — less boilerplate per entry, harder to
+  get wrong
+- Auto-discovery of entries — adding a GPU is just a new variable
+- `get_entries_for_groups` with `GroupLookupResult` (entries + unmatched_keys)
+  is exactly what we need for fail-fast validation
+- `is_family_default` for family-level lookup is clean
+
+Concerns to raise:
+- **Name collision:** PR #3653 defines `BuildConfig` in
+  `new_amdgpu_family_matrix_types.py`. Our pipeline also defines
+  `BuildConfig` in `configure_multi_arch_ci.py` (the per-platform build
+  configuration output). These are different things — theirs is per-entry
+  build settings (variants, expect_failure), ours is the fully-expanded
+  build configuration for a workflow job. Need to disambiguate — either
+  rename ours (e.g. `PlatformBuildOutput`) or theirs (e.g. `EntryBuildConfig`).
+- **`test_scope` naming:** PR #3653 adds `TestConfig.test_scope` with values
+  `"all"`, `"smoke"`, `"full"`. But PR #3992 (now merged) renamed smoke→quick
+  and added standard/comprehensive. These should be aligned. The PR may
+  have been written before #3992 landed.
+- **Group key format:** Groups use family-level keys like "gfx94X-dcgpu"
+  (cmake target names) while the old matrix uses short keys like "gfx94x".
+  Our `select_targets` currently works with the short keys (from PR labels
+  like `gfx94x`). The new API's case-insensitive lookup handles this, but
+  PR label parsing needs to map `gfx94x` → a key the matrix recognizes.
+  Worth verifying the case-insensitive lookup handles partial matches
+  like `gfx94x` → `gfx94X-dcgpu` (via `is_family_default`).
+- **`all_build_variants` location:** The PR moves variant config into the
+  data module. Currently `all_build_variants` is a module-level dict in
+  `amdgpu_family_matrix.py` that both `configure_ci.py` and our script
+  import. After #3653, this becomes `AllBuildVariants` dataclass accessed
+  via `amdgpu_family_info_matrix_all.build_variants` or similar. The
+  migration path for existing consumers should be clear.
+- **No consumer migration:** The PR adds the new API but doesn't update
+  any consumers (`configure_ci.py`, our script, etc.). This is fine as a
+  standalone data layer PR, but the old `amdgpu_family_matrix.py` stays
+  around with a "keep in sync" comment. The migration should happen
+  promptly to avoid drift.
+
 - Prebuilt only for PRs (version embedding makes prebuilt risky for push/schedule)
 - Job graph model: build-rocm → test-rocm → build-rocm-python → build-pytorch etc.
 - Test determination is a separate concern from job decisions (future: per-job-group
@@ -1006,10 +1079,10 @@ it's worth noting.
   explicitly opt in. Expand scope as migration progresses. Eventually
   replace non-multi-arch CI entirely (#3340). Runner saturation is the
   main constraint — can't double CI load during the transition.
-- PR #3992 expands test filter options: renames `smoke` → `quick`, `full` →
-  `comprehensive`, adds `test_filter:standard` PR label. Our test_type logic
-  already adopts the new names and `test_filter:` label — when #3992 merges,
-  the downstream consumers (fetch_test_configurations.py etc.) will match.
+- PR #3992 (merged): expanded test filter options, renamed `smoke` → `quick`,
+  `full` → `comprehensive`, added `test_filter:` PR label. Our test_type
+  logic already uses these names. Need to rebase to pick up the changes
+  to amdgpu_family_matrix.py and fetch_test_configurations.py.
 
 ## Branches
 
