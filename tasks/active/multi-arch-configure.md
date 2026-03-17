@@ -1136,20 +1136,22 @@ it's worth noting.
    - Phase headers in logs ("=== Inputs ===", "=== Checking if CI should run ===")
    - Case normalization (lowercase at parse boundary)
    - Empty families → "No GPU families selected" message
-9. [ ] Explore consolidating setup_multi_arch.yml outputs into fewer JSON objects.
-   Currently 11 individual outputs — could bundle into e.g. one `ci_config` JSON
-   object that multi_arch_ci.yml unpacks with fromJSON. Would also reduce the
-   repeated fromJSON calls on linux_build_config/windows_build_config (7× each).
-   Need to understand: how does GitHub Actions handle large JSON in outputs?
-   Is there a size limit? Does fromJSON on a workflow output work reliably
-   with nested objects? What happens when the JSON is empty/null — does the
-   `if:` guard still work? Prototype on fork before committing to the pattern.
-10. [ ] Enable pull_request trigger on multi_arch_ci.yml (#3337). Start
-    conservative: only run when specific files change (BUILD_TOPOLOGY.toml,
-    multi-arch workflows, configure_multi_arch_ci.py, etc.). Build Linux
-    only, skip tests initially. Expand scope over time as confidence grows.
-    Policy lives in decide_jobs / check_skip_ci — easy to tune without
-    workflow YAML changes. Eventually deprecate non-multi-arch CI (#3340).
+9. [ ] Enable pull_request trigger on multi_arch_ci.yml (#3337). **Start
+   with `run-multi-arch-ci` PR label as the only opt-in** — skip CI entirely
+   for PRs without the label. This lets us test with real PR behavior
+   (presubmit families, changed-file detection, test_type) without adding
+   load for every PR. Implementation: check for the label in check_skip_ci,
+   uncomment pull_request trigger in multi_arch_ci.yml. Follow up later
+   with path-based filtering (BUILD_TOPOLOGY.toml, multi-arch workflows).
+10. [ ] Rebase onto latest main (pick up #3992 test filter changes)
+11. [ ] Send upstream PR
+12. [ ] Explore consolidating setup_multi_arch.yml outputs into fewer JSON
+    objects (reduce 11 outputs + repeated fromJSON calls).
+13. [ ] Expand PR trigger policy: path-based filtering, Linux-only builds
+    without tests. Eventually deprecate non-multi-arch CI (#3340).
+14. [ ] Phase 4: Job graph decisions (topology parsing, source-set analysis)
+15. [ ] Phase 5: Prebuilt integration (auto-derive baseline_run_id, DAG expansion)
+16. [ ] Phase 6: Test determination (per-job-group, pytorch target determinator)
 11. [ ] Phase 4: Job graph decisions (topology parsing, source-set analysis)
 12. [ ] Phase 5: Prebuilt integration (auto-derive baseline_run_id, DAG expansion)
 13. [ ] Phase 6: Test determination (per-job-group, pytorch target determinator)
