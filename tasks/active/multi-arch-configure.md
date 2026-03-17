@@ -945,6 +945,8 @@ it's worth noting.
 ## Resources & References
 
 - [Issue #3399](https://github.com/ROCm/TheRock/issues/3399) — stage-aware prebuilt artifacts
+- [Issue #3337](https://github.com/ROCm/TheRock/issues/3337) — enable multi-arch CI on pull_request ([comment with migration plan](https://github.com/ROCm/TheRock/issues/3337#issuecomment-4075841091))
+- [Issue #3340](https://github.com/ROCm/TheRock/issues/3340) — deprecate non-multi-arch CI
 - [BUILD_TOPOLOGY.toml](../TheRock/BUILD_TOPOLOGY.toml)
 - [configure_ci.py](../TheRock/build_tools/github_actions/configure_ci.py)
 - [configure_ci_path_filters.py](../TheRock/build_tools/github_actions/configure_ci_path_filters.py)
@@ -979,9 +981,15 @@ it's worth noting.
    `if:` guard still work? Prototype on fork before committing to the pattern.
 8. [ ] Validation: run test jobs on fork (workflow_dispatch, push, various configs)
 9. [ ] Iterate on logging + `format_summary` markdown based on test run output
-10. [ ] Phase 4: Job graph decisions (topology parsing, source-set analysis)
-9. [ ] Phase 5: Prebuilt integration (auto-derive baseline_run_id, DAG expansion)
-10. [ ] Phase 6: Test determination (per-job-group, pytorch target determinator)
+10. [ ] Enable pull_request trigger on multi_arch_ci.yml (#3337). Start
+    conservative: only run when specific files change (BUILD_TOPOLOGY.toml,
+    multi-arch workflows, configure_multi_arch_ci.py, etc.). Build Linux
+    only, skip tests initially. Expand scope over time as confidence grows.
+    Policy lives in decide_jobs / check_skip_ci — easy to tune without
+    workflow YAML changes. Eventually deprecate non-multi-arch CI (#3340).
+11. [ ] Phase 4: Job graph decisions (topology parsing, source-set analysis)
+12. [ ] Phase 5: Prebuilt integration (auto-derive baseline_run_id, DAG expansion)
+13. [ ] Phase 6: Test determination (per-job-group, pytorch target determinator)
 
 ### Known issues / follow-ups
 
@@ -991,6 +999,13 @@ it's worth noting.
 - PR #3653 rewrites amdgpu_family_matrix with dataclasses. When it lands,
   `select_targets` internals swap to the new API (canonical keys, typed entries).
   The pipeline boundary (`TargetSelection`) stays the same.
+- Multi-arch CI not yet on pull_request trigger (#3337). Want to enable
+  incrementally: start with Linux-only builds (no tests) for changes to
+  multi-arch-relevant files (BUILD_TOPOLOGY.toml, multi-arch workflows,
+  configure scripts). A `run-multi-arch-ci` PR label would let developers
+  explicitly opt in. Expand scope as migration progresses. Eventually
+  replace non-multi-arch CI entirely (#3340). Runner saturation is the
+  main constraint — can't double CI load during the transition.
 - PR #3992 expands test filter options: renames `smoke` → `quick`, `full` →
   `comprehensive`, adds `test_filter:standard` PR label. Our test_type logic
   already adopts the new names and `test_filter:` label — when #3992 merges,
