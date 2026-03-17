@@ -836,6 +836,64 @@ Concerns to raise:
   around with a "keep in sync" comment. The migration should happen
   promptly to avoid drift.
 
+### PR #1732 Analysis: Weekly CI and new amdgpu matrix generator
+
+**What it does:** Introduces `ci_weekly.yml` (scheduled + workflow_dispatch),
+`new_ci_linux.yml` (per-target reusable workflow), and a new
+`configure_amdgpu_matrix.py` script. The configure script outputs a
+per-target JSON config that the workflow unpacks with `fromJSON()`.
+
+**Architecture:** Single-arch approach — one workflow job per GPU target.
+Each target gets its own `new_ci_linux.yml` call with an `amdgpu_family_config`
+JSON object containing `build.*`, `test.*`, `release.*` fields. This is the
+opposite of multi-arch (one job for all targets with per-arch stages).
+
+**Key differences from our multi-arch configure script:**
+
+| Aspect | PR #1732 | Our script |
+|--------|----------|------------|
+| Architecture | Single-arch: one job per target | Multi-arch: one job for all targets |
+| Matrix output | Array of per-target JSON objects | One JSON object per platform |
+| Build unit | Per-target build + test | Per-stage build, per-target test |
+| Config shape | `{amdgpu_family, build: {...}, test: {...}}` | `BuildConfig` with `matrix_per_family_json` |
+| Prebuilt | `use_prebuilt_artifacts` boolean | Per-stage `prebuilt_stages` |
+
+**Compatibility concerns:**
+
+1. **Parallel configure scripts.** PR #1732 adds `configure_amdgpu_matrix.py`
+   as a third configure script (alongside `configure_ci.py` and our
+   `configure_multi_arch_ci.py`). All three read the same matrix data but
+   produce different output shapes. Adding a new GPU family or changing
+   test config requires updating multiple consumers.
+
+2. **`new_ci_linux.yml` vs `multi_arch_ci_linux.yml`.** Both are reusable
+   Linux CI workflows but with different input contracts. A weekly CI built
+   on multi-arch would use `multi_arch_ci_linux.yml` directly.
+
+3. **Weekly CI as a multi-arch consumer.** Our script already handles the
+   weekly CI's core need: `schedule` trigger → all families including
+   nightly-only. The weekly CI could be a thin wrapper calling
+   `multi_arch_ci.yml` rather than a separate pipeline.
+
+4. **`predefined_groups` input.** PR #1732 exposes group names as a
+   workflow_dispatch input ("run the presubmit group"). Our script handles
+   this implicitly via trigger type, but doesn't expose group names as
+   explicit inputs. Could be useful for "run as if presubmit" scenarios.
+
+5. **`TaskMask` (BUILD, TEST, RELEASE).** Controls which pipeline parts run.
+   Our `JobDecisions` covers build vs test via job group actions but doesn't
+   have a release concept yet.
+
+6. **Benchmarks.** `new_ci_linux.yml` has a `test_linux_benchmarks` job.
+   Our multi-arch pipeline doesn't have a benchmark job group yet — would
+   need one for weekly CI migration.
+
+**Recommendation:** Rather than letting #1732 land as a parallel single-arch
+pipeline, weekly CI should migrate to multi-arch. The `schedule` trigger
+in `multi_arch_ci.yml` + our configure script already covers the core use
+case. The gaps are benchmarks and release tasks, both addressable as new
+job groups in the existing model.
+
 - Prebuilt only for PRs (version embedding makes prebuilt risky for push/schedule)
 - Job graph model: build-rocm → test-rocm → build-rocm-python → build-pytorch etc.
 - Test determination is a separate concern from job decisions (future: per-job-group
