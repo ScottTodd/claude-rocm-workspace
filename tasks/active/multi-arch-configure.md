@@ -764,6 +764,34 @@ Implemented all pipeline steps and wired into workflows. 13 commits on
 - 919 lines script, 322 statements, 90% coverage, 43 tests
 - All uncovered code is I/O boundary (from_environ, from_repo, write_outputs, main)
 
+### 2026-03-17 — Validation, logging, and summary formatting
+
+Validated on fork with multiple workflow_dispatch runs. Fixed input case
+normalization (lowercase at parse boundary). Iterated through 5 rounds
+of summary format design (v1-v5 in reviews/).
+
+**Summary format (configure_multi_arch_ci_summary.py):**
+- Structure: one-liner trigger, non-default callout (GitHub alert syntax),
+  fixed DAG, ### sections per job group node
+- test-rocm: per-family table with Platform, Family, Runner Label, Scope
+- build-rocm: families table + prebuilt stage details
+- Non-default callouts highlight labels, explicit families, prebuilt stages
+- Empty families case handled ("No GPU families selected")
+- Skipped case shows changed files + link to path filter source
+
+**Logging improvements:**
+- Phase headers in configure() ("=== Inputs ===", "=== Checking if CI
+  should run ===", etc.)
+- All CIInputs fields printed unconditionally (empty values informative)
+- check_skip_ci logs "Checking N files against path filters..."
+- baseline_run_id added to CIInputs.log()
+
+**Analysis of related PRs:**
+- PR #3653 (amdgpu_family_matrix dataclass rewrite): low switching cost,
+  concerns about BuildConfig name collision and test_scope naming
+- PR #1732 (weekly CI): recommends migrating to multi-arch instead of
+  parallel single-arch pipeline. Gaps: benchmarks, release tasks
+
 ### PR #3653 Analysis: new_amdgpu_family_matrix dataclass rewrite
 
 **What it does:** Replaces the nested dict format in `new_amdgpu_family_matrix.py`
@@ -1100,9 +1128,15 @@ it's worth noting.
 5. [x] Phase 3: Wire into workflow
    - [x] `setup_multi_arch.yml` — new setup workflow calling configure_multi_arch_ci.py
    - [x] `multi_arch_ci.yml` — uses setup_multi_arch.yml, fromJSON on per-platform build configs
-6. [ ] Pre-PR cleanup: fix stale docstring (test_type values), replace sys.exit
-   with raise in from_environ(), rename lookup_matrix in _filter_families_by_platform
-7. [ ] Explore consolidating setup_multi_arch.yml outputs into fewer JSON objects.
+6. [x] Pre-PR cleanup: fix stale docstring, sys.exit → raise, rename lookup_matrix
+7. [x] Validation: workflow_dispatch runs on fork (various configs, prebuilt, empty)
+8. [x] Iterate on logging + `format_summary` markdown
+   - Rich step summary: DAG, per-family test runner table, non-default callouts
+   - Extracted to `configure_multi_arch_ci_summary.py`
+   - Phase headers in logs ("=== Inputs ===", "=== Checking if CI should run ===")
+   - Case normalization (lowercase at parse boundary)
+   - Empty families → "No GPU families selected" message
+9. [ ] Explore consolidating setup_multi_arch.yml outputs into fewer JSON objects.
    Currently 11 individual outputs — could bundle into e.g. one `ci_config` JSON
    object that multi_arch_ci.yml unpacks with fromJSON. Would also reduce the
    repeated fromJSON calls on linux_build_config/windows_build_config (7× each).
@@ -1110,8 +1144,6 @@ it's worth noting.
    Is there a size limit? Does fromJSON on a workflow output work reliably
    with nested objects? What happens when the JSON is empty/null — does the
    `if:` guard still work? Prototype on fork before committing to the pattern.
-8. [ ] Validation: run test jobs on fork (workflow_dispatch, push, various configs)
-9. [ ] Iterate on logging + `format_summary` markdown based on test run output
 10. [ ] Enable pull_request trigger on multi_arch_ci.yml (#3337). Start
     conservative: only run when specific files change (BUILD_TOPOLOGY.toml,
     multi-arch workflows, configure_multi_arch_ci.py, etc.). Build Linux
@@ -1127,6 +1159,11 @@ it's worth noting.
 - workflow_dispatch per-platform filtering silently drops families unavailable
   on the requested platform (e.g. gfx950 on windows). Should validate per-platform
   and raise. Tracked by skipped test `test_workflow_dispatch_wrong_platform_raises`.
+- workflow_dispatch with empty family inputs currently builds nothing. Consider
+  adding a choice input or special strings (e.g. `all`, `presubmit`,
+  `postsubmit`) that select predefined groups — "do what a PR would do" or
+  "do what nightly would do" without listing families manually. Related to
+  `predefined_groups` concept in PR #1732.
 - PR #3653 rewrites amdgpu_family_matrix with dataclasses. When it lands,
   `select_targets` internals swap to the new API (canonical keys, typed entries).
   The pipeline boundary (`TargetSelection`) stays the same.
