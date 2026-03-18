@@ -792,6 +792,46 @@ of summary format design (v1-v5 in reviews/).
 - PR #1732 (weekly CI): recommends migrating to multi-arch instead of
   parallel single-arch pipeline. Gaps: benchmarks, release tasks
 
+### 2026-03-18 — Output consolidation, workflow plumbing, cleanup
+
+Rebased onto main (picked up #3992 test filter, #3938 prebuilt_stages,
+#4039 ci:run-multi-arch label gate). Major refactoring session.
+
+**Output consolidation:**
+- Replaced 7+ individual BuildConfig inputs on multi_arch_ci_linux.yml
+  and multi_arch_ci_windows.yml with a single `build_config` JSON string.
+  Downstream workflows unpack with `fromJSON(inputs.build_config).field`.
+- Renamed `matrix_per_family_json` (double-encoded JSON string) to
+  `per_family_info` (native list) — eliminates `fromJSON(fromJSON(...))`
+- Folded `prebuilt_stages` and `baseline_run_id` into BuildConfig —
+  setup_multi_arch.yml outputs reduced from 11 to 9
+- Added BuildConfig contract tests: regex-extracts
+  `fromJSON(inputs.build_config).FIELD` references from workflow YAML
+  and asserts they match `dataclasses.fields(BuildConfig)`. Linux checks
+  exact match (all fields used), Windows checks subset (no unknown).
+
+**configure_ci.py cleanup:**
+- Removed `generate_multi_arch_matrix` function (~110 lines)
+- Removed `multi_arch` parameter from `matrix_generator` and `main()`
+- Removed `ci:run-multi-arch` label check (now in our script)
+- Removed 6 multi-arch tests and helper from configure_ci_test.py
+- Net -500 lines from configure_ci.py + tests
+
+**Label gate in new script:**
+- `check_skip_ci` now requires `ci:run-multi-arch` PR label for
+  pull_request triggers — opt-in during transition (#3337)
+- push/schedule/workflow_dispatch unaffected
+
+**Parallel work (separate branches, some merged):**
+- `ci-label-rename` branch: `skip-ci` → `ci:skip`, `run-all-archs-ci`
+  → `ci:run-all-archs` (merged as #4038)
+- `multi-arch-pr-enable` branch: uncomment pull_request trigger +
+  label gate in configure_ci.py (PR #4039)
+- `users/scotttodd/s3-auth-simplification`: fix artifact_backend.py
+  S3 client to use boto3 default credential chain instead of manually
+  checking env vars + UNSIGNED fallback (PR #4040)
+- `IS_PR_FROM_FORK` env var added to multi-arch artifact build workflows
+
 ### PR #3653 Analysis: new_amdgpu_family_matrix dataclass rewrite
 
 **What it does:** Replaces the nested dict format in `new_amdgpu_family_matrix.py`
@@ -1136,25 +1176,20 @@ it's worth noting.
    - Phase headers in logs ("=== Inputs ===", "=== Checking if CI should run ===")
    - Case normalization (lowercase at parse boundary)
    - Empty families → "No GPU families selected" message
-9. [ ] Enable pull_request trigger on multi_arch_ci.yml (#3337). **Start
-   with `run-multi-arch-ci` PR label as the only opt-in** — skip CI entirely
-   for PRs without the label. This lets us test with real PR behavior
-   (presubmit families, changed-file detection, test_type) without adding
-   load for every PR. Implementation: check for the label in check_skip_ci,
-   uncomment pull_request trigger in multi_arch_ci.yml. Follow up later
-   with path-based filtering (BUILD_TOPOLOGY.toml, multi-arch workflows).
-10. [ ] Rebase onto latest main (pick up #3992 test filter changes)
-11. [ ] Send upstream PR
-12. [ ] Explore consolidating setup_multi_arch.yml outputs into fewer JSON
-    objects (reduce 11 outputs + repeated fromJSON calls).
-13. [ ] Expand PR trigger policy: path-based filtering, Linux-only builds
+9. [x] Enable pull_request trigger with ci:run-multi-arch label gate
+   (separate branch `multi-arch-pr-enable`, PR #4039)
+10. [x] Rebase onto latest main
+11. [x] Consolidate workflow outputs: single `build_config` JSON input,
+    `per_family_info` flattened, prebuilt_stages/baseline_run_id folded in
+12. [x] Remove multi-arch code from configure_ci.py (-500 lines)
+13. [x] Add ci:run-multi-arch label gate to check_skip_ci
+14. [ ] Send upstream PR for configure_multi_arch_ci.py branch
+15. [ ] Validate with test runs on the upstream PR
+16. [ ] Expand PR trigger policy: path-based filtering, Linux-only builds
     without tests. Eventually deprecate non-multi-arch CI (#3340).
-14. [ ] Phase 4: Job graph decisions (topology parsing, source-set analysis)
-15. [ ] Phase 5: Prebuilt integration (auto-derive baseline_run_id, DAG expansion)
-16. [ ] Phase 6: Test determination (per-job-group, pytorch target determinator)
-11. [ ] Phase 4: Job graph decisions (topology parsing, source-set analysis)
-12. [ ] Phase 5: Prebuilt integration (auto-derive baseline_run_id, DAG expansion)
-13. [ ] Phase 6: Test determination (per-job-group, pytorch target determinator)
+17. [ ] Phase 4: Job graph decisions (topology parsing, source-set analysis)
+18. [ ] Phase 5: Prebuilt integration (auto-derive baseline_run_id, DAG expansion)
+19. [ ] Phase 6: Test determination (per-job-group, pytorch target determinator)
 
 ### Known issues / follow-ups
 
