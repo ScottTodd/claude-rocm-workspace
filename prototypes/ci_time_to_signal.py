@@ -40,7 +40,12 @@ DEFAULT_WORKFLOWS = [
 
 @dataclass
 class JobTiming:
-    name: str
+    run_id: int
+    run_created_at: str
+    job_name: str
+    category: str  # build, test, pytorch, python, validate, setup, other
+    platform: str  # Linux, Windows
+    variant: str  # e.g. gfx94X-dcgpu, gfx110X-all
     conclusion: str
     created_at: str
     started_at: str
@@ -98,19 +103,42 @@ class RunTiming:
     html_url: str
 
 
-def gh_api(endpoint: str, params: dict | None = None) -> dict:
-    """Call GitHub API via gh CLI. Returns parsed JSON."""
+def gh_api(endpoint: str, params: dict | None = None, retries: int = 3) -> dict:
+    """Call GitHub API via gh CLI. Returns parsed JSON.
+
+    Retries on transient errors (5xx, network issues).
+    """
+    import time
+
     cmd = ["gh", "api", endpoint, "--method", "GET"]
     for k, v in (params or {}).items():
         cmd.extend(["-f", f"{k}={v}"])
-    result = subprocess.run(
-        cmd, capture_output=True, text=True, encoding="utf-8"
-    )
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"gh api failed: {result.stderr.strip()}\nCommand: {' '.join(cmd)}"
+
+    for attempt in range(retries):
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, encoding="utf-8"
         )
-    return json.loads(result.stdout)
+        if result.returncode == 0:
+            return json.loads(result.stdout)
+
+        stderr = result.stderr.strip()
+        is_transient = any(
+            s in stderr for s in ("502", "503", "504", "Server Error", "timeout")
+        )
+        if is_transient and attempt < retries - 1:
+            wait = 2 ** attempt * 5  # 5s, 10s, 20s
+            print(
+                f"  Retrying ({attempt+1}/{retries}) after {wait}s: {stderr[:80]}",
+                file=sys.stderr,
+            )
+            time.sleep(wait)
+            continue
+
+        raise RuntimeError(
+            f"gh api failed: {stderr}\nCommand: {' '.join(cmd)}"
+        )
+    # Unreachable, but satisfies type checker
+    raise RuntimeError("gh api: exhausted retries")
 
 
 def parse_dt(iso_str: str) -> datetime:
@@ -145,6 +173,26 @@ def categorize_job(name: str) -> str:
     return "other"
 
 
+def parse_variant(name: str) -> tuple[str, str]:
+    """Extract platform and GPU variant from job name.
+
+    Job names look like:
+        Linux::gfx94X-dcgpu::release / Build Artifacts / ...
+        Windows::gfx110X-all::release / Test Artifacts / ...
+        setup / setup
+        CI Summary
+
+    Returns (platform, variant) e.g. ("Linux", "gfx94X-dcgpu").
+    Returns ("", "") if the name doesn't match the pattern.
+    """
+    if "::" not in name:
+        return ("", "")
+    parts = name.split("::")
+    if len(parts) >= 2:
+        return (parts[0].strip(), parts[1].strip())
+    return ("", "")
+
+
 def fetch_run_jobs(run_id: int) -> list[dict]:
     """Fetch all jobs for a workflow run, handling pagination."""
     jobs = []
@@ -161,8 +209,11 @@ def fetch_run_jobs(run_id: int) -> list[dict]:
     return jobs
 
 
-def analyze_run(run: dict) -> RunTiming:
-    """Analyze a single workflow run and its jobs."""
+def analyze_run(run: dict) -> tuple[RunTiming, list[JobTiming]]:
+    """Analyze a single workflow run and its jobs.
+
+    Returns (run_timing, job_timings) where job_timings is the per-job detail.
+    """
     run_id = run["id"]
     created = run["created_at"]
     updated = run["updated_at"]
@@ -190,6 +241,8 @@ def analyze_run(run: dict) -> RunTiming:
     longest_queue_name = ""
     longest_queue_dur = 0.0
 
+    job_timings: list[JobTiming] = []
+
     for j in jobs:
         conclusion = j.get("conclusion") or "unknown"
         if conclusion == "skipped":
@@ -211,6 +264,24 @@ def analyze_run(run: dict) -> RunTiming:
         name = j["name"]
         cat = categorize_job(name)
         labels = ",".join(j.get("labels", []))
+        platform, variant = parse_variant(name)
+
+        # Record per-job detail
+        job_timings.append(JobTiming(
+            run_id=run_id,
+            run_created_at=created,
+            job_name=name,
+            category=cat,
+            platform=platform,
+            variant=variant,
+            conclusion=conclusion,
+            created_at=j["created_at"],
+            started_at=j["started_at"],
+            completed_at=j["completed_at"],
+            queue_seconds=queue_s,
+            duration_seconds=dur_s,
+            runner_labels=labels,
+        ))
 
         # Track first failure
         if conclusion in ("failure", "cancelled") and j.get("completed_at"):
@@ -254,7 +325,7 @@ def analyze_run(run: dict) -> RunTiming:
     else:
         time_to_signal = wall
 
-    return RunTiming(
+    run_timing = RunTiming(
         run_id=run_id,
         workflow_name=run["name"],
         workflow_file=run["path"],
@@ -285,6 +356,7 @@ def analyze_run(run: dict) -> RunTiming:
         longest_queue_seconds=longest_queue_dur,
         html_url=run.get("html_url", ""),
     )
+    return run_timing, job_timings
 
 
 def fetch_workflow_runs(
@@ -387,13 +459,15 @@ def main():
     args = parser.parse_args()
 
     results: list[RunTiming] = []
+    all_jobs: list[JobTiming] = []
 
     if args.run_id:
         # Single run mode
         run_data = gh_api(f"repos/{REPO}/actions/runs/{args.run_id}")
         print(f"Analyzing run {args.run_id}...", file=sys.stderr)
-        timing = analyze_run(run_data)
+        timing, job_timings = analyze_run(run_data)
         results.append(timing)
+        all_jobs.extend(job_timings)
     else:
         # Batch mode
         for wf in args.workflow:
@@ -412,8 +486,9 @@ def main():
                     f"({run['created_at'][:10]})...",
                     file=sys.stderr,
                 )
-                timing = analyze_run(run)
+                timing, job_timings = analyze_run(run)
                 results.append(timing)
+                all_jobs.extend(job_timings)
 
     # Sort by created_at
     results.sort(key=lambda r: r.created_at)
@@ -434,6 +509,16 @@ def main():
     if args.output:
         out_file.close()
         print(f"Wrote {len(results)} rows to {args.output}", file=sys.stderr)
+
+    # Write per-job detail CSV
+    if args.jobs_csv and all_jobs:
+        job_fields = list(asdict(all_jobs[0]).keys())
+        with open(args.jobs_csv, "w", newline="", encoding="utf-8") as jf:
+            jw = csv.DictWriter(jf, fieldnames=job_fields)
+            jw.writeheader()
+            for j in all_jobs:
+                jw.writerow(asdict(j))
+        print(f"Wrote {len(all_jobs)} job rows to {args.jobs_csv}", file=sys.stderr)
 
     # Summary stats
     non_skipped = [r for r in results if not r.skipped]

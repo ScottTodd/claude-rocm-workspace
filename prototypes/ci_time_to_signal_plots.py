@@ -2,6 +2,7 @@
 
 Usage:
     python prototypes/ci_time_to_signal_plots.py /d/scratch/claude/ci_timing_7d.csv
+    python prototypes/ci_time_to_signal_plots.py /d/scratch/claude/ci_timing_7d.csv --jobs-csv /d/scratch/claude/ci_jobs_7d.csv
 
 Outputs PNG files next to the input CSV.
 """
@@ -16,6 +17,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import numpy as np
 
 
 def load_data(csv_path: Path) -> list[dict]:
@@ -49,6 +51,38 @@ def setup_date_axis(ax):
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d"))
     ax.xaxis.set_major_locator(mdates.DayLocator(interval=2))
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+
+
+def add_trend_line(ax, dates: list[datetime], values: list[float], color, label=None):
+    """Add a LOWESS-style rolling median trend line.
+
+    Uses a rolling window of timestamps rather than indices so it handles
+    uneven spacing. Falls back to simple rolling median by index if numpy
+    isn't sufficient.
+    """
+    if len(dates) < 5:
+        return
+    # Convert to numeric for sorting/windowing
+    timestamps = np.array([d.timestamp() for d in dates])
+    vals = np.array(values)
+    order = np.argsort(timestamps)
+    timestamps = timestamps[order]
+    vals = vals[order]
+
+    # Rolling median with a window of ~20% of the data or at least 5 points
+    window = max(5, len(vals) // 5)
+    smoothed_t = []
+    smoothed_v = []
+    for i in range(len(vals)):
+        lo = max(0, i - window // 2)
+        hi = min(len(vals), i + window // 2 + 1)
+        smoothed_t.append(timestamps[i])
+        smoothed_v.append(np.median(vals[lo:hi]))
+
+    # Convert back to datetimes
+    trend_dates = [datetime.fromtimestamp(t, tz=timezone.utc) for t in smoothed_t]
+    ax.plot(trend_dates, smoothed_v, color=color, linewidth=2.5, alpha=0.8,
+            label=label)
 
 
 def plot_time_to_signal(rows: list[dict], out_dir: Path):
@@ -223,6 +257,108 @@ def plot_failure_rate(rows: list[dict], out_dir: Path):
     print(f"  Saved failure_rate.png")
 
 
+def load_jobs(csv_path: Path) -> list[dict]:
+    with open(csv_path, encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    for r in rows:
+        r["queue_seconds"] = float(r["queue_seconds"])
+        r["duration_seconds"] = float(r["duration_seconds"])
+        r["run_created_dt"] = datetime.fromisoformat(
+            r["run_created_at"].replace("Z", "+00:00")
+        )
+    return rows
+
+
+def plot_queue_by_variant(jobs: list[dict], out_dir: Path):
+    """Plot 8: Test queue times broken down by GPU variant."""
+    test_jobs = [j for j in jobs if j["category"] == "test" and j["variant"]]
+
+    variants = sorted(set(j["variant"] for j in test_jobs))
+    # Assign colors per variant
+    cmap = plt.colormaps["tab10"]
+    colors = {v: cmap(i) for i, v in enumerate(variants)}
+
+    fig, ax = plt.subplots(figsize=(14, 6))
+    for v in variants:
+        vj = [j for j in test_jobs if j["variant"] == v]
+        dates = [j["run_created_dt"] for j in vj]
+        queues = [to_hours(j["queue_seconds"]) for j in vj]
+        ax.scatter(dates, queues, alpha=0.3, s=20, color=colors[v])
+        add_trend_line(ax, dates, queues, color=colors[v], label=v)
+
+    ax.set_ylabel("Queue Time (hours)")
+    ax.set_title("Test Runner Queue Time by GPU Variant")
+    ax.legend(loc="upper left")
+    ax.set_ylim(bottom=0)
+    ax.grid(True, alpha=0.3)
+    setup_date_axis(ax)
+
+    fig.tight_layout()
+    fig.savefig(out_dir / "queue_by_variant.png", dpi=150)
+    plt.close(fig)
+    print(f"  Saved queue_by_variant.png")
+
+
+def plot_build_by_variant(jobs: list[dict], out_dir: Path):
+    """Plot 9: Build durations broken down by variant."""
+    build_jobs = [j for j in jobs if j["category"] == "build" and j["variant"]]
+
+    variants = sorted(set(j["variant"] for j in build_jobs))
+    cmap = plt.colormaps["tab10"]
+    colors = {v: cmap(i) for i, v in enumerate(variants)}
+
+    fig, ax = plt.subplots(figsize=(14, 6))
+
+    for v in variants:
+        vj = [j for j in build_jobs if j["variant"] == v]
+        dates = [j["run_created_dt"] for j in vj]
+        durs = [to_hours(j["duration_seconds"]) for j in vj]
+        ax.scatter(dates, durs, alpha=0.3, s=20, color=colors[v])
+        add_trend_line(ax, dates, durs, color=colors[v], label=v)
+
+    ax.set_ylabel("Hours")
+    ax.set_title("Build Duration by Variant")
+    ax.legend(loc="upper left", fontsize=8)
+    ax.set_ylim(bottom=0)
+    ax.grid(True, alpha=0.3)
+    setup_date_axis(ax)
+
+    fig.tight_layout()
+    fig.savefig(out_dir / "build_by_variant.png", dpi=150)
+    plt.close(fig)
+    print(f"  Saved build_by_variant.png")
+
+
+def plot_queue_by_runner(jobs: list[dict], out_dir: Path):
+    """Plot 10: Queue times by runner label (for test jobs)."""
+    test_jobs = [j for j in jobs if j["category"] == "test" and j["runner_labels"]]
+
+    runners = sorted(set(j["runner_labels"] for j in test_jobs))
+    cmap = plt.colormaps["tab10"]
+    colors = {r: cmap(i) for i, r in enumerate(runners)}
+
+    fig, ax = plt.subplots(figsize=(14, 6))
+    for r in runners:
+        rj = [j for j in test_jobs if j["runner_labels"] == r]
+        dates = [j["run_created_dt"] for j in rj]
+        queues = [to_hours(j["queue_seconds"]) for j in rj]
+        # Shorten label for legend
+        short = r.split(",")[0] if "," in r else r
+        ax.scatter(dates, queues, alpha=0.6, s=30, label=short, color=colors[r])
+
+    ax.set_ylabel("Queue Time (hours)")
+    ax.set_title("Test Runner Queue Time by Runner Label")
+    ax.legend(loc="upper left", fontsize=8)
+    ax.set_ylim(bottom=0)
+    ax.grid(True, alpha=0.3)
+    setup_date_axis(ax)
+
+    fig.tight_layout()
+    fig.savefig(out_dir / "queue_by_runner.png", dpi=150)
+    plt.close(fig)
+    print(f"  Saved queue_by_runner.png")
+
+
 def plot_signal_breakdown(rows: list[dict], out_dir: Path):
     """Plot 7: Stacked view — build time + queue time = time to signal."""
     non_skipped = sorted(
@@ -258,6 +394,8 @@ def plot_signal_breakdown(rows: list[dict], out_dir: Path):
 def main():
     parser = argparse.ArgumentParser(description="Plot CI timing data")
     parser.add_argument("csv_file", type=Path, help="Input CSV from ci_time_to_signal.py")
+    parser.add_argument("--jobs-csv", type=Path, default=None,
+                        help="Per-job detail CSV for variant/runner breakdowns")
     parser.add_argument("--output-dir", type=Path, default=None,
                         help="Output directory for PNGs (default: same as CSV)")
     args = parser.parse_args()
@@ -269,7 +407,7 @@ def main():
     rows = load_data(args.csv_file)
     print(f"  {len(rows)} total runs, {sum(1 for r in rows if not r['skipped'])} non-skipped")
 
-    print("Generating plots...")
+    print("Generating run-level plots...")
     plot_time_to_signal(rows, out_dir)
     plot_queue_times(rows, out_dir)
     plot_build_durations(rows, out_dir)
@@ -277,6 +415,15 @@ def main():
     plot_day_of_week(rows, out_dir)
     plot_failure_rate(rows, out_dir)
     plot_signal_breakdown(rows, out_dir)
+
+    if args.jobs_csv:
+        print(f"Loading {args.jobs_csv}...")
+        jobs = load_jobs(args.jobs_csv)
+        print(f"  {len(jobs)} jobs")
+        print("Generating job-level plots...")
+        plot_queue_by_variant(jobs, out_dir)
+        plot_build_by_variant(jobs, out_dir)
+        plot_queue_by_runner(jobs, out_dir)
 
     print(f"Done! {len(list(out_dir.glob('*.png')))} plots saved to {out_dir}")
 
