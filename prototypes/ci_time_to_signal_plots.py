@@ -286,33 +286,36 @@ def load_jobs(csv_path: Path) -> list[dict]:
 
 
 def plot_queue_by_variant(jobs: list[dict], out_dir: Path, wf_label: str = "CI"):
-    """Plot 8: Test queue times broken down by GPU variant."""
+    """Plot 8: Test queue times broken down by GPU variant, one plot per platform."""
     test_jobs = [j for j in jobs if j["category"] == "test" and j["variant"]]
+    platforms = sorted(set(j["platform"] for j in test_jobs if j["platform"]))
 
-    variants = sorted(set(j["variant"] for j in test_jobs))
-    # Assign colors per variant
-    cmap = plt.colormaps["tab10"]
-    colors = {v: cmap(i) for i, v in enumerate(variants)}
+    for platform in platforms:
+        pj = [j for j in test_jobs if j["platform"] == platform]
+        variants = sorted(set(j["variant"] for j in pj))
+        cmap = plt.colormaps["tab10"]
+        colors = {v: cmap(i) for i, v in enumerate(variants)}
 
-    fig, ax = plt.subplots(figsize=(14, 6))
-    for v in variants:
-        vj = [j for j in test_jobs if j["variant"] == v]
-        dates = [j["run_created_dt"] for j in vj]
-        queues = [to_hours(j["queue_seconds"]) for j in vj]
-        ax.scatter(dates, queues, alpha=0.3, s=20, color=colors[v])
-        add_trend_line(ax, dates, queues, color=colors[v], label=v)
+        fig, ax = plt.subplots(figsize=(14, 6))
+        for v in variants:
+            vj = [j for j in pj if j["variant"] == v]
+            dates = [j["run_created_dt"] for j in vj]
+            queues = [to_hours(j["queue_seconds"]) for j in vj]
+            ax.scatter(dates, queues, alpha=0.3, s=20, color=colors[v])
+            add_trend_line(ax, dates, queues, color=colors[v], label=v)
 
-    ax.set_ylabel("Queue Time (hours)")
-    ax.set_title(f"{wf_label}: Test Runner Queue by GPU Variant")
-    ax.legend(loc="upper left")
-    ax.set_ylim(bottom=0)
-    ax.grid(True, alpha=0.3)
-    setup_date_axis(ax)
+        ax.set_ylabel("Queue Time (hours)")
+        ax.set_title(f"{wf_label}: Test Runner Queue by Variant ({platform})")
+        ax.legend(loc="upper left")
+        ax.set_ylim(bottom=0)
+        ax.grid(True, alpha=0.3)
+        setup_date_axis(ax)
 
-    fig.tight_layout()
-    fig.savefig(out_dir / "queue_by_variant.png", dpi=150)
-    plt.close(fig)
-    print(f"  Saved queue_by_variant.png")
+        filename = f"queue_by_variant_{platform.lower()}.png"
+        fig.tight_layout()
+        fig.savefig(out_dir / filename, dpi=150)
+        plt.close(fig)
+        print(f"  Saved {filename}")
 
 
 def plot_build_by_variant(jobs: list[dict], out_dir: Path, wf_label: str = "CI"):
@@ -377,6 +380,109 @@ def plot_queue_by_runner(jobs: list[dict], out_dir: Path, wf_label: str = "CI"):
     fig.savefig(out_dir / "queue_by_runner.png", dpi=150)
     plt.close(fig)
     print(f"  Saved queue_by_runner.png")
+
+
+def _compute_platform_run_data(jobs: list[dict]) -> dict[str, list[dict]]:
+    """Compute per-run per-platform completion and first failure times.
+
+    Returns {platform: [{"created_dt", "completion_h", "first_failure_h", ...}]}
+    """
+    from collections import defaultdict
+
+    groups = defaultdict(list)
+    for j in jobs:
+        if not j["platform"] or not j["completed_at"]:
+            continue
+        groups[(j["run_id"], j["platform"])].append(j)
+
+    platform_data: dict[str, list[dict]] = {}
+    for (rid, plat), pjobs in groups.items():
+        run_created = datetime.fromisoformat(
+            pjobs[0]["run_created_at"].replace("Z", "+00:00")
+        )
+
+        completed_times = [
+            datetime.fromisoformat(j["completed_at"].replace("Z", "+00:00"))
+            for j in pjobs
+        ]
+        completion_s = (max(completed_times) - run_created).total_seconds()
+
+        failed_times = [
+            datetime.fromisoformat(j["completed_at"].replace("Z", "+00:00"))
+            for j in pjobs if j["conclusion"] == "failure"
+        ]
+        first_failure_s = (
+            (min(failed_times) - run_created).total_seconds()
+            if failed_times else completion_s
+        )
+
+        platform_data.setdefault(plat, []).append({
+            "created_dt": run_created,
+            "completion_h": completion_s / 3600,
+            "first_failure_h": first_failure_s / 3600,
+            "has_failure": bool(failed_times),
+        })
+
+    # Sort each platform's data by time
+    for plat in platform_data:
+        platform_data[plat].sort(key=lambda r: r["created_dt"])
+
+    return platform_data
+
+
+def _plot_platform_signal(run_data: list[dict], platform: str, out_dir: Path,
+                          wf_label: str, max_hours: float | None = None,
+                          suffix: str = ""):
+    """Plot time to completion and first failure for one platform."""
+    if max_hours:
+        run_data = [r for r in run_data if r["completion_h"] <= max_hours]
+
+    if not run_data:
+        return
+
+    dates = [r["created_dt"] for r in run_data]
+    completion_h = [r["completion_h"] for r in run_data]
+    first_failure_h = [r["first_failure_h"] for r in run_data]
+
+    fig, ax = plt.subplots(figsize=(14, 6))
+    ax.scatter(dates, completion_h, alpha=0.3, s=20, color="tab:blue")
+    add_trend_line(ax, dates, completion_h, color="tab:blue",
+                   label="Time to completion")
+    ax.scatter(dates, first_failure_h, alpha=0.3, s=30, color="tab:red")
+    add_trend_line(ax, dates, first_failure_h, color="tab:red",
+                   label="Time to first failure")
+
+    title_extra = f" (< {max_hours:.0f}h)" if max_hours else ""
+    ax.set_ylabel("Hours")
+    ax.set_title(
+        f"{wf_label}: First Failure vs Completion — {platform}{title_extra}"
+    )
+    ax.legend()
+    ax.set_ylim(bottom=0)
+    ax.grid(True, alpha=0.3)
+    setup_date_axis(ax)
+
+    filename = f"time_to_signal_{platform.lower()}{suffix}.png"
+    fig.tight_layout()
+    fig.savefig(out_dir / filename, dpi=150)
+    plt.close(fig)
+    print(f"  Saved {filename}")
+
+
+def plot_time_to_signal_by_platform(jobs: list[dict], out_dir: Path,
+                                     wf_label: str = "CI"):
+    """Plot time to completion and first failure, split by platform.
+
+    Generates both unfiltered and filtered (< 12h) variants.
+    """
+    platform_data = _compute_platform_run_data(jobs)
+
+    for platform, run_data in sorted(platform_data.items()):
+        # Unfiltered
+        _plot_platform_signal(run_data, platform, out_dir, wf_label)
+        # Filtered
+        _plot_platform_signal(run_data, platform, out_dir, wf_label,
+                              max_hours=12, suffix="_filtered")
 
 
 def plot_signal_breakdown(rows: list[dict], out_dir: Path, wf_label: str = "CI",
@@ -467,6 +573,7 @@ def main():
         plot_queue_by_variant(jobs, out_dir, wf_label)
         plot_build_by_variant(jobs, out_dir, wf_label)
         plot_queue_by_runner(jobs, out_dir, wf_label)
+        plot_time_to_signal_by_platform(jobs, out_dir, wf_label)
 
     print(f"Done! {len(list(out_dir.glob('*.png')))} plots saved to {out_dir}")
 
