@@ -69,7 +69,7 @@ def add_trend_line(ax, dates: list[datetime], values: list[float], color, label=
     timestamps = timestamps[order]
     vals = vals[order]
 
-    # Rolling median with a window of ~20% of the data or at least 5 points
+    # Rolling mean with a window of ~20% of the data or at least 5 points
     window = max(5, len(vals) // 5)
     smoothed_t = []
     smoothed_v = []
@@ -77,7 +77,7 @@ def add_trend_line(ax, dates: list[datetime], values: list[float], color, label=
         lo = max(0, i - window // 2)
         hi = min(len(vals), i + window // 2 + 1)
         smoothed_t.append(timestamps[i])
-        smoothed_v.append(np.median(vals[lo:hi]))
+        smoothed_v.append(np.mean(vals[lo:hi]))
 
     # Convert back to datetimes
     trend_dates = [datetime.fromtimestamp(t, tz=timezone.utc) for t in smoothed_t]
@@ -85,57 +85,73 @@ def add_trend_line(ax, dates: list[datetime], values: list[float], color, label=
             label=label)
 
 
-def plot_time_to_signal(rows: list[dict], out_dir: Path):
+def plot_time_to_signal(rows: list[dict], out_dir: Path, wf_label: str = "CI",
+                        max_hours: float | None = None, suffix: str = ""):
     """Plot 1: Time to signal and wall time over time."""
     non_skipped = [r for r in rows if not r["skipped"]]
+    if max_hours:
+        non_skipped = [r for r in non_skipped
+                       if to_hours(r["wall_seconds"]) <= max_hours]
 
     dates = [r["created_dt"] for r in non_skipped]
     wall_h = [to_hours(r["wall_seconds"]) for r in non_skipped]
     signal_h = [to_hours(r["time_to_signal_seconds"]) for r in non_skipped]
 
     fig, ax = plt.subplots(figsize=(14, 6))
-    ax.scatter(dates, wall_h, alpha=0.4, s=20, label="Wall time", color="tab:blue")
-    ax.scatter(dates, signal_h, alpha=0.7, s=30, label="Time to signal", color="tab:red")
+    ax.scatter(dates, wall_h, alpha=0.3, s=20, color="tab:blue")
+    add_trend_line(ax, dates, wall_h, color="tab:blue", label="Time to completion")
+    ax.scatter(dates, signal_h, alpha=0.3, s=30, color="tab:red")
+    add_trend_line(ax, dates, signal_h, color="tab:red", label="Time to first failure")
 
+    title_extra = f" (< {max_hours:.0f}h)" if max_hours else ""
     ax.set_ylabel("Hours")
-    ax.set_title("CI Time to Signal vs Wall Time (main branch, push events)")
+    ax.set_title(f"{wf_label}: Time to First Failure vs Completion{title_extra}")
     ax.legend()
     ax.set_ylim(bottom=0)
     ax.grid(True, alpha=0.3)
     setup_date_axis(ax)
 
+    filename = f"time_to_signal{suffix}.png"
     fig.tight_layout()
-    fig.savefig(out_dir / "time_to_signal.png", dpi=150)
+    fig.savefig(out_dir / filename, dpi=150)
     plt.close(fig)
-    print(f"  Saved time_to_signal.png")
+    print(f"  Saved {filename}")
 
 
-def plot_queue_times(rows: list[dict], out_dir: Path):
+def plot_queue_times(rows: list[dict], out_dir: Path, wf_label: str = "CI",
+                     max_hours: float | None = None, suffix: str = ""):
     """Plot 2: Build vs test queue times."""
     non_skipped = [r for r in rows if not r["skipped"]]
+    if max_hours:
+        non_skipped = [r for r in non_skipped
+                       if to_hours(r["test_max_queue_seconds"]) <= max_hours]
 
     dates = [r["created_dt"] for r in non_skipped]
     build_q = [to_hours(r["build_max_queue_seconds"]) for r in non_skipped]
     test_q = [to_hours(r["test_max_queue_seconds"]) for r in non_skipped]
 
     fig, ax = plt.subplots(figsize=(14, 6))
-    ax.scatter(dates, build_q, alpha=0.6, s=25, label="Build runner queue (max)", color="tab:green")
-    ax.scatter(dates, test_q, alpha=0.6, s=25, label="Test runner queue (max)", color="tab:orange")
+    ax.scatter(dates, build_q, alpha=0.3, s=25, color="tab:green")
+    add_trend_line(ax, dates, build_q, color="tab:green", label="Build runner queue (max)")
+    ax.scatter(dates, test_q, alpha=0.3, s=25, color="tab:orange")
+    add_trend_line(ax, dates, test_q, color="tab:orange", label="Test runner queue (max)")
 
+    title_extra = f" (< {max_hours:.0f}h)" if max_hours else ""
     ax.set_ylabel("Hours")
-    ax.set_title("Runner Queue Times (max per run)")
+    ax.set_title(f"{wf_label}: Runner Queue Times{title_extra}")
     ax.legend()
     ax.set_ylim(bottom=0)
     ax.grid(True, alpha=0.3)
     setup_date_axis(ax)
 
+    filename = f"queue_times{suffix}.png"
     fig.tight_layout()
-    fig.savefig(out_dir / "queue_times.png", dpi=150)
+    fig.savefig(out_dir / filename, dpi=150)
     plt.close(fig)
-    print(f"  Saved queue_times.png")
+    print(f"  Saved {filename}")
 
 
-def plot_build_durations(rows: list[dict], out_dir: Path):
+def plot_build_durations(rows: list[dict], out_dir: Path, wf_label: str = "CI"):
     """Plot 3: Max build duration over time."""
     non_skipped = [r for r in rows if not r["skipped"] and r["build_max_duration_seconds"] > 0]
 
@@ -148,7 +164,7 @@ def plot_build_durations(rows: list[dict], out_dir: Path):
     ax.scatter(dates, pytorch_h, alpha=0.6, s=25, label="PyTorch build (max)", color="tab:purple")
 
     ax.set_ylabel("Hours")
-    ax.set_title("Build Job Durations (max per run)")
+    ax.set_title(f"{wf_label}: Build Job Durations (max per run)")
     ax.legend()
     ax.set_ylim(bottom=0)
     ax.grid(True, alpha=0.3)
@@ -160,7 +176,7 @@ def plot_build_durations(rows: list[dict], out_dir: Path):
     print(f"  Saved build_durations.png")
 
 
-def plot_hour_of_day(rows: list[dict], out_dir: Path):
+def plot_hour_of_day(rows: list[dict], out_dir: Path, wf_label: str = "CI"):
     """Plot 4: Queue time by hour of day (UTC) — shows daily patterns."""
     non_skipped = [r for r in rows if not r["skipped"]]
 
@@ -172,7 +188,7 @@ def plot_hour_of_day(rows: list[dict], out_dir: Path):
 
     ax.set_xlabel("Hour of Day (UTC)")
     ax.set_ylabel("Test Runner Max Queue (hours)")
-    ax.set_title("Test Runner Queue Time by Hour of Day")
+    ax.set_title(f"{wf_label}: Test Runner Queue by Hour of Day")
     ax.set_xlim(-0.5, 23.5)
     ax.set_xticks(range(0, 24, 2))
     ax.set_ylim(bottom=0)
@@ -184,7 +200,7 @@ def plot_hour_of_day(rows: list[dict], out_dir: Path):
     print(f"  Saved queue_by_hour.png")
 
 
-def plot_day_of_week(rows: list[dict], out_dir: Path):
+def plot_day_of_week(rows: list[dict], out_dir: Path, wf_label: str = "CI"):
     """Plot 5: Queue time by day of week."""
     non_skipped = [r for r in rows if not r["skipped"]]
 
@@ -198,7 +214,7 @@ def plot_day_of_week(rows: list[dict], out_dir: Path):
     ax1.scatter(days, test_q, alpha=0.5, s=30, color="tab:orange")
     ax1.set_xlabel("Day of Week")
     ax1.set_ylabel("Hours")
-    ax1.set_title("Test Runner Queue by Day")
+    ax1.set_title(f"{wf_label}: Test Runner Queue by Day")
     ax1.set_xticks(range(7))
     ax1.set_xticklabels(day_names)
     ax1.set_ylim(bottom=0)
@@ -207,7 +223,7 @@ def plot_day_of_week(rows: list[dict], out_dir: Path):
     ax2.scatter(days, signal_h, alpha=0.5, s=30, color="tab:red")
     ax2.set_xlabel("Day of Week")
     ax2.set_ylabel("Hours")
-    ax2.set_title("Time to Signal by Day")
+    ax2.set_title(f"{wf_label}: Time to Signal by Day")
     ax2.set_xticks(range(7))
     ax2.set_xticklabels(day_names)
     ax2.set_ylim(bottom=0)
@@ -219,7 +235,7 @@ def plot_day_of_week(rows: list[dict], out_dir: Path):
     print(f"  Saved by_day_of_week.png")
 
 
-def plot_failure_rate(rows: list[dict], out_dir: Path):
+def plot_failure_rate(rows: list[dict], out_dir: Path, wf_label: str = "CI"):
     """Plot 6: Daily failure rate (rolling)."""
     non_skipped = sorted(
         [r for r in rows if not r["skipped"]],
@@ -245,7 +261,7 @@ def plot_failure_rate(rows: list[dict], out_dir: Path):
             label=f"Rolling avg ({window} runs)")
 
     ax.set_ylabel("Failure Rate (%)")
-    ax.set_title("CI Failure Rate Over Time")
+    ax.set_title(f"{wf_label}: Failure Rate Over Time")
     ax.legend()
     ax.set_ylim(0, 105)
     ax.grid(True, alpha=0.3)
@@ -269,7 +285,7 @@ def load_jobs(csv_path: Path) -> list[dict]:
     return rows
 
 
-def plot_queue_by_variant(jobs: list[dict], out_dir: Path):
+def plot_queue_by_variant(jobs: list[dict], out_dir: Path, wf_label: str = "CI"):
     """Plot 8: Test queue times broken down by GPU variant."""
     test_jobs = [j for j in jobs if j["category"] == "test" and j["variant"]]
 
@@ -287,7 +303,7 @@ def plot_queue_by_variant(jobs: list[dict], out_dir: Path):
         add_trend_line(ax, dates, queues, color=colors[v], label=v)
 
     ax.set_ylabel("Queue Time (hours)")
-    ax.set_title("Test Runner Queue Time by GPU Variant")
+    ax.set_title(f"{wf_label}: Test Runner Queue by GPU Variant")
     ax.legend(loc="upper left")
     ax.set_ylim(bottom=0)
     ax.grid(True, alpha=0.3)
@@ -299,37 +315,41 @@ def plot_queue_by_variant(jobs: list[dict], out_dir: Path):
     print(f"  Saved queue_by_variant.png")
 
 
-def plot_build_by_variant(jobs: list[dict], out_dir: Path):
-    """Plot 9: Build durations broken down by variant."""
+def plot_build_by_variant(jobs: list[dict], out_dir: Path, wf_label: str = "CI"):
+    """Plot 9: Build durations broken down by variant, one plot per platform."""
     build_jobs = [j for j in jobs if j["category"] == "build" and j["variant"]]
+    platforms = sorted(set(j["platform"] for j in build_jobs if j["platform"]))
 
-    variants = sorted(set(j["variant"] for j in build_jobs))
-    cmap = plt.colormaps["tab10"]
-    colors = {v: cmap(i) for i, v in enumerate(variants)}
+    for platform in platforms:
+        pj = [j for j in build_jobs if j["platform"] == platform]
+        variants = sorted(set(j["variant"] for j in pj))
+        cmap = plt.colormaps["tab10"]
+        colors = {v: cmap(i) for i, v in enumerate(variants)}
 
-    fig, ax = plt.subplots(figsize=(14, 6))
+        fig, ax = plt.subplots(figsize=(14, 6))
 
-    for v in variants:
-        vj = [j for j in build_jobs if j["variant"] == v]
-        dates = [j["run_created_dt"] for j in vj]
-        durs = [to_hours(j["duration_seconds"]) for j in vj]
-        ax.scatter(dates, durs, alpha=0.3, s=20, color=colors[v])
-        add_trend_line(ax, dates, durs, color=colors[v], label=v)
+        for v in variants:
+            vj = [j for j in pj if j["variant"] == v]
+            dates = [j["run_created_dt"] for j in vj]
+            durs = [to_hours(j["duration_seconds"]) for j in vj]
+            ax.scatter(dates, durs, alpha=0.3, s=20, color=colors[v])
+            add_trend_line(ax, dates, durs, color=colors[v], label=v)
 
-    ax.set_ylabel("Hours")
-    ax.set_title("Build Duration by Variant")
-    ax.legend(loc="upper left", fontsize=8)
-    ax.set_ylim(bottom=0)
-    ax.grid(True, alpha=0.3)
-    setup_date_axis(ax)
+        ax.set_ylabel("Hours")
+        ax.set_title(f"{wf_label}: Build Duration by Variant ({platform})")
+        ax.legend(loc="upper left", fontsize=8)
+        ax.set_ylim(bottom=0)
+        ax.grid(True, alpha=0.3)
+        setup_date_axis(ax)
 
-    fig.tight_layout()
-    fig.savefig(out_dir / "build_by_variant.png", dpi=150)
-    plt.close(fig)
-    print(f"  Saved build_by_variant.png")
+        filename = f"build_by_variant_{platform.lower()}.png"
+        fig.tight_layout()
+        fig.savefig(out_dir / filename, dpi=150)
+        plt.close(fig)
+        print(f"  Saved {filename}")
 
 
-def plot_queue_by_runner(jobs: list[dict], out_dir: Path):
+def plot_queue_by_runner(jobs: list[dict], out_dir: Path, wf_label: str = "CI"):
     """Plot 10: Queue times by runner label (for test jobs)."""
     test_jobs = [j for j in jobs if j["category"] == "test" and j["runner_labels"]]
 
@@ -347,7 +367,7 @@ def plot_queue_by_runner(jobs: list[dict], out_dir: Path):
         ax.scatter(dates, queues, alpha=0.6, s=30, label=short, color=colors[r])
 
     ax.set_ylabel("Queue Time (hours)")
-    ax.set_title("Test Runner Queue Time by Runner Label")
+    ax.set_title(f"{wf_label}: Test Runner Queue by Runner Label")
     ax.legend(loc="upper left", fontsize=8)
     ax.set_ylim(bottom=0)
     ax.grid(True, alpha=0.3)
@@ -359,12 +379,16 @@ def plot_queue_by_runner(jobs: list[dict], out_dir: Path):
     print(f"  Saved queue_by_runner.png")
 
 
-def plot_signal_breakdown(rows: list[dict], out_dir: Path):
+def plot_signal_breakdown(rows: list[dict], out_dir: Path, wf_label: str = "CI",
+                          max_hours: float | None = None, suffix: str = ""):
     """Plot 7: Stacked view — build time + queue time = time to signal."""
     non_skipped = sorted(
         [r for r in rows if not r["skipped"]],
         key=lambda r: r["created_dt"]
     )
+    if max_hours:
+        non_skipped = [r for r in non_skipped
+                       if to_hours(r["wall_seconds"]) <= max_hours]
 
     dates = [r["created_dt"] for r in non_skipped]
     build_h = [to_hours(r["build_max_duration_seconds"]) for r in non_skipped]
@@ -373,22 +397,28 @@ def plot_signal_breakdown(rows: list[dict], out_dir: Path):
     signal_h = [to_hours(r["time_to_signal_seconds"]) for r in non_skipped]
 
     fig, ax = plt.subplots(figsize=(14, 6))
-    ax.scatter(dates, build_q_h, alpha=0.5, s=20, label="Build queue", color="tab:green")
-    ax.scatter(dates, build_h, alpha=0.5, s=20, label="Build duration", color="tab:blue")
-    ax.scatter(dates, test_q_h, alpha=0.5, s=20, label="Test queue", color="tab:orange")
-    ax.scatter(dates, signal_h, alpha=0.7, s=30, label="Time to signal", color="tab:red", marker="x")
+    ax.scatter(dates, build_q_h, alpha=0.3, s=20, color="tab:green")
+    add_trend_line(ax, dates, build_q_h, color="tab:green", label="Build queue")
+    ax.scatter(dates, build_h, alpha=0.3, s=20, color="tab:blue")
+    add_trend_line(ax, dates, build_h, color="tab:blue", label="Build duration")
+    ax.scatter(dates, test_q_h, alpha=0.3, s=20, color="tab:orange")
+    add_trend_line(ax, dates, test_q_h, color="tab:orange", label="Test queue")
+    ax.scatter(dates, signal_h, alpha=0.3, s=30, color="tab:red", marker="x")
+    add_trend_line(ax, dates, signal_h, color="tab:red", label="Time to signal")
 
+    title_extra = f" (< {max_hours:.0f}h)" if max_hours else ""
     ax.set_ylabel("Hours")
-    ax.set_title("Time to Signal Breakdown")
+    ax.set_title(f"{wf_label}: Time to Signal Breakdown{title_extra}")
     ax.legend()
     ax.set_ylim(bottom=0)
     ax.grid(True, alpha=0.3)
     setup_date_axis(ax)
 
+    filename = f"signal_breakdown{suffix}.png"
     fig.tight_layout()
-    fig.savefig(out_dir / "signal_breakdown.png", dpi=150)
+    fig.savefig(out_dir / filename, dpi=150)
     plt.close(fig)
-    print(f"  Saved signal_breakdown.png")
+    print(f"  Saved {filename}")
 
 
 def main():
@@ -407,23 +437,36 @@ def main():
     rows = load_data(args.csv_file)
     print(f"  {len(rows)} total runs, {sum(1 for r in rows if not r['skipped'])} non-skipped")
 
+    # Derive a label from the data for plot titles
+    workflow_names = set(r.get("workflow_name", "") for r in rows if r.get("workflow_name"))
+    events = set(r.get("event", "") for r in rows if r.get("event"))
+    wf_part = " / ".join(sorted(workflow_names)) if workflow_names else "CI"
+    event_part = " + ".join(sorted(events)) if events else "all events"
+    wf_label = f"{wf_part} (on {event_part})"
+
     print("Generating run-level plots...")
-    plot_time_to_signal(rows, out_dir)
-    plot_queue_times(rows, out_dir)
-    plot_build_durations(rows, out_dir)
-    plot_hour_of_day(rows, out_dir)
-    plot_day_of_week(rows, out_dir)
-    plot_failure_rate(rows, out_dir)
-    plot_signal_breakdown(rows, out_dir)
+    # Full range
+    plot_time_to_signal(rows, out_dir, wf_label)
+    plot_queue_times(rows, out_dir, wf_label)
+    plot_signal_breakdown(rows, out_dir, wf_label)
+    # Filtered (exclude 24h timeout outliers)
+    plot_time_to_signal(rows, out_dir, wf_label, max_hours=12, suffix="_filtered")
+    plot_queue_times(rows, out_dir, wf_label, max_hours=12, suffix="_filtered")
+    plot_signal_breakdown(rows, out_dir, wf_label, max_hours=12, suffix="_filtered")
+    # These don't need filtering
+    plot_build_durations(rows, out_dir, wf_label)
+    plot_hour_of_day(rows, out_dir, wf_label)
+    plot_day_of_week(rows, out_dir, wf_label)
+    plot_failure_rate(rows, out_dir, wf_label)
 
     if args.jobs_csv:
         print(f"Loading {args.jobs_csv}...")
         jobs = load_jobs(args.jobs_csv)
         print(f"  {len(jobs)} jobs")
         print("Generating job-level plots...")
-        plot_queue_by_variant(jobs, out_dir)
-        plot_build_by_variant(jobs, out_dir)
-        plot_queue_by_runner(jobs, out_dir)
+        plot_queue_by_variant(jobs, out_dir, wf_label)
+        plot_build_by_variant(jobs, out_dir, wf_label)
+        plot_queue_by_runner(jobs, out_dir, wf_label)
 
     print(f"Done! {len(list(out_dir.glob('*.png')))} plots saved to {out_dir}")
 

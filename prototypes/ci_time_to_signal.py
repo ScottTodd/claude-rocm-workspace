@@ -123,7 +123,12 @@ def gh_api(endpoint: str, params: dict | None = None, retries: int = 3) -> dict:
 
         stderr = result.stderr.strip()
         is_transient = any(
-            s in stderr for s in ("502", "503", "504", "Server Error", "timeout")
+            s in stderr
+            for s in (
+                "502", "503", "504", "Server Error", "timeout",
+                "stream error", "CANCEL", "connection reset",
+                "EOF", "broken pipe",
+            )
         )
         if is_transient and attempt < retries - 1:
             wait = 2 ** attempt * 5  # 5s, 10s, 20s
@@ -458,16 +463,55 @@ def main():
     )
     args = parser.parse_args()
 
+    def _append_run_csv(path: Path, timing: RunTiming):
+        """Append a single run to the CSV, creating with header if needed."""
+        row = asdict(timing)
+        exists = path.exists() and path.stat().st_size > 0
+        with open(path, "a", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=list(row.keys()))
+            if not exists:
+                w.writeheader()
+            w.writerow(row)
+
+    def _append_jobs_csv(path: Path, job_timings: list[JobTiming]):
+        """Append job rows to the CSV, creating with header if needed."""
+        if not job_timings:
+            return
+        rows = [asdict(j) for j in job_timings]
+        exists = path.exists() and path.stat().st_size > 0
+        with open(path, "a", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+            if not exists:
+                w.writeheader()
+            w.writerows(rows)
+
+    # Load existing results for resume support
+    existing_run_ids: set[int] = set()
     results: list[RunTiming] = []
     all_jobs: list[JobTiming] = []
 
+    if args.output and args.output.exists():
+        with open(args.output, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                existing_run_ids.add(int(row["run_id"]))
+        print(
+            f"Resuming: found {len(existing_run_ids)} existing runs in {args.output}",
+            file=sys.stderr,
+        )
+    if args.jobs_csv and args.jobs_csv.exists():
+        # Jobs file exists — we'll append to it
+        pass
+
     if args.run_id:
         # Single run mode
-        run_data = gh_api(f"repos/{REPO}/actions/runs/{args.run_id}")
-        print(f"Analyzing run {args.run_id}...", file=sys.stderr)
-        timing, job_timings = analyze_run(run_data)
-        results.append(timing)
-        all_jobs.extend(job_timings)
+        if args.run_id not in existing_run_ids:
+            run_data = gh_api(f"repos/{REPO}/actions/runs/{args.run_id}")
+            print(f"Analyzing run {args.run_id}...", file=sys.stderr)
+            timing, job_timings = analyze_run(run_data)
+            results.append(timing)
+            all_jobs.extend(job_timings)
+        else:
+            print(f"Run {args.run_id} already collected, skipping.", file=sys.stderr)
     else:
         # Batch mode
         for wf in args.workflow:
@@ -477,51 +521,91 @@ def main():
                 file=sys.stderr,
             )
             runs = fetch_workflow_runs(wf, args.days, args.branch, args.events)
-            print(f"  Found {len(runs)} runs", file=sys.stderr)
+            new_runs = [r for r in runs if r["id"] not in existing_run_ids]
+            print(
+                f"  Found {len(runs)} runs, {len(new_runs)} new",
+                file=sys.stderr,
+            )
 
-            for i, run in enumerate(runs):
+            skipped_errors = 0
+            for i, run in enumerate(new_runs):
                 run_id = run["id"]
                 print(
-                    f"  [{i+1}/{len(runs)}] Analyzing run {run_id} "
+                    f"  [{i+1}/{len(new_runs)}] Analyzing run {run_id} "
                     f"({run['created_at'][:10]})...",
                     file=sys.stderr,
                 )
-                timing, job_timings = analyze_run(run)
-                results.append(timing)
-                all_jobs.extend(job_timings)
+                try:
+                    timing, job_timings = analyze_run(run)
+                    results.append(timing)
+                    all_jobs.extend(job_timings)
 
-    # Sort by created_at
-    results.sort(key=lambda r: r.created_at)
+                    # Append incrementally so progress survives crashes
+                    if args.output:
+                        _append_run_csv(args.output, timing)
+                    if args.jobs_csv:
+                        _append_jobs_csv(args.jobs_csv, job_timings)
 
-    # Output CSV
-    if not results:
-        print("No runs found.", file=sys.stderr)
-        return
+                except RuntimeError as e:
+                    skipped_errors += 1
+                    print(
+                        f"  WARNING: Skipping run {run_id}: {e}",
+                        file=sys.stderr,
+                    )
+            if skipped_errors:
+                print(
+                    f"  Skipped {skipped_errors} runs due to API errors",
+                    file=sys.stderr,
+                )
 
-    fieldnames = list(asdict(results[0]).keys())
+    # For single-run mode or non-incremental, write the full output
+    if args.run_id or not existing_run_ids:
+        if results:
+            fieldnames = list(asdict(results[0]).keys())
 
-    out_file = open(args.output, "w", newline="", encoding="utf-8") if args.output else sys.stdout
-    writer = csv.DictWriter(out_file, fieldnames=fieldnames)
-    writer.writeheader()
-    for r in results:
-        writer.writerow(asdict(r))
+            out_file = (
+                open(args.output, "w", newline="", encoding="utf-8")
+                if args.output
+                else sys.stdout
+            )
+            writer = csv.DictWriter(out_file, fieldnames=fieldnames)
+            writer.writeheader()
+            for r in sorted(results, key=lambda r: r.created_at):
+                writer.writerow(asdict(r))
 
-    if args.output:
-        out_file.close()
-        print(f"Wrote {len(results)} rows to {args.output}", file=sys.stderr)
+            if args.output:
+                out_file.close()
+                print(f"Wrote {len(results)} rows to {args.output}", file=sys.stderr)
 
-    # Write per-job detail CSV
-    if args.jobs_csv and all_jobs:
-        job_fields = list(asdict(all_jobs[0]).keys())
-        with open(args.jobs_csv, "w", newline="", encoding="utf-8") as jf:
-            jw = csv.DictWriter(jf, fieldnames=job_fields)
-            jw.writeheader()
-            for j in all_jobs:
-                jw.writerow(asdict(j))
-        print(f"Wrote {len(all_jobs)} job rows to {args.jobs_csv}", file=sys.stderr)
+            if args.jobs_csv and all_jobs:
+                job_fields = list(asdict(all_jobs[0]).keys())
+                with open(args.jobs_csv, "w", newline="", encoding="utf-8") as jf:
+                    jw = csv.DictWriter(jf, fieldnames=job_fields)
+                    jw.writeheader()
+                    for j in all_jobs:
+                        jw.writerow(asdict(j))
+                print(
+                    f"Wrote {len(all_jobs)} job rows to {args.jobs_csv}",
+                    file=sys.stderr,
+                )
 
-    # Summary stats
-    non_skipped = [r for r in results if not r.skipped]
+    # Summary stats (load full file if we were resuming)
+    all_results = results
+    if existing_run_ids and args.output and args.output.exists():
+        all_results = []
+        with open(args.output, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                rt = RunTiming(**{
+                    k: (int(v) if k in ("run_id", "total_jobs", "failed_jobs",
+                         "skipped_jobs", "successful_jobs")
+                         else float(v) if k.endswith("_seconds")
+                         else v == "True" if k == "skipped"
+                         else v)
+                    for k, v in row.items()
+                })
+                all_results.append(rt)
+
+    non_skipped = [r for r in all_results if not r.skipped]
     if non_skipped:
         walls = [r.wall_seconds for r in non_skipped]
         signals = [r.time_to_signal_seconds for r in non_skipped]
@@ -533,15 +617,17 @@ def main():
             return f"{h}h{m:02d}m"
 
         print(f"\n--- Summary ({len(non_skipped)} non-skipped runs) ---", file=sys.stderr)
-        print(f"  Wall time:       median={fmt(sorted(walls)[len(walls)//2])}  "
+        print(f"  Completion:      median={fmt(sorted(walls)[len(walls)//2])}  "
               f"max={fmt(max(walls))}", file=sys.stderr)
-        print(f"  Time to signal:  median={fmt(sorted(signals)[len(signals)//2])}  "
+        print(f"  First failure:   median={fmt(sorted(signals)[len(signals)//2])}  "
               f"max={fmt(max(signals))}", file=sys.stderr)
         print(f"  Max queue time:  median={fmt(sorted(queues)[len(queues)//2])}  "
               f"max={fmt(max(queues))}", file=sys.stderr)
         failed_runs = [r for r in non_skipped if r.conclusion == "failure"]
         print(f"  Failure rate:    {len(failed_runs)}/{len(non_skipped)} "
               f"({100*len(failed_runs)/len(non_skipped):.0f}%)", file=sys.stderr)
+    elif not results and not existing_run_ids:
+        print("No runs found.", file=sys.stderr)
 
 
 if __name__ == "__main__":
