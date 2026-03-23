@@ -5,7 +5,7 @@ repositories:
 
 # Multi-Arch Configure: Source-Aware CI Configuration
 
-- **Status:** Phase 1 complete, reviewing scaffold
+- **Status:** Ready to send upstream PR
 - **Priority:** P1 (High)
 - **Started:** 2026-03-11
 - **Target:** TBD
@@ -1182,14 +1182,19 @@ it's worth noting.
 11. [x] Consolidate workflow outputs: single `build_config` JSON input,
     `per_family_info` flattened, prebuilt_stages/baseline_run_id folded in
 12. [x] Remove multi-arch code from configure_ci.py (-500 lines)
-13. [x] Add ci:run-multi-arch label gate to check_skip_ci
-14. [ ] Send upstream PR for configure_multi_arch_ci.py branch
-15. [ ] Validate with test runs on the upstream PR
-16. [ ] Expand PR trigger policy: path-based filtering, Linux-only builds
+13. [x] Add ci:run-multi-arch label gate to should_skip_ci
+14. [x] Simplify: SkipDecision → bool, JobAction enum, remove reason fields,
+    prebuilt_stages as list[str] internally, remove redundant _build_enabled outputs
+15. [x] Fix Windows workflow stale references (fromJSON migration)
+16. [x] Improve summary: per-skip-reason messages, per-platform test labels,
+    ci: label callouts, remove git_context from summary path
+17. [ ] Send upstream PR for configure_multi_arch_ci.py branch
+18. [ ] Validate with test runs on the upstream PR
+19. [ ] Expand PR trigger policy: path-based filtering, Linux-only builds
     without tests. Eventually deprecate non-multi-arch CI (#3340).
-17. [ ] Phase 4: Job graph decisions (topology parsing, source-set analysis)
-18. [ ] Phase 5: Prebuilt integration (auto-derive baseline_run_id, DAG expansion)
-19. [ ] Phase 6: Test determination (per-job-group, pytorch target determinator)
+20. [ ] Phase 4: Job graph decisions (topology parsing, source-set analysis)
+21. [ ] Phase 5: Prebuilt integration (auto-derive baseline_run_id, DAG expansion)
+22. [ ] Phase 6: Test determination (per-job-group, pytorch target determinator)
 
 ### Known issues / follow-ups
 
@@ -1204,17 +1209,10 @@ it's worth noting.
 - PR #3653 rewrites amdgpu_family_matrix with dataclasses. When it lands,
   `select_targets` internals swap to the new API (canonical keys, typed entries).
   The pipeline boundary (`TargetSelection`) stays the same.
-- Multi-arch CI not yet on pull_request trigger (#3337). Want to enable
-  incrementally: start with Linux-only builds (no tests) for changes to
-  multi-arch-relevant files (BUILD_TOPOLOGY.toml, multi-arch workflows,
-  configure scripts). A `run-multi-arch-ci` PR label would let developers
-  explicitly opt in. Expand scope as migration progresses. Eventually
-  replace non-multi-arch CI entirely (#3340). Runner saturation is the
-  main constraint — can't double CI load during the transition.
-- PR #3992 (merged): expanded test filter options, renamed `smoke` → `quick`,
-  `full` → `comprehensive`, added `test_filter:` PR label. Our test_type
-  logic already uses these names. Need to rebase to pick up the changes
-  to amdgpu_family_matrix.py and fetch_test_configurations.py.
+- Push to non-main branches now includes postsubmit families (gfx950).
+  Intentional simplification — `determine_long_lived_branch` dropped.
+- `run_functional_tests` not yet ported from single-arch pipeline. TODO in
+  TestRocmDecision to consolidate test outputs into per-platform test config.
 
 ## Branches
 
