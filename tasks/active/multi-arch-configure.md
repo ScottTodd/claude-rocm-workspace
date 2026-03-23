@@ -1188,7 +1188,7 @@ it's worth noting.
 15. [x] Fix Windows workflow stale references (fromJSON migration)
 16. [x] Improve summary: per-skip-reason messages, per-platform test labels,
     ci: label callouts, remove git_context from summary path
-17. [ ] Send upstream PR for configure_multi_arch_ci.py branch
+17. [x] Send upstream PR: #4123
 18. [ ] Validate with test runs on the upstream PR
 19. [ ] Expand PR trigger policy: path-based filtering, Linux-only builds
     without tests. Eventually deprecate non-multi-arch CI (#3340).
