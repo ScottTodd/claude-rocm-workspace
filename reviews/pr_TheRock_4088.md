@@ -131,7 +131,103 @@ This double-catch silently swallows all errors. If the server is down, returns m
 
 ---
 
-### 3. artifact_backend.py — `create_backend_from_env()` credential check
+### 3. artifact_backend.py — HTTPBackend should use WorkflowOutputRoot for path construction
+
+#### ❌ BLOCKING: Manual URL construction duplicates path logic and breaks for forks
+
+HTTPBackend constructs URLs manually:
+
+```python
+@property
+def base_uri(self) -> str:
+    return f"{self.base_url}/{self.run_id}-{self.platform}"
+
+def _fetch_index(self, gfx_family: str) -> List[str]:
+    index_url = f"{self.base_uri}/index-{gfx_family}.html"
+```
+
+The other two backends (`S3Backend`, `LocalDirectoryBackend`) delegate path construction to `WorkflowOutputRoot`, which is the single source of truth for the CI output layout (see `docs/development/workflow_outputs.md`). HTTPBackend should do the same.
+
+**Problems with the manual approach:**
+
+1. **Fork support is broken.** `WorkflowOutputRoot.prefix` includes `external_repo` for forks (e.g., `owner-repo/12345-linux`). The manual `{run_id}-{platform}` construction produces `12345-linux`, missing the fork prefix entirely.
+2. **Index path is duplicated.** `WorkflowOutputRoot.artifact_index(group)` already knows the `index-{group}.html` pattern. If the pattern ever changes, HTTPBackend would need a manual update.
+3. **Artifact path is duplicated.** `WorkflowOutputRoot.artifact(filename)` already computes `{prefix}/{filename}`.
+4. **HTTPS URLs exist already.** `StorageLocation.https_url` produces `https://{bucket}.s3.amazonaws.com/{relative_path}` for the public S3 case.
+
+**Required action:** Refactor HTTPBackend to take a `WorkflowOutputRoot` (like the other backends) plus an optional base URL override for non-S3 hosts. Use a `_url_for()` helper to resolve `StorageLocation` → URL, supporting both modes:
+
+```python
+class HTTPBackend(ArtifactBackend):
+    def __init__(
+        self,
+        output_root: WorkflowOutputRoot,
+        gfx_families: List[str],
+        base_url: Optional[str] = None,
+    ):
+        self.output_root = output_root
+        self.gfx_families = gfx_families
+        # None → use StorageLocation.https_url (public S3)
+        # Set → use {base_url}/{relative_path} (internal/custom server)
+        self._base_url = base_url
+        self._artifact_cache: Optional[List[str]] = None
+
+    def _url_for(self, location: StorageLocation) -> str:
+        """Resolve a StorageLocation to an HTTP URL.
+
+        When base_url is set, constructs {base_url}/{location.relative_path}.
+        Otherwise falls back to StorageLocation.https_url (the public S3 URL).
+        """
+        if self._base_url:
+            return f"{self._base_url}/{location.relative_path}"
+        return location.https_url
+
+    @property
+    def base_uri(self) -> str:
+        return self._url_for(self.output_root.root())
+
+    def _fetch_index(self, gfx_family: str) -> List[str]:
+        index_url = self._url_for(self.output_root.artifact_index(gfx_family))
+        # ... same fetch logic ...
+
+    def download_artifact(self, artifact_key: str, dest_path: Path) -> None:
+        artifact_url = self._url_for(self.output_root.artifact(artifact_key))
+        checksum_url = self._url_for(
+            self.output_root.artifact(f"{artifact_key}.sha256sum")
+        )
+        # ... same download logic ...
+
+    def artifact_exists(self, artifact_key: str) -> bool:
+        # ... cache check same as now ...
+        artifact_url = self._url_for(self.output_root.artifact(artifact_key))
+        # ... HEAD request same as now ...
+```
+
+And in `create_backend_from_env()`, construct the `WorkflowOutputRoot` the same way as for S3:
+
+```python
+# Priority 3: HTTP backend
+http_base_url = os.getenv("THEROCK_HTTP_BASE_URL")
+if http_base_url:
+    output_root = WorkflowOutputRoot.from_workflow_run(
+        run_id=run_id, platform=platform_name
+    )
+    return HTTPBackend(
+        output_root=output_root,
+        gfx_families=targets,
+        base_url=http_base_url,
+    )
+```
+
+This supports both use cases:
+- **Public S3 artifacts** (no `base_url`): Uses `StorageLocation.https_url` → `https://therock-ci-artifacts.s3.amazonaws.com/12345-linux/blas_lib_gfx94X.tar.zst`
+- **Internal/custom servers** (`base_url` set): Uses `{base_url}/{relative_path}` → `https://internal.example.com/artifacts/12345-linux/blas_lib_gfx94X.tar.zst`
+
+Both modes get fork prefixes, bucket selection, and all path logic for free via `WorkflowOutputRoot`.
+
+---
+
+### 4. artifact_backend.py — `create_backend_from_env()` credential check
 
 #### ⚠️ IMPORTANT: AWS credential check is overly restrictive
 
