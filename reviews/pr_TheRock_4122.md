@@ -106,6 +106,22 @@ CI logs confirm the fix works as intended: `THEROCK_DIST_PYTHON_EXECUTABLES` and
 
 ---
 
+## Note: Pre-existing S3 URL Encoding Bug
+
+While verifying the wheel download from the PR's CI run, we found that the
+`rocm_sdk_core` wheel 404s at the URL linked from the index.html. The file
+exists in S3 but the `+` in the PEP 440 local version (`7.13.0.dev0+hash`)
+must be URL-encoded as `%2B` — S3 interprets literal `+` as a space.
+
+- **Workaround:** Use `%2B` in the URL: `...dev0%2B8027b7b9...`
+- **Root cause:** `generate_local_index.py` writes raw filenames into hrefs
+  without `urllib.parse.quote()`. The single-arch indexer (`third-party/indexer/indexer.py`)
+  already uses `quote()` — the multi-arch path just missed it.
+- **Fix:** Separate from this PR — URL encoding fix + logging improvements
+  in `generate_local_index.py`, `upload_python_packages.py`, `storage_backend.py`.
+
+---
+
 ## Conclusion
 
 **Approval Status: ✅ APPROVED**
