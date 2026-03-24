@@ -30,6 +30,7 @@ Adds a new `HTTPBackend` class to `artifact_backend.py` that provides read-only 
 **Issues:**
 - Error masking in `_download_file` converts all exceptions to `FileNotFoundError`, which causes `download_artifact` to silently skip checksum verification on network errors
 - Module docstring references wrong environment variable name
+- Manual URL construction duplicates `WorkflowOutputRoot` path logic and breaks for fork repos
 - Silent exception swallowing in `_fetch_index` hides real HTTP errors
 - AWS credential check requires `AWS_SESSION_TOKEN` which isn't always needed
 
@@ -229,7 +230,7 @@ Both modes get fork prefixes, bucket selection, and all path logic for free via 
 
 ### 4. artifact_backend.py — `create_backend_from_env()` credential check
 
-#### ⚠️ IMPORTANT: AWS credential check is overly restrictive
+#### ⚠️ IMPORTANT: AWS credential check is overly restrictive (may be partially addressed by #3)
 
 ```python
 has_s3_credentials = all(
@@ -291,6 +292,7 @@ The existing `test_download_artifact_without_checksum` only tests the happy path
 
 1. Fix error type masking in `_download_file` — distinguish 404 from other HTTP/network errors so checksum verification isn't silently bypassed on transient failures
 2. Fix module docstring: `THEROCK_HTTP_RUN_ID` → `THEROCK_HTTP_BASE_URL`
+3. Use `WorkflowOutputRoot` for path construction instead of manual URL assembly — fixes fork support and eliminates duplicated path logic
 
 ### ✅ Recommended:
 
