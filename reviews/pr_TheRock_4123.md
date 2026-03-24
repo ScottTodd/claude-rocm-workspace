@@ -3,7 +3,7 @@
 * **PR:** https://github.com/ROCm/TheRock/pull/4123
 * **Branch:** `multi-arch-configure`
 * **Base:** `main`
-* **Reviewed:** 2026-03-24
+* **Reviewed:** 2026-03-24 (updated after addressing feedback)
 * **Key files:** 4 new, 5 modified
 
 ---
@@ -23,8 +23,7 @@ from `configure_ci.py`.
 
 ## Overall Assessment
 
-**⚠️ CHANGES REQUESTED** — One blocking issue with the summary module.
-Architecture and test quality are strong overall.
+**✅ APPROVED** — All blocking and most important issues addressed.
 
 **Strengths:**
 
@@ -40,109 +39,43 @@ Architecture and test quality are strong overall.
   asserting on structural properties instead
 - Cleanup of `configure_ci.py` is complete — no remaining
   `generate_multi_arch_matrix` references
-
-**Issues:**
-
-- 1 blocking (summary module import)
-- 3 important
-- 4 suggestions
+- Summary module is now a pure formatter (no env var access)
 
 ---
 
-## Detailed Review
+## Resolved Issues
 
-### 1. configure_multi_arch_ci_summary.py
+### ~~❌ BLOCKING: Lazy `import os` buried inside `_repo_slug()`~~
 
-#### ❌ BLOCKING: Lazy `import os` buried inside `_repo_slug()`
+**Resolved.** Replaced `_repo_slug()` function and `import os` with a
+hardcoded `_REPO_SLUG = "ROCm/TheRock"` constant. Prebuilt artifacts
+always come from ROCm/TheRock workflow runs. TODO(#3399) added for when
+`baseline_run_id` carries a repo qualifier.
 
-`_repo_slug()` (line 202) has `import os` inside the function body rather
-than at module top level. The module already depends on `os` implicitly
-(it runs in a GHA environment reading env vars). Burying the import inside
-a helper function is non-obvious and inconsistent with the rest of the
-codebase.
+### ~~⚠️ IMPORTANT: `_parse_comma_list` lowercases — may corrupt stage names~~
 
-More importantly, this is the *only* import that reads from the environment
-in the summary module — the stated design goal is that the summary module
-is a pure formatter. `_repo_slug()` breaks that by reaching into
-`os.environ`.
+**Investigated, no action needed.** Stage names in `BUILD_TOPOLOGY.toml`
+are all lowercase (`foundation`, `compiler-runtime`, etc.).
+`artifact_manager.py copy` does exact dict key lookup against those names.
+Lowercasing is safe and actually protects against user typos in
+workflow_dispatch input.
 
-**Required action:** Move `import os` to the top of the file. Consider
-passing `repo_slug` as a parameter from the caller (or from `CIInputs`)
-to keep the module pure, or at minimum document why the env access is
-acceptable here.
+### ~~💡 SUGGESTION: `test_build_config_to_dict_round_trips` name misleading~~
 
----
+**Resolved.** Renamed to `test_build_config_to_dict_has_all_fields`.
 
-### 2. configure_multi_arch_ci.py
+### ~~💡 SUGGESTION: `TestFormatSummary` tests only check "does not raise"~~
 
-#### ⚠️ IMPORTANT: `_parse_comma_list` lowercases names — may silently corrupt family names with mixed case
-
-`_parse_comma_list` (line 72) lowercases all names. This is used for both
-`linux_amdgpu_families` and `prebuilt_stages`. Family names in
-`amdgpu_family_matrix.py` are already lowercase (verified: `gfx94x`,
-`gfx110x`, etc.), so this works today.
-
-However, stage names might not be lowercase (e.g., `Compiler-Runtime`).
-If `prebuilt_stages` values are case-sensitive in `BUILD_TOPOLOGY.toml` or
-downstream, lowercasing silently corrupts them.
-
-**Recommendation:** Either:
-- Split `_parse_comma_list` into two variants (one that lowercases for
-  family names, one that preserves case for stage names), or
-- Validate that stage names are case-insensitive downstream and document
-  the assumption.
-
-#### ⚠️ IMPORTANT: `should_skip_ci` for push events does not check the `ci:run-multi-arch` label
-
-The skip gate (line 443) requires `ci:run-multi-arch` for PRs but not
-for push events. Push events on `main` and `multi_arch/**` branches
-(per `multi_arch_ci.yml` triggers) always run CI. This is likely
-intentional since push events can't have PR labels, but the docstring
-(line 434-435) only mentions `pull_request` label behavior. If someone
-pushes to `multi_arch/bringup1` and expects the same skip-unless-opted-in
-behavior as PRs, they'd be surprised.
-
-**Recommendation:** Add a comment in `should_skip_ci` explicitly stating
-that push events always run (no opt-in label required) and why.
-
-#### ⚠️ IMPORTANT: `to_dict()` serializes `prebuilt_stages` as comma-joined string but `per_family_info` as a list
-
-`BuildConfig.to_dict()` (line 374) joins `prebuilt_stages` as
-`",".join(self.prebuilt_stages)` producing a string, while
-`per_family_info` stays as a list. The YAML consumers treat
-`prebuilt_stages` as a string (`!= ''` check on line 30 of both
-linux/windows workflows) and `per_family_info` as JSON
-(`fromJSON(...).per_family_info` for matrix expansion).
-
-This *works* but the asymmetry is a source of future confusion. If someone
-adds a new list field and follows the `per_family_info` pattern (keep as
-list), the YAML `!= ''` gate would break because `fromJSON` of a JSON
-array is never `''`.
-
-**Recommendation:** Add a comment on `to_dict()` explaining the
-serialization convention: list fields that need YAML `!= ''` gating
-must be comma-joined strings; list fields consumed by `fromJSON` matrix
-expansion stay as lists.
+**Resolved.** Both tests now assert the output starts with
+`## Multi-Arch CI Configuration`. Docstrings explain why we don't assert
+more (output is markdown for humans, not a contract — more assertions
+would create change-detector tests).
 
 ---
 
-### 3. configure_multi_arch_ci_test.py
+## Remaining Items
 
-#### 💡 SUGGESTION: `test_build_config_to_dict_round_trips` name is misleading
-
-The test (line 557) checks that `to_dict()` keys match dataclass field
-names but doesn't actually round-trip (deserialize back to a
-`BuildConfig`). The name implies a serialize+deserialize cycle. Consider
-renaming to `test_build_config_to_dict_has_all_fields`.
-
-#### 💡 SUGGESTION: `TestFormatSummary` tests only check "does not raise"
-
-The two summary tests (lines 717, 721) verify the function doesn't crash
-but don't assert on any output content. A test that at minimum checks the
-header line (`## Multi-Arch CI Configuration`) would catch accidental
-empty output.
-
-#### 💡 SUGGESTION: No test for `write_outputs` contract
+### 💡 SUGGESTION: No test for `write_outputs` contract
 
 `write_outputs()` is the bridge between the pipeline and GITHUB_OUTPUT.
 The output variable names (`enable_build_jobs`, `linux_build_config`,
@@ -151,79 +84,23 @@ contract test (similar to `TestBuildConfigWorkflowContract`) scanning
 the YAML for `steps.configure.outputs.X` and comparing against the keys
 in `write_outputs` would catch drift.
 
----
-
-### 4. Workflow YAML
-
-#### 💡 SUGGESTION: `copy_prebuilt_stages` needs dependency from `build_multi_arch_stages`
+### 💡 SUGGESTION: YAML comment on `!cancelled() && !failure()` gate
 
 Both Linux and Windows workflows have `build_multi_arch_stages` with
 `needs: copy_prebuilt_stages` and `if: ${{ !cancelled() && !failure() }}`.
-This correctly gates the build on prebuilt copy completion. However, if
-`copy_prebuilt_stages` is *skipped* (its `if` is false because
-`prebuilt_stages == ''`), the `!cancelled() && !failure()` condition still
-passes (skipped is neither cancelled nor failed). This is the correct
-behavior but worth a YAML comment since it's a subtle GHA semantics point.
+If `copy_prebuilt_stages` is *skipped* (prebuilt_stages is empty), the
+condition still passes (skipped is neither cancelled nor failed). This is
+correct but a subtle GHA semantics point worth a comment.
 
----
+### 📋 FUTURE WORK
 
-### 5. Cleanup completeness
-
-`generate_multi_arch_matrix` is fully removed from `configure_ci.py` and
-its test file. No remaining references found in the codebase. The two
-remaining `multi_arch` references in `configure_ci.py` (line 191: branch
-name pattern for non-long-lived branches; line 592: summary formatting
-comment) are about the *workflow*, not the removed function — these are
-fine to keep.
-
----
-
-### 6. Security
-
-No concerns found:
-- No `eval`/`exec` or command injection vectors
-- `fromJSON(inputs.build_config)` values are set by the setup job (not
-  user-controlled PR body text)
-- No secrets in committed files
-- OIDC role assumption is gated on `github.repository == 'ROCm/TheRock'`
-  and not-a-fork
-
----
-
-## Recommendations
-
-### ❌ REQUIRED (Blocking):
-
-1. Move `import os` to top level in `configure_multi_arch_ci_summary.py`
-   and consider passing `repo_slug` as a parameter to keep the module pure.
-
-### ✅ Recommended:
-
-1. Audit `_parse_comma_list` lowercasing for `prebuilt_stages` — confirm
-   stage names are case-insensitive downstream or split the helper.
-2. Document in `should_skip_ci` that push events always run (no label
-   required).
-3. Add a comment on `to_dict()` explaining the string-vs-list
-   serialization convention.
-
-### 💡 Consider:
-
-1. Rename `test_build_config_to_dict_round_trips` to match what it
-   actually tests.
-2. Add minimal content assertions to `TestFormatSummary`.
-3. Add a `write_outputs` key contract test (scan YAML for
-   `steps.configure.outputs.X` vs. Python output keys).
-4. Add a YAML comment on the `!cancelled() && !failure()` gate explaining
-   that skipped `copy_prebuilt_stages` is intentionally allowed through.
-
-### 📋 Future Follow-up:
-
-1. Per-platform validation for workflow_dispatch family names (the skipped
-   test `test_workflow_dispatch_wrong_platform_raises` tracks this).
+1. Per-platform validation for workflow_dispatch family names (tracked by
+   skipped test `test_workflow_dispatch_wrong_platform_raises`).
 2. Job group pruning (skip pytorch when only JAX edited, etc.) — tracked
    in TODO comments.
 3. Automatic `baseline_run_id` derivation from parent workflow run
    (tracked via #3399).
+4. `write_outputs` contract test.
 
 ---
 
@@ -241,10 +118,9 @@ No concerns found:
 
 ## Conclusion
 
-**Approval Status: ⚠️ CHANGES REQUESTED**
+**Approval Status: ✅ APPROVED**
 
-One blocking issue (buried `import os` / impure summary module). The
-remaining items are important-but-not-blocking recommendations. After
-fixing the blocking issue, this is ready for human review. The
-architecture is clean, the test suite is well-designed (especially the
-YAML contract tests), and the cleanup is complete.
+All blocking and important issues have been addressed. The architecture
+is clean, the test suite is well-designed (especially the YAML contract
+tests), and the cleanup is complete. Remaining items are suggestions and
+future work.
