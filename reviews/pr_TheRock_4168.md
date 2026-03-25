@@ -23,9 +23,8 @@ generation (to be called from an AWS Lambda handler). Also moves the
 
 ## Overall Assessment
 
-**✅ APPROVED** — Clean separation of concerns. The index generation logic is
-well-structured, handles both single-arch and multi-arch layouts, and has good
-test coverage. A few suggestions below.
+**⚠️ CHANGES REQUESTED** — Clean separation of concerns and good architecture,
+but two issues with HTML/URL escaping should be fixed before merge.
 
 **Strengths:**
 - Good architectural decision: server-side index generation decouples CI runners
@@ -36,8 +35,10 @@ test coverage. A few suggestions below.
   and integration
 
 **Issues:**
-- One important item re: composability with multi-arch log uploads
-- A few suggestions
+- Hand-rolled `_escape_html` should use stdlib `html.escape()`
+- `href` values need `urllib.parse.quote()`, not HTML escaping (broken links for
+  filenames with spaces/special chars)
+- One design note re: multi-arch composability
 
 ---
 
@@ -66,6 +67,33 @@ directories (where immediate children are subdirectories, not files). This
 could be a follow-up — the per-directory indexes are useful on their own,
 and the Lambda can be extended later. Just noting it as a design gap for
 multi-arch composability.
+
+#### ⚠️ IMPORTANT: `_escape_html` should use stdlib `html.escape`
+
+The hand-rolled `_escape_html()` reimplements `html.escape()` from the
+standard library. Use the stdlib version — it's battle-tested and handles
+edge cases (e.g., single quotes via `quote=True`).
+
+```python
+from html import escape
+# Instead of: _escape_html(text)
+# Use:        escape(text)
+```
+
+#### ⚠️ IMPORTANT: `href` values need URL encoding, not just HTML escaping
+
+`_generate_index_html` uses `_escape_html(entry.href)` for the `href`
+attribute. HTML escaping is necessary for the display text but insufficient
+for URLs — filenames with spaces, `#`, `?`, `%`, etc. will produce broken
+links. Use `urllib.parse.quote(entry.href, safe='/')` for the href.
+
+See commit `67a475287e` which fixed a similar issue.
+
+```python
+from urllib.parse import quote
+# href attribute:  quote(entry.href, safe='/')
+# display text:    escape(entry.name)
+```
 
 #### 💡 SUGGESTION: `_upload_html` takes `dry_run` but doesn't use it
 
@@ -147,7 +175,9 @@ follow-up.
 ## Recommendations
 
 ### ✅ Recommended:
-1. No blocking changes needed
+1. Replace `_escape_html()` with `html.escape()` from stdlib
+2. Use `urllib.parse.quote(href, safe='/')` for `href` attributes instead of
+   HTML escaping (filenames with spaces/special chars will produce broken links)
 
 ### 💡 Consider:
 1. Remove unused `dry_run` parameter from `_upload_html()`
@@ -177,9 +207,9 @@ output directory to verify indexes are generated for the nested layout.
 
 ## Conclusion
 
-**Approval Status: ✅ APPROVED**
+**Approval Status: ⚠️ CHANGES REQUESTED**
 
 Well-structured extraction of index generation to a standalone, server-side
-script. Composes cleanly with our multi-arch log upload work. The per-directory
-index approach works for both single-arch and multi-arch layouts, with recursive
-parent indexes as a natural follow-up.
+script. Composes cleanly with our multi-arch log upload work. Fix the escaping
+issues (`html.escape` + `urllib.parse.quote` for hrefs), then this is good to
+merge.

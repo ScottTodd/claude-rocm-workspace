@@ -411,9 +411,21 @@ important case for debugging).
 2. [x] ~~Review PR #4161~~ (done, APPROVED)
 3. [x] ~~Analyze post_build_upload.py~~ (done)
 4. [x] ~~Design multi-arch upload approach~~ (done, documented above)
-5. [ ] Share design with team for feedback
-6. [ ] Implement `post_stage_upload.py` + `WorkflowOutputRoot.stage_log_dir()`
-7. [ ] Add tests for the new script
-8. [ ] Wire into multi-arch workflow files (Linux + Windows)
-9. [ ] Test on a fork run
-10. [ ] Send PR
+5. [x] ~~Implement `post_stage_upload.py` + `WorkflowOutputRoot.stage_log_dir()`~~ (done)
+6. [x] ~~Add tests~~ (done, 11 tests across 2 files)
+7. [x] ~~Wire into multi-arch workflow files (Linux + Windows)~~ (done)
+8. [x] ~~Test on CI~~ (done, PR #4169 — foundation uploaded 87 files, math-libs 120 files)
+9. [x] ~~Document multi-arch layout in workflow_outputs.md~~ (done)
+10. [x] ~~Send PR~~ (done, PR #4169 out of draft)
+11. [ ] Review PR #4168 (marbre, server-side index generation) — reviewed, CHANGES REQUESTED (escape issues)
+12. [ ] Wait for PR #4161 (Windows ccache) and #4168 (index generation) to merge
+13. [ ] Create migration plan for #3337 (enable multi-arch CI on pre-submit) and #3340 (remove single-stage CI)
+
+## Related PRs
+
+| PR | Description | Status |
+|----|-------------|--------|
+| #4169 | post_stage_upload.py + workflow wiring (our PR) | Open, out of draft |
+| #4161 | Windows bazel-remote ccache (subodh-dubey-amd) | Open, reviewed APPROVED |
+| #4163 | Remove write_time_sync_log (Scott) | Open |
+| #4168 | Server-side index generation (marbre) | Open, reviewed CHANGES REQUESTED |
