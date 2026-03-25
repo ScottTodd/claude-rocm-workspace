@@ -199,6 +199,167 @@ Reviewed at `reviews/pr_TheRock_4161.md`. Key findings:
 **Impact on this task:** Gap 1 (Windows compiler cache) is being handled by #4161.
 We can focus entirely on Gap 2 (post-build uploads/index pages).
 
+## Design: Multi-Arch Stage Log Upload
+
+### Problem
+
+Multi-arch CI stages only upload artifact archives (`artifact_manager.py push`).
+Unlike single-stage CI (`post_build_upload.py`), they don't upload build logs,
+ninja log archives, or any other diagnostic files. This makes debugging failures
+harder and blocks migration from single-stage CI.
+
+### Proposed Solution: `post_stage_upload.py`
+
+New script at `build_tools/github_actions/post_stage_upload.py`. Fork from
+`post_build_upload.py` rather than extending it — the two scripts serve different
+CI architectures with different assumptions.
+
+**Responsibilities:**
+1. Archive `.ninja_log` files from the build directory → `{build_dir}/logs/ninja_logs.tar.gz`
+2. Upload `{build_dir}/logs/` to S3
+
+**Not in scope (with rationale):**
+- Artifact upload → `artifact_manager.py push` already handles this
+- Manifest upload → broken by design (#1236), needs workflow-level generation
+- Index page generation → server-side Lambda (#3331) handles this; a coworker
+  is actively working on the Lambda
+- Resource profiling (`therock-build-prof/`) → never designed for multi-arch CI
+- GHA build summary → centralize in multi-arch configure or summary job, not
+  per-stage. Can add a simple per-stage link later if needed.
+
+### S3 Path Structure
+
+**Current single-stage CI layout** (flat by artifact_group):
+```
+{run_id}-{platform}/logs/{artifact_group}/
+  amd-llvm_build.log
+  rocBLAS_build.log       ← all ~138 subproject logs in one dir
+  ninja_logs.tar.gz
+  index.html
+  ...
+```
+
+**Proposed multi-arch layout** (structured by stage + family):
+```
+{run_id}-{platform}/logs/{stage_name}/                    # generic stages
+{run_id}-{platform}/logs/{stage_name}/{amdgpu_family}/    # per-arch stages
+```
+
+Examples:
+```
+12345-linux/logs/foundation/                   # generic, no family
+  rocm-cmake_build.log
+  ninja_logs.tar.gz
+
+12345-linux/logs/compiler-runtime/             # generic, no family
+  amd-llvm_build.log
+  ninja_logs.tar.gz
+
+12345-linux/logs/math-libs/gfx1151/            # per-arch
+  rocBLAS_build.log
+  MIOpen_build.log
+  ninja_logs.tar.gz
+
+12345-linux/logs/math-libs/gfx110X-all/        # per-arch (parallel job)
+  rocBLAS_build.log                            # same filename, different dir → no collision
+  MIOpen_build.log
+  ninja_logs.tar.gz
+```
+
+**Why this works without collisions:**
+- Each multi-arch stage job has its own isolated build directory
+- CMake writes per-subproject logs (`{target_name}_{build,configure,install}.log`)
+  to `${BUILD_DIR}/logs/` (see `therock_subproject.cmake:126`)
+- Per-arch stages (math-libs, comm-libs) run as parallel matrix jobs, each
+  producing identically-named log files (e.g., `rocBLAS_build.log`)
+- Uploading to `{stage_name}/{amdgpu_family}/` gives each job its own S3 directory
+
+**Why per-job index pages are safe (future improvement):**
+- Each job exclusively owns its upload directory
+- Could generate `index.html` locally before uploading — no race conditions
+- Deferred for now; the Lambda will handle all index generation
+
+### WorkflowOutputRoot Changes
+
+Add a `stage_log_dir()` method to `WorkflowOutputRoot`:
+
+```python
+def stage_log_dir(self, stage_name: str, amdgpu_family: str = "") -> StorageLocation:
+    """Location for a multi-arch stage log directory."""
+    if amdgpu_family:
+        return StorageLocation(
+            self.bucket, f"{self.prefix}/logs/{stage_name}/{amdgpu_family}"
+        )
+    return StorageLocation(self.bucket, f"{self.prefix}/logs/{stage_name}")
+```
+
+### CLI Interface
+
+```
+python post_stage_upload.py \
+    --build-dir build \
+    --stage-name math-libs \
+    --amdgpu-family gfx1151 \
+    --run-id ${{ github.run_id }} \
+    --upload
+```
+
+Arguments:
+- `--build-dir` — build directory containing `logs/` (default: `$BUILD_DIR` or `build`)
+- `--stage-name` — stage name, required (e.g., `foundation`, `math-libs`)
+- `--amdgpu-family` — GPU family, optional (e.g., `gfx1151`). Empty for generic stages.
+- `--run-id` — GitHub run ID (default: `$GITHUB_RUN_ID`). Required when uploading.
+- `--upload/--no-upload` — enable S3 upload (default: enabled if `$CI` is set)
+- `--output-dir` — local directory for testing (bypasses S3)
+- `--dry-run` — print actions without uploading
+
+### Workflow Integration
+
+Add steps to both `multi_arch_build_portable_linux_artifacts.yml` and
+`multi_arch_build_windows_artifacts.yml`, after artifact push:
+
+```yaml
+- name: Upload stage logs
+  if: ${{ !cancelled() }}
+  run: |
+    python build_tools/github_actions/post_stage_upload.py \
+      --build-dir="${BUILD_DIR}" \
+      --stage-name="${STAGE_NAME}" \
+      --amdgpu-family="${AMDGPU_FAMILIES}" \
+      --run-id=${{ github.run_id }} \
+      --upload
+```
+
+The `if: !cancelled()` ensures logs are uploaded even on build failures (the most
+important case for debugging).
+
+### Alternatives Considered
+
+1. **Extend `post_build_upload.py` with `--stage-name` flag**
+   - Rejected: the existing script has too many single-stage assumptions (manifest
+     upload, resource profiling, artifact upload, index generation). Adding flags
+     to skip each one makes it harder to understand than a focused new script.
+
+2. **Flatten all stage logs into a single directory with renamed files**
+   - e.g., `math-libs-gfx1151_rocBLAS_build.log`
+   - Rejected: ugly naming, harder to browse, doesn't compose well with index
+     generation. Subfolders are natural and match the job structure.
+
+3. **Stage name in the archive filename** (`ninja_logs_math-libs.tar.gz`)
+   - Not needed: each stage uploads to its own directory, so `ninja_logs.tar.gz`
+     is unambiguous within that directory. Would only matter if we wanted all
+     archives in a single flat directory.
+
+4. **Client-side index page generation per job**
+   - Safe (each job owns its directory, no races) but deferred since the Lambda
+     will handle all index generation. Could be added later as a quick improvement
+     if the Lambda is delayed.
+
+5. **Per-stage GHA build summary with log links**
+   - Deferred. Each stage posting its own summary would produce duplicate/noisy
+     output. Better to centralize in the multi-arch configure job or a dedicated
+     summary job. Can add simple per-stage log links as a first pass if needed.
+
 ## Decisions & Trade-offs
 
 - **Decision:** Let PR #4161 handle Gap 1 (Windows ccache)
@@ -208,10 +369,32 @@ We can focus entirely on Gap 2 (post-build uploads/index pages).
   - **Alternatives considered:** Adding ccache with GitHub Actions cache for
     compiler-runtime stage only (our original plan) — PR #4161 is strictly better
 
+- **Decision:** Fork into new `post_stage_upload.py` script
+  - **Rationale:** `post_build_upload.py` has too many single-stage assumptions.
+    A focused script is easier to understand and maintain.
+  - **Alternatives considered:** Extending `post_build_upload.py` with flags to
+    skip inapplicable functionality — rejected as it would accumulate complexity.
+
+- **Decision:** Use `{stage_name}/{amdgpu_family}` S3 path structure
+  - **Rationale:** Natural mapping to job structure, no file collisions, good for
+    browsing and index generation.
+  - **Alternatives considered:** Flat directory with prefixed filenames — ugly and
+    doesn't compose well.
+
+- **Decision:** No client-side index generation for now
+  - **Rationale:** Server-side Lambda (#3331) is being actively developed. Per-job
+    index pages are safe but unnecessary work if the Lambda lands soon.
+  - **Note:** Can revisit if Lambda is delayed — per-job indexes are race-free.
+
 ## Next Steps
 
-1. [ ] Draft ccache addition for compiler-runtime stage in multi_arch_build_windows_artifacts.yml
-2. [ ] Send experimental PR to collect cache hit data
-3. [ ] Analyze post_build_upload.py to identify what can be reused per-stage
-4. [ ] Design client-side index page workaround for multi-arch CI
-5. [ ] Implement upload refactoring
+1. [x] ~~Pull build performance metrics~~ (done)
+2. [x] ~~Review PR #4161~~ (done, APPROVED)
+3. [x] ~~Analyze post_build_upload.py~~ (done)
+4. [x] ~~Design multi-arch upload approach~~ (done, documented above)
+5. [ ] Share design with team for feedback
+6. [ ] Implement `post_stage_upload.py` + `WorkflowOutputRoot.stage_log_dir()`
+7. [ ] Add tests for the new script
+8. [ ] Wire into multi-arch workflow files (Linux + Windows)
+9. [ ] Test on a fork run
+10. [ ] Send PR
