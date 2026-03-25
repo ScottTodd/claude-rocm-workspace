@@ -274,6 +274,25 @@ Examples:
   producing identically-named log files (e.g., `rocBLAS_build.log`)
 - Uploading to `{stage_name}/{amdgpu_family}/` gives each job its own S3 directory
 
+**Recommendation for Lambda index generation (#3331):**
+
+The current single-stage CI layout puts ~250 log files in one flat directory.
+That's noisy but great for Ctrl+F search (e.g., find `_install.log` to spot
+which subproject failed). The nested multi-arch layout is cleaner for browsing
+but makes cross-stage search harder. Two options for the Lambda:
+
+1. **Per-directory indexes only** — each directory gets its own `index.html`
+   listing only its direct contents. Simple, matches S3 structure 1:1.
+   Downside: searching across stages requires opening each directory.
+
+2. **Recursive index at `logs/index.html`** — lists all files across all
+   subdirectories with relative paths like `math-libs/gfx1151/rocBLAS_build.log`.
+   Preserves the "Ctrl+F across everything" workflow from single-stage CI while
+   keeping the nested storage structure. Per-directory indexes can coexist.
+
+We recommend option 2 (recursive) for the top-level `logs/` index. It gives
+the best of both worlds: organized storage + flat searchability.
+
 **Why per-job index pages are safe (future improvement):**
 - Each job exclusively owns its upload directory
 - Could generate `index.html` locally before uploading — no race conditions
