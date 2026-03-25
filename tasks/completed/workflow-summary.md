@@ -5,7 +5,7 @@ repositories:
 
 # Workflow Summary Consolidation
 
-- **Status:** In progress
+- **Status:** Completed (Phase 1 shipped; Phase 2 deferred)
 - **Priority:** P2 (Medium)
 - **Started:** 2026-03-09
 

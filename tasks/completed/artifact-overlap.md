@@ -5,7 +5,7 @@ repositories:
 
 # Artifact Overlap Testing & Fixes
 
-- **Status:** PR ready for review
+- **Status:** Completed
 - **Priority:** P1 (High)
 - **Started:** 2026-03-04
 - **Tracking:** https://github.com/ROCm/TheRock/issues/3796
