@@ -184,9 +184,29 @@ low-risk, the compiler stage is a bottleneck that feeds everything, and LLVM is 
 most cache-friendly workload. Can experiment with #2 later if cache pressure allows.
 Consider #4 as an escape valve if gfx120X-all keeps failing.
 
+### 2026-03-25 - PR #4161 Review (Windows bazel-remote ccache)
+
+External PR by subodh-dubey-amd adds bazel-remote ccache to all Windows workflows.
+Reviewed at `reviews/pr_TheRock_4161.md`. Key findings:
+- 50.5% remote cache hit rate on Windows (vs 0.4% with old GitHub Actions cache)
+- Build time reduction: 24% cold, 39% warm (gfx1151 release_windows_packages)
+- Multi-arch Windows CI gets ccache for the first time
+- Hit rate ceiling at ~50% due to MSVC "unsupported compiler option" (98.5% of
+  uncacheable calls) — fundamental ccache/MSVC limitation
+- **APPROVED** — this directly addresses our Gap 1 and is better than our planned
+  "compiler-runtime ccache only" approach
+
+**Impact on this task:** Gap 1 (Windows compiler cache) is being handled by #4161.
+We can focus entirely on Gap 2 (post-build uploads/index pages).
+
 ## Decisions & Trade-offs
 
-(To be filled as work progresses)
+- **Decision:** Let PR #4161 handle Gap 1 (Windows ccache)
+  - **Rationale:** External team member already has a working implementation with
+    bazel-remote that covers all Windows workflows including multi-arch. Better than
+    our planned incremental approach.
+  - **Alternatives considered:** Adding ccache with GitHub Actions cache for
+    compiler-runtime stage only (our original plan) — PR #4161 is strictly better
 
 ## Next Steps
 
