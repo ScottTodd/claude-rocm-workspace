@@ -18,14 +18,15 @@ This PR enables execution of the OpenCL test suite (`ocltst`) in TheRock CI on b
 
 ## Overall Assessment
 
-**⚠️ CHANGES REQUESTED** — The feature direction is correct and straightforward but the test script has several issues that diverge from established patterns in the codebase, including a missing copyright header, `sys.exit()` instead of exceptions, `shell=True` usage, broad `except Exception`, and an unused variable. The CMake change also has an indentation issue.
+**⚠️ CHANGES REQUESTED** — The test script carries forward an architectural anti-pattern from earlier test scripts: manually copying DLLs, setting `LD_LIBRARY_PATH`, and constructing `ROCM_PATH` — all things the build system's `dist/` directory already handles. This makes tests CI-only and unrunnable by developers after a local build. There are also several code-level issues (missing copyright header, `sys.exit()`, `shell=True`, etc.).
 
 **Strengths:**
 - Clear intent — enabling ocltst is a useful addition to CI coverage
 - Configuration entry in `fetch_test_configurations.py` is well-structured and follows existing patterns
-- Windows DLL copy approach is reasonable
+- CMake change to enable `BUILD_TESTS` on both platforms is correct
 
 **Blocking/Important Issues:**
+- **Architectural:** Script should not need `copy_dlls_exe_path`, manual `LD_LIBRARY_PATH`, or `ROCM_PATH` setup — tests should run from the `dist/` directory
 - Missing copyright header
 - `sys.exit(1)` instead of exception
 - `shell=True` on Windows subprocess call
@@ -36,6 +37,27 @@ This PR enables execution of the OpenCL test suite (`ocltst`) in TheRock CI on b
 ---
 
 ## Detailed Review
+
+### 0. `test_ocltst.py` — Architectural: CI-only test wrapper
+
+### ❌ BLOCKING: Script duplicates work the build system already does
+
+This script manually copies DLLs (`copy_dlls_exe_path`), constructs `LD_LIBRARY_PATH` from hardcoded subdirectories, and sets `ROCM_PATH` — all to make the test executable find its runtime dependencies. This is unnecessary and makes the test unrunnable outside of CI.
+
+TheRock's build system already solves this problem. Per [build_system.md § Build Directory Layout](https://github.com/ROCm/TheRock/blob/main/docs/development/build_system.md#build-directory-layout), each subproject's `dist/` directory is populated by hardlinking the full cone of runtime dependencies from all upstream projects. A subproject's `dist/` is designed to be "a self-contained slice that is relocatable and usable (for testing, etc)." If ocltst is installed into the ocl-clr dist directory (or a top-level test dist), the executable should already be able to find `amdocl64.dll`, `amd_comgr.dll`, `OpenCL.dll`, etc. as siblings.
+
+This was raised previously on [PR #2001 (comment)](https://github.com/ROCm/TheRock/pull/2001#discussion_r2578817393) for `test_hiptests.py`, where the same anti-pattern exists. This PR is carrying forward that approach rather than fixing it.
+
+**What the script should look like:** A thin wrapper that:
+1. Locates the ocltst executable within the extracted artifacts (or `dist/` directory)
+2. Runs it with the appropriate filter flags (`-m liboclruntime.so -A oclruntime.exclude`)
+3. No DLL copies, no `LD_LIBRARY_PATH` construction, no `ROCM_PATH`
+
+If the `dist/` directory doesn't contain everything needed, the fix belongs in the CMake install rules for ocl-clr (ensuring ocltst and its dependencies are staged correctly), not in the test runner script.
+
+**Required action:** Remove `copy_dlls_exe_path()`, the `LD_LIBRARY_PATH` construction, and the `ROCM_PATH` setup. If runtime dependencies are missing from the test artifact, fix the CMake install/staging rules instead. At minimum, if this requires more investigation, file an issue to track removing the workarounds and add a `# TODO(issue-url)` so this doesn't become permanent.
+
+---
 
 ### 1. `test_ocltst.py` — Missing copyright header
 
@@ -213,15 +235,16 @@ THEROCK_DIR = Path(THEROCK_BIN_DIR).parent
 
 ### ❌ REQUIRED (Blocking):
 
-1. Add copyright header to `test_ocltst.py`
-2. Replace `sys.exit(1)` with `raise RuntimeError(...)`
-3. Remove `shell=True` (or justify with a comment)
-4. Remove broad `except Exception` — let DLL copy failures be hard errors
-5. Remove or use the `OCL_ICD_DLL` variable
+1. **Remove DLL copying, `LD_LIBRARY_PATH` construction, and `ROCM_PATH` setup** — rely on the build system's `dist/` directory to provide runtime dependencies. If something is missing from the artifact, fix the CMake install rules, not the test script.
+2. Add copyright header to `test_ocltst.py`
+3. Replace `sys.exit(1)` with `raise RuntimeError(...)`
+4. Remove `shell=True` (or justify with a comment)
+5. Remove broad `except Exception` (moot if `copy_dlls_exe_path` is removed)
+6. Remove or use the `OCL_ICD_DLL` variable (moot if DLL workaround is removed)
 
 ### ✅ Recommended:
 
-1. Fix LD_LIBRARY_PATH handling to follow established pattern
+1. Fix LD_LIBRARY_PATH handling — ideally remove it entirely per the architectural finding; if it must stay, follow the `test_hiptests.py` pattern
 2. Fix CMake indentation for `list(APPEND ...)`
 
 ### 💡 Consider:
@@ -234,8 +257,13 @@ THEROCK_DIR = Path(THEROCK_BIN_DIR).parent
 
 ## Testing Recommendations
 
-- Verify ocltst runs successfully on both Linux and Windows CI with these fixes
+- Verify ocltst runs successfully on both Linux and Windows CI after simplifying the script to use the `dist/` directory layout
 - Confirm `BUILD_TESTS` being enabled on Windows doesn't cause CMake configure failures for ocl-clr
+- Verify that the ocl-clr `dist/` directory (or the test artifact) actually contains all needed DLLs — if not, that's a CMake staging fix
+
+### 📋 Future Follow-up:
+
+1. Fix `test_hiptests.py` and other existing test scripts that use the same DLL-copy / `LD_LIBRARY_PATH` anti-pattern (tracked via prior feedback on [PR #2001](https://github.com/ROCm/TheRock/pull/2001#discussion_r2578817393))
 
 ---
 
@@ -243,4 +271,4 @@ THEROCK_DIR = Path(THEROCK_BIN_DIR).parent
 
 **Approval Status: ⚠️ CHANGES REQUESTED**
 
-The PR correctly enables ocltst in CI, but the test script needs cleanup to match established patterns: add copyright header, use exceptions instead of `sys.exit()`, remove `shell=True`, remove the broad exception handler, and fix the unused variable. The CMake indentation should also be corrected. None of these are difficult fixes.
+The main issue is architectural: the test script manually copies DLLs, constructs `LD_LIBRARY_PATH`, and sets `ROCM_PATH` — all things the build system's `dist/` directory is designed to provide. This makes the test CI-only and unrunnable by developers. These test wrapper scripts should be thin: locate the test binary, run it with filters, done. If runtime dependencies are missing from the artifact, fix the CMake install rules, not the test script. There are also several code-level issues (missing copyright header, `sys.exit()`, `shell=True`, broad exception handling) that need fixing.
