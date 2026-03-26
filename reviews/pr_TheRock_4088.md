@@ -1,8 +1,9 @@
-# PR Review: Add HTTPBackend for read-only artifact downloads from workflow summary index.html
+# PR Review: Add HTTPBackend for read-only artifact downloads
 
 * **PR:** https://github.com/ROCm/TheRock/pull/4088
+* **Stacked PR:** https://github.com/ROCm/TheRock/pull/4167 (schema approach — we recommend against)
 * **Author:** PeterCDMcLean
-* **Reviewed:** 2026-03-24
+* **Reviewed:** 2026-03-24, updated 2026-03-26
 * **Status:** OPEN
 * **Base:** `main` ← `users/pmclean/workflow_summary_artifact_backend`
 
@@ -10,100 +11,245 @@
 
 ## Summary
 
-Adds a new `HTTPBackend` class to `artifact_backend.py` that provides read-only access to artifacts hosted on an HTTP server (S3-fronted HTML index pages). The backend parses `index-{gfx_family}.html` files to discover artifacts, downloads them via `urllib.request`, and optionally verifies SHA256 checksums. Also updates `create_backend_from_env()` with a 4-tier priority system: local → S3 w/ credentials → HTTP → S3 w/o credentials.
+Adds a new `HTTPBackend` class to `artifact_backend.py` that provides read-only
+access to artifacts via HTTP downloads (public S3 URLs or CDN). The backend
+parses `index-{gfx_family}.html` files to discover artifacts, downloads via
+`urllib.request`, and optionally verifies SHA256 checksums. Also updates
+`create_backend_from_env()` with a 3-tier priority system: local → S3 (with
+credentials) → HTTP.
 
-**Net changes:** +731 lines, -8 lines across 3 files
+**Net changes:** ~+700 lines across 5 files (artifact_backend.py, storage_location.py, artifact_manager.py, tests, docs)
 
 ---
 
 ## Overall Assessment
 
-**⚠️ CHANGES REQUESTED** — The feature design is sound and fills a real need (HTTP-based read-only artifact access without requiring S3 credentials). However, there are error-handling issues that silently mask failures and could lead to downloading unverified artifacts, plus a docstring/env-var mismatch.
+**⚠️ CHANGES REQUESTED** — The feature design is sound and fills a real need.
+Peter addressed several items from our first review (error handling in
+`_download_file`, AWS credential check, WorkflowOutputRoot integration). The
+remaining issue is how URL customization is handled — the `THEROCK_HTTPS_URL_`
+env var approach in this PR and the template/schema approach in stacked PR #4167
+both have problems. We propose a simpler alternative below.
 
-**Strengths:**
+**What's good (improvements since first review):**
+- HTTPBackend now uses `WorkflowOutputRoot` for path construction (was our blocking #3)
+- `_download_file` now distinguishes HTTP 404/403 from other errors (was our blocking #1)
+- AWS credential check only requires `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` (was our recommended fix)
 - Clean read-only backend with appropriate `NotImplementedError` for write operations
-- SHA256 checksum verification is a good security practice
+- SHA256 checksum verification with correct error handling
 - Artifact list caching avoids redundant HTTP requests
-- Priority-based backend selection in `create_backend_from_env()` is well-structured
-- Test coverage is thorough with good edge case coverage
+- Test coverage is thorough
 
-**Issues:**
-- Error masking in `_download_file` converts all exceptions to `FileNotFoundError`, which causes `download_artifact` to silently skip checksum verification on network errors
-- Module docstring references wrong environment variable name
-- Manual URL construction duplicates `WorkflowOutputRoot` path logic and breaks for fork repos
-- Silent exception swallowing in `_fetch_index` hides real HTTP errors
-- AWS credential check requires `AWS_SESSION_TOKEN` which isn't always needed
+**What needs to change:**
+- Remove the `THEROCK_HTTPS_URL_<bucket>` env var override from `StorageLocation` — it
+  conflates path computation with deployment configuration
+- Add a `base_url` parameter to `HTTPBackend` instead (see detailed design below)
+- Error handling in `_fetch_index` still silently swallows all exceptions
 
 ---
 
-## Detailed Review
+## Design Direction: `base_url` on HTTPBackend
 
-### 1. artifact_backend.py — Error handling in `_download_file` / `download_artifact`
+### The problem
 
-#### ❌ BLOCKING: Error type masking causes silent checksum bypass
+Internal builds and CDN-fronted buckets need customizable HTTPS URLs. Two
+approaches have been proposed:
 
-`_download_file` converts ALL exceptions to `FileNotFoundError`:
+1. **This PR (#4088):** `THEROCK_HTTPS_URL_<bucket>` env vars on `StorageLocation`
+2. **Stacked PR (#4167):** `s3_url_schema` / `https_url_schema` / `bucket_schema`
+   template parameters threaded through `StorageLocation`, `WorkflowOutputRoot`,
+   `create_backend_from_env()`, and CLI args
+
+Both have problems. We propose a third approach.
+
+### Design constraints
+
+**CDN URLs don't follow bucket-derived patterns.** From `docs/development/s3_buckets.md`:
+
+| Bucket | S3 URL | CDN URL |
+|--------|--------|---------|
+| `therock-dev-python` | `https://therock-dev-python.s3.amazonaws.com/{path}` | `https://rocm.devreleases.amd.com/v2/{path}` |
+| `therock-nightly-tarball` | `https://therock-nightly-tarball.s3.amazonaws.com/{path}` | `https://rocm.nightlies.amd.com/tarball/{path}` |
+
+The CDN domain (`rocm.devreleases.amd.com`) and path prefix (`/v2/`) bear no
+relationship to the bucket name. A template with `{bucket}` and `{path}`
+placeholders (as in #4167) cannot express these URLs. If artifact buckets ever
+get CDN fronting (like the python/packages/tarball buckets already have), the
+template approach would need to be replaced.
+
+**Who actually consumes custom HTTPS URLs?**
+
+| Consumer | Uses `s3_uri` | Uses `https_url` | Uses bucket directly |
+|----------|:---:|:---:|:---:|
+| **S3Backend** (boto3 API) | No (uses bucket+key) | No | Yes |
+| **S3Backend.base_uri** (logging) | Yes (display only) | No | — |
+| **HTTPBackend** | No | **Yes (downloads)** | No |
+| **StorageBackend** (upload) | Yes (AWS CLI) | No | — |
+| **Workflow summary HTML** | No | **Yes (links)** | — |
+
+Only HTTPBackend and workflow summary HTML use HTTPS URLs. Neither needs
+customization baked into every `StorageLocation` instance.
+
+### Why #4088's env var approach is wrong
+
+`THEROCK_HTTPS_URL_<bucket>` puts deployment configuration inside
+`StorageLocation`, which is meant to be a pure value type (bucket + path).
+Problems:
+
+- **Spooky action at a distance:** `StorageLocation("my-bucket", "path").https_url`
+  returns different values depending on which env vars happen to be set. This makes
+  the type non-deterministic and hard to test.
+- **Wrong scope:** Every `StorageLocation` in the process gets the override, even
+  ones that have nothing to do with HTTP downloads.
+- **Doesn't compose:** If two different consumers need different base URLs for the
+  same bucket (e.g., CDN for downloads, S3 for summary links), env vars can't
+  express that.
+
+### Why #4167's schema approach is wrong
+
+Threading `s3_url_schema` and `https_url_schema` through `StorageLocation`,
+`WorkflowOutputRoot`, `create_backend_from_env()`, and CLI args:
+
+- **+280 lines of boilerplate:** Every `StorageLocation` construction in
+  `WorkflowOutputRoot` (~13 sites) must pass both schemas. Every new method that
+  returns a `StorageLocation` must do the same.
+- **Can't express CDN URLs:** Templates use `{bucket}` and `{path}` placeholders,
+  but CDN URLs like `https://rocm.devreleases.amd.com/v2/{path}` have no
+  relationship to the bucket name.
+- **Solves a problem that doesn't exist:** The `s3_url_schema` customization has
+  almost no consumers — only `base_uri` display and `storage_backend.py` uploads,
+  neither of which needs customization.
+
+### Recommended approach: `base_url` on HTTPBackend
+
+Keep `StorageLocation` clean. Each consumer that needs URL customization handles
+it locally.
 
 ```python
-def _download_file(self, url: str, dest: Path) -> None:
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        urllib.request.urlretrieve(url, dest)
-    except Exception as e:
-        raise FileNotFoundError(f"Failed to download {url}: {e}")
-```
+# StorageLocation stays unchanged from main — no env var lookup, no schema fields
+@dataclass(frozen=True)
+class StorageLocation:
+    bucket: str
+    relative_path: str
 
-Then `download_artifact` catches `FileNotFoundError` to allow missing checksums:
+    @property
+    def s3_uri(self) -> str:
+        return f"s3://{self.bucket}/{self.relative_path}"
+
+    @property
+    def https_url(self) -> str:
+        return f"https://{self.bucket}.s3.amazonaws.com/{self.relative_path}"
+```
 
 ```python
-try:
-    self._download_file(checksum_url, checksum_path)
-    if not self._verify_checksum(dest_path):
-        ...
-        raise ValueError(...)
-except FileNotFoundError:
-    # Artifacts are allowed to be downloaded without checksums
-    pass
+class HTTPBackend(ArtifactBackend):
+    def __init__(
+        self,
+        output_root: WorkflowOutputRoot,
+        gfx_families: list[str],
+        base_url: str | None = None,
+    ):
+        self.output_root = output_root
+        self.gfx_families = gfx_families
+        # None → use StorageLocation.https_url (public S3)
+        # Set  → use {base_url}/{relative_path} (CDN, internal server, etc.)
+        self._base_url = base_url
+        self._artifact_cache: Optional[list[str]] = None
+
+    def _url_for(self, loc: StorageLocation) -> str:
+        """Resolve a StorageLocation to an HTTP URL."""
+        if self._base_url:
+            return f"{self._base_url.rstrip('/')}/{loc.relative_path}"
+        return loc.https_url
+
+    @property
+    def base_uri(self) -> str:
+        return self._url_for(self.output_root.root())
+
+    def _fetch_index(self, gfx_family: str) -> list[str]:
+        index_url = self._url_for(self.output_root.artifact_index(gfx_family))
+        # ... same fetch logic ...
+
+    def download_artifact(self, artifact_key: str, dest_path: Path) -> None:
+        artifact_url = self._url_for(self.output_root.artifact(artifact_key))
+        checksum_url = self._url_for(
+            self.output_root.artifact(f"{artifact_key}.sha256sum")
+        )
+        # ... same download logic ...
 ```
 
-If downloading the checksum fails for **any** reason (HTTP 500, timeout, connection refused, DNS failure), it's treated as "checksum doesn't exist" and verification is silently skipped. This defeats the purpose of checksum verification.
-
-**Required action:** Either:
-1. Don't convert exception types in `_download_file` — let the caller distinguish HTTP 404 (no checksum) from other failures, or
-2. Have `_download_file` raise distinct exceptions: one for "resource not found" (404) and another for "download failed" (other HTTP errors, timeouts, etc.), and only catch the "not found" case in `download_artifact`.
-
-Example approach:
 ```python
-def _download_file(self, url: str, dest: Path) -> None:
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        urllib.request.urlretrieve(url, dest)
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            raise FileNotFoundError(f"Not found: {url}") from e
-        raise  # Re-raise other HTTP errors (500, 403, etc.)
-    except urllib.error.URLError as e:
-        raise ConnectionError(f"Failed to download {url}: {e}") from e
+# In create_backend_from_env():
+http_base_url = os.getenv("THEROCK_HTTP_BASE_URL")  # optional CDN/custom URL
+# ...
+output_root = WorkflowOutputRoot.from_workflow_run(run_id=run_id, platform=platform_name)
+return HTTPBackend(output_root=output_root, gfx_families=targets, base_url=http_base_url)
 ```
 
-Then in `download_artifact`, only catch `FileNotFoundError` (which now genuinely means "doesn't exist").
+**CLI surface is one arg, not three:**
+```bash
+# Default (public S3 URLs)
+python artifact_manager.py fetch --stage math-libs
+
+# CDN or custom server
+python artifact_manager.py fetch --stage math-libs \
+    --http-base-url "https://rocm.devreleases.amd.com/artifacts"
+```
+
+**This supports all use cases:**
+- **Public S3 artifacts** (no `base_url`): Uses `StorageLocation.https_url` →
+  `https://therock-ci-artifacts.s3.amazonaws.com/12345-linux/blas_lib_gfx94X.tar.zst`
+- **CDN-fronted artifacts** (`base_url` set): Uses `{base_url}/{relative_path}` →
+  `https://rocm.devreleases.amd.com/artifacts/12345-linux/blas_lib_gfx94X.tar.zst`
+- **Internal/custom servers**: Same mechanism with internal URL
+
+**If `post_build_upload.py` needs custom HTTPS URLs for summary links**, that's a
+separate `--https-base-url` arg on that script — it can compute
+`{base_url}/{loc.relative_path}` when generating HTML without modifying
+`StorageLocation`.
+
+### Alternatives considered
+
+#### Alt 1: `bucket_override` with default mapping
+
+Add a single `bucket_override` option with a mapping from bucket name to URL
+patterns, plus a way to inject additional mappings for internal builds.
+
+**Rejected because:** It conflates two independent concerns (bucket naming and URL
+patterns). The bucket name is already configurable via `RELEASE_TYPE` and
+`_retrieve_bucket_info()`. The mapping indirection adds complexity without
+eliminating the core problem — and still can't express CDN URLs where the domain
+has no relationship to the bucket name.
+
+#### Alt 2: `bucket_schema` for bucket naming
+
+Add a `bucket_schema` template (e.g., `"mycompany-{release_type}-builds"`) to
+`_retrieve_bucket_info()` for internal builds with different bucket naming.
+
+**Deferred:** This could be useful but isn't needed for the HTTPBackend feature.
+Internal builds that use different bucket names can already override via
+`RELEASE_TYPE` or by calling `WorkflowOutputRoot` directly with a custom bucket.
+If needed later, it's a one-parameter, one-call-site change to
+`_retrieve_bucket_info()` — low risk to add incrementally.
 
 ---
 
-#### ❌ BLOCKING: Module docstring references wrong environment variable
+## Remaining Issues in #4088
 
-The module docstring says:
-```python
-- THEROCK_HTTP_RUN_ID set → use HTTPBackend (read-only)
-```
+### 1. StorageLocation — Remove env var override
 
-But the actual env var used in `create_backend_from_env()` is `THEROCK_HTTP_BASE_URL`.
+#### ❌ BLOCKING: Remove `THEROCK_HTTPS_URL_<bucket>` from `StorageLocation`
 
-**Required action:** Update the docstring to match the actual implementation: `THEROCK_HTTP_BASE_URL set → use HTTPBackend (read-only)`.
+As discussed above, revert `storage_location.py` to the clean version on `main`
+(no `os` import, no env var lookup in `https_url`). The `base_url` parameter on
+`HTTPBackend._url_for()` replaces this functionality.
+
+Also remove the `THEROCK_HTTPS_URL_` tests from `workflow_outputs_test.py` and
+the "HTTPS URL Override" section from `workflow_outputs.md`.
 
 ---
 
-### 2. artifact_backend.py — `_fetch_index` and `list_artifacts` error handling
+### 2. artifact_backend.py — `_fetch_index` error handling
 
 #### ⚠️ IMPORTANT: Silent exception swallowing hides real errors
 
@@ -126,192 +272,69 @@ for family in self.gfx_families:
         continue
 ```
 
-This double-catch silently swallows all errors. If the server is down, returns malformed HTML, or there's a DNS issue, the user gets an empty artifact list with no indication of why.
+If the server is down, returns malformed HTML, or there's a DNS issue, the user
+gets an empty artifact list with no indication of why.
 
-**Recommendation:** At minimum, log a warning when `_fetch_index` fails. Better: only catch `urllib.error.HTTPError` with 404 status in `_fetch_index`, and let other errors propagate. Remove the redundant `try/except` in `list_artifacts` since `_fetch_index` already handles the expected case.
-
----
-
-### 3. artifact_backend.py — HTTPBackend should use WorkflowOutputRoot for path construction
-
-#### ❌ BLOCKING: Manual URL construction duplicates path logic and breaks for forks
-
-HTTPBackend constructs URLs manually:
-
-```python
-@property
-def base_uri(self) -> str:
-    return f"{self.base_url}/{self.run_id}-{self.platform}"
-
-def _fetch_index(self, gfx_family: str) -> List[str]:
-    index_url = f"{self.base_uri}/index-{gfx_family}.html"
-```
-
-The other two backends (`S3Backend`, `LocalDirectoryBackend`) delegate path construction to `WorkflowOutputRoot`, which is the single source of truth for the CI output layout (see `docs/development/workflow_outputs.md`). HTTPBackend should do the same.
-
-**Problems with the manual approach:**
-
-1. **Fork support is broken.** `WorkflowOutputRoot.prefix` includes `external_repo` for forks (e.g., `owner-repo/12345-linux`). The manual `{run_id}-{platform}` construction produces `12345-linux`, missing the fork prefix entirely.
-2. **Index path is duplicated.** `WorkflowOutputRoot.artifact_index(group)` already knows the `index-{group}.html` pattern. If the pattern ever changes, HTTPBackend would need a manual update.
-3. **Artifact path is duplicated.** `WorkflowOutputRoot.artifact(filename)` already computes `{prefix}/{filename}`.
-4. **HTTPS URLs exist already.** `StorageLocation.https_url` produces `https://{bucket}.s3.amazonaws.com/{relative_path}` for the public S3 case.
-
-**Required action:** Refactor HTTPBackend to take a `WorkflowOutputRoot` (like the other backends) plus an optional base URL override for non-S3 hosts. Use a `_url_for()` helper to resolve `StorageLocation` → URL, supporting both modes:
-
-```python
-class HTTPBackend(ArtifactBackend):
-    def __init__(
-        self,
-        output_root: WorkflowOutputRoot,
-        gfx_families: List[str],
-        base_url: Optional[str] = None,
-    ):
-        self.output_root = output_root
-        self.gfx_families = gfx_families
-        # None → use StorageLocation.https_url (public S3)
-        # Set → use {base_url}/{relative_path} (internal/custom server)
-        self._base_url = base_url
-        self._artifact_cache: Optional[List[str]] = None
-
-    def _url_for(self, location: StorageLocation) -> str:
-        """Resolve a StorageLocation to an HTTP URL.
-
-        When base_url is set, constructs {base_url}/{location.relative_path}.
-        Otherwise falls back to StorageLocation.https_url (the public S3 URL).
-        """
-        if self._base_url:
-            return f"{self._base_url}/{location.relative_path}"
-        return location.https_url
-
-    @property
-    def base_uri(self) -> str:
-        return self._url_for(self.output_root.root())
-
-    def _fetch_index(self, gfx_family: str) -> List[str]:
-        index_url = self._url_for(self.output_root.artifact_index(gfx_family))
-        # ... same fetch logic ...
-
-    def download_artifact(self, artifact_key: str, dest_path: Path) -> None:
-        artifact_url = self._url_for(self.output_root.artifact(artifact_key))
-        checksum_url = self._url_for(
-            self.output_root.artifact(f"{artifact_key}.sha256sum")
-        )
-        # ... same download logic ...
-
-    def artifact_exists(self, artifact_key: str) -> bool:
-        # ... cache check same as now ...
-        artifact_url = self._url_for(self.output_root.artifact(artifact_key))
-        # ... HEAD request same as now ...
-```
-
-And in `create_backend_from_env()`, construct the `WorkflowOutputRoot` the same way as for S3:
-
-```python
-# Priority 3: HTTP backend
-http_base_url = os.getenv("THEROCK_HTTP_BASE_URL")
-if http_base_url:
-    output_root = WorkflowOutputRoot.from_workflow_run(
-        run_id=run_id, platform=platform_name
-    )
-    return HTTPBackend(
-        output_root=output_root,
-        gfx_families=targets,
-        base_url=http_base_url,
-    )
-```
-
-This supports both use cases:
-- **Public S3 artifacts** (no `base_url`): Uses `StorageLocation.https_url` → `https://therock-ci-artifacts.s3.amazonaws.com/12345-linux/blas_lib_gfx94X.tar.zst`
-- **Internal/custom servers** (`base_url` set): Uses `{base_url}/{relative_path}` → `https://internal.example.com/artifacts/12345-linux/blas_lib_gfx94X.tar.zst`
-
-Both modes get fork prefixes, bucket selection, and all path logic for free via `WorkflowOutputRoot`.
+**Recommendation:** In `_fetch_index`, only catch `urllib.error.HTTPError` with
+404 status and let other errors propagate. Remove the redundant `try/except` in
+`list_artifacts`.
 
 ---
 
-### 4. artifact_backend.py — `create_backend_from_env()` credential check
+### 3. artifact_backend.py — Dead stub method
 
-#### ⚠️ IMPORTANT: AWS credential check is overly restrictive (may be partially addressed by #3)
+#### 💡 SUGGESTION: Remove or trim `_discover_gfx_families_from_master_index`
 
-```python
-has_s3_credentials = all(
-    os.getenv(var)
-    for var in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]
-)
-```
-
-`AWS_SESSION_TOKEN` is only present for temporary credentials (STS assume-role). Long-term IAM credentials only have `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`. Requiring all three means environments with long-term credentials and `THEROCK_HTTP_BASE_URL` set would incorrectly get the HTTP backend instead of S3.
-
-Additionally, boto3 supports other credential sources (config files, IAM roles, EC2 instance profiles) that don't set any of these env vars. Someone using those with `THEROCK_HTTP_BASE_URL` set would also get HTTP instead of S3.
-
-**Recommendation:** Consider whether the intent is "prefer HTTP when no *explicit* env-var credentials" (current behavior, approximately) or "prefer HTTP when boto3 can't find any credentials" (would require actually checking `boto3.Session().get_credentials()`). If the current approach is intentional for simplicity, at minimum drop the `AWS_SESSION_TOKEN` requirement:
-```python
-has_s3_credentials = all(
-    os.getenv(var)
-    for var in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
-)
-```
+~40 lines of commented-out code that returns `[]`. The TODO is useful context but
+the commented-out implementation is noise. Trim to docstring + `return []`, or
+remove entirely and leave a `# TODO:` where it would be called.
 
 ---
 
-### 4. artifact_backend.py — Dead stub method
+### 4. Module docstring
 
-#### 💡 SUGGESTION: Remove or minimize `_discover_gfx_families_from_master_index`
+#### 💡 SUGGESTION: Update environment-based switching docs
 
-This method is ~40 lines of commented-out code that just returns `[]`. It's never called. The TODO in the docstring is useful context, but the commented-out implementation is noise.
-
-**Recommendation:** Either remove the method entirely and leave a `# TODO:` comment where it would be called, or trim it to just the docstring + `return []` without the commented-out implementation.
-
----
-
-### 5. artifact_backend.py — `_verify_checksum` return semantics
-
-#### 💡 SUGGESTION: Clarify `_verify_checksum` return value meaning
-
-`_verify_checksum` returns `False` for both "checksum file doesn't exist" and "checksum mismatch". The caller needs to distinguish these cases but can't from the return value alone. Currently the caller pre-checks by catching `FileNotFoundError` from the download, but this is fragile (see BLOCKING issue #1).
-
-**Recommendation:** Consider raising an exception on mismatch and returning `None`/`False` only for "no checksum available", or just always raise if the checksum file exists but doesn't match (the current behavior works, but would be clearer).
+The module docstring now lists the 3-tier priority correctly. One nit: the
+comment says "THEROCK_AMDGPU_FAMILIES set → use HTTPBackend" but the actual
+trigger is "no S3 credentials AND (gfx_families param OR THEROCK_AMDGPU_FAMILIES
+env)". The docstring should clarify this is the fallback when S3 credentials
+aren't present.
 
 ---
 
-### 6. Tests
-
-#### 💡 SUGGESTION: Test for `_download_file` error handling after fix
-
-Once the error-masking issue in `_download_file` is fixed, add a test that verifies:
-- HTTP 404 for checksum → download succeeds without verification (current behavior)
-- HTTP 500 for checksum → download fails with an appropriate error (not silently accepted)
-- Network timeout for checksum → download fails with an appropriate error
-
-The existing `test_download_artifact_without_checksum` only tests the happy path of "checksum not found" but doesn't distinguish 404 from other failures.
-
----
-
-## Recommendations
+## Summary of Requested Changes
 
 ### ❌ REQUIRED (Blocking):
 
-1. Fix error type masking in `_download_file` — distinguish 404 from other HTTP/network errors so checksum verification isn't silently bypassed on transient failures
-2. Fix module docstring: `THEROCK_HTTP_RUN_ID` → `THEROCK_HTTP_BASE_URL`
-3. Use `WorkflowOutputRoot` for path construction instead of manual URL assembly — fixes fork support and eliminates duplicated path logic
+1. **Revert `StorageLocation` to main** — remove env var override, keep it a
+   clean value type
+2. **Add `base_url` parameter to `HTTPBackend`** with `_url_for()` helper —
+   this is where URL customization belongs
+3. **Add `--http-base-url` CLI arg** (or `THEROCK_HTTP_BASE_URL` env var) to
+   `artifact_manager.py` — single point of configuration
+4. **Drop stacked PR #4167** — the schema/template approach is unnecessary
 
 ### ✅ Recommended:
 
-1. Fix AWS credential check — at minimum drop `AWS_SESSION_TOKEN` requirement
-2. Improve error handling in `_fetch_index` — catch specific exceptions, log warnings for unexpected failures, remove redundant try/except in `list_artifacts`
+1. Fix error handling in `_fetch_index` — catch specific HTTP exceptions
+2. Remove redundant `try/except` in `list_artifacts`
 
 ### 💡 Consider:
 
-1. Remove or trim `_discover_gfx_families_from_master_index` dead code
-2. Clarify `_verify_checksum` semantics
-3. Add tests for error-type-specific behavior in checksum download
+1. Trim `_discover_gfx_families_from_master_index` dead code
+2. Clarify module docstring for HTTPBackend trigger conditions
 
 ---
 
 ## Testing Recommendations
 
 - Run existing tests: `python -m pytest build_tools/tests/artifact_backend_test.py -v`
-- After fixing error handling, add test for HTTP 500 during checksum download → should not silently skip verification
-- Manual test: verify the backend works with a real workflow summary URL (as described in PR description)
+- After adding `base_url`, add tests for:
+  - `base_url=None` → URLs use `StorageLocation.https_url` (S3 pattern)
+  - `base_url="https://cdn.example.com"` → URLs use `{base_url}/{relative_path}`
+  - `base_url` with trailing slash → handled correctly
+- After fixing `_fetch_index` error handling, add test for HTTP 500 → propagates error (not silently empty)
 
 ---
 
@@ -319,4 +342,9 @@ The existing `test_download_artifact_without_checksum` only tests the happy path
 
 **Approval Status: ⚠️ CHANGES REQUESTED**
 
-The HTTPBackend is a useful addition. The two blocking issues are straightforward to fix: update the docstring, and refine the error handling in `_download_file` to preserve error semantics so that checksum verification isn't silently skipped on network errors. The other recommendations are lower priority but would improve robustness.
+The HTTPBackend is useful — it's the natural way to consume artifacts without S3
+credentials, and positions well for CDN-fronted artifact buckets. The main change
+needed is moving URL customization from `StorageLocation` (where it doesn't
+belong) to `HTTPBackend._url_for()` (where it does). This is a simpler, smaller
+change than either the env var approach or the schema approach, and it's the only
+one that can express CDN URLs.
