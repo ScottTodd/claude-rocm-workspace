@@ -367,10 +367,14 @@ cd bin/ && OCL_ICD_FILENAMES=$(pwd)/amdocl64.dll ./ocltst.exe -m oclruntime.dll 
 ```
 
 **Result: `clGetDeviceIDs failed`.** All DLLs loaded successfully (no missing
-DLL errors), but the artifact's OpenCL runtime (3581.0) is older than the local
-driver (3652.0), causing a version mismatch at device enumeration. This is
-expected — CI machines have matching driver+artifact versions. The important
-result is that DLL resolution worked perfectly.
+DLL errors), but the artifact's `amdocl64.dll` failed to enumerate devices.
+The CI runners that passed show OpenCL `AMD-APP (3628.0)` at runtime (from
+the ocltst output on both the gfx110X and gfx1151 jobs). Our local system
+driver reports 3652.0, which is newer. It's unclear why the artifact works
+with CI driver 3628.0 but not our local 3652.0 — this could be a driver
+compatibility issue worth investigating separately. The relevant result for
+the install-to-bin/ question is that **DLL resolution worked correctly** —
+the failure was at OpenCL device enumeration, not at library loading.
 
 ### Experiment 3: Run from `tests/ocltst/` with zero env setup (original layout)
 
