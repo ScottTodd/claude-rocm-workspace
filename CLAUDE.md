@@ -115,6 +115,47 @@ cd /d/projects/TheRock/build_tools && python fetch_artifacts.py \
 
 Common artifact groups: `gfx110X-all`, `gfx120X-all`, `gfx94X-all`
 
+### Download a subset of CI artifacts and test locally
+
+Useful for validating review feedback (e.g., "would this work if we moved
+files around?") without rebuilding. Positional args to `fetch_artifacts.py`
+are prefix-matched include filters.
+
+```bash
+# 1. Download only the artifacts you need (prefix-match filters)
+#    Use --flatten to merge into a single install-prefix-like layout
+cd /d/projects/TheRock/build_tools && python fetch_artifacts.py \
+  --run-id=<RUN_ID> \
+  --artifact-group=gfx110X-all \
+  --output-dir=/d/scratch/claude/artifacts/<LABEL> \
+  --flatten \
+  "core-ocl_test" "core-ocl_run" "core-ocl_lib" "base_run" "base_lib"
+
+# 2. Explore the layout
+ls /d/scratch/claude/artifacts/<LABEL>/bin/
+ls /d/scratch/claude/artifacts/<LABEL>/tests/
+
+# 3. Rearrange files to test a hypothesis (e.g., "what if tests installed to bin/?")
+cp /d/scratch/claude/artifacts/<LABEL>/tests/ocltst/* \
+   /d/scratch/claude/artifacts/<LABEL>/bin/
+
+# 4. Run from the rearranged layout
+cd /d/scratch/claude/artifacts/<LABEL>/bin && ./ocltst.exe -m oclruntime.dll
+```
+
+Notes:
+- `--flatten` strips the `<subproject>/stage/` prefix, merging all artifacts
+  into a single tree that looks like a standard install prefix (`bin/`, `lib/`,
+  `share/`, etc.)
+- PR branch artifacts stay in S3 after GH artifact expiry — use the run ID
+  from `gh pr checks <URL>` or `gh api repos/.../actions/runs`
+- Always test with the ROCm-built libraries, not system-installed ones.
+  Comparing against system versions can be useful for diagnosing issues but
+  isn't the target test configuration.
+- Artifacts built at one driver version may not work on a machine with a
+  different driver version — DLL/so resolution may succeed while runtime
+  behavior (device enumeration, kernel launch) fails due to driver mismatch
+
 ### Inspect an artifact archive without extracting
 
 ```bash
@@ -313,6 +354,19 @@ For quick feedback during development, add inline comments with `RVW:` or `RVWY:
 ```
 
 Then ask Claude to "process review comments" or "fix the RVW comments".
+
+#### Documenting Experiments
+
+When running local experiments (e.g., testing with downloaded CI artifacts),
+always include full command + output in the review or notes — not just a
+prose summary. Others need to see exactly what was run and what came back.
+
+- Inline the full `$ command` and its output in markdown code blocks
+- If logs are too large to inline, save them to a local file (e.g., in
+  `/d/scratch/claude/`) so they can be uploaded to a gist for sharing
+- Always test with the ROCm-built libraries, not system-installed ones;
+  comparing against system versions can be useful for diagnosing issues
+  but isn't the target test configuration
 
 ### Task Tracking
 
