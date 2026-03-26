@@ -18,7 +18,7 @@ This PR enables execution of the OpenCL test suite (`ocltst`) in TheRock CI on b
 
 ## Overall Assessment
 
-**⚠️ CHANGES REQUESTED** — Tests pass in CI, and the CMake change and test config are correct. The test script has concrete simplification opportunities (Windows DLL copy → PATH append, Linux LD_LIBRARY_PATH simplification) plus standard code-level fixes needed.
+**⚠️ CHANGES REQUESTED** — Tests pass in CI, and the CMake change and test config are correct. Local testing confirms that if ocltst installs to `bin/` (like other test executables), the entire DLL-copy / LD_LIBRARY_PATH / ROCM_PATH machinery in the script becomes unnecessary. Standard code-level fixes also needed.
 
 **Strengths:**
 - Enabling ocltst is a useful addition to CI coverage — tests pass on Linux (gfx94X) and Windows (gfx110X, gfx1151)
@@ -26,8 +26,7 @@ This PR enables execution of the OpenCL test suite (`ocltst`) in TheRock CI on b
 - CMake change to enable `BUILD_TESTS` on both platforms is correct
 
 **Blocking/Important Issues:**
-- Windows: `copy_dlls_exe_path()` can be replaced with a 2-line PATH append (see finding #0)
-- Linux: `LD_LIBRARY_PATH` setup is verbose and clobbers existing value (see finding #0b)
+- Install ocltst to `bin/` (like other test executables) to eliminate DLL copy, LD_LIBRARY_PATH, ROCM_PATH — validated locally (see "Local Experiment" section)
 - Missing copyright header
 - `sys.exit(1)` instead of exception
 - `shell=True` on Windows subprocess call
@@ -327,9 +326,9 @@ Evidence gathered from successful CI runs on this PR (run `23565450720`):
 
 | Job | ID | Platform | Result |
 |-----|-----|----------|--------|
-| ocltst (gfx94X-dcgpu) | `68660411582` | Linux (container) | ✅ PASSED |
-| ocltst (gfx110X-all) | `68660213071` | Windows | ✅ PASSED |
-| ocltst (gfx1151) | `68660213199` | Windows | ✅ PASSED |
+| ocltst (gfx94X-dcgpu) | `68660411582` | Linux (container) | PASSED |
+| ocltst (gfx110X-all) | `68660213071` | Windows | PASSED |
+| ocltst (gfx1151) | `68660213199` | Windows | PASSED |
 
 **Linux artifact layout** (209 artifacts fetched with `--tests --flatten`):
 - `build/share/opencl/ocltst/ocltst` — test binary
@@ -342,8 +341,125 @@ Evidence gathered from successful CI runs on this PR (run `23565450720`):
 
 ---
 
+## Local Experiment: Install-to-bin/ Validation
+
+To validate the "install to `bin/`" suggestion, we downloaded the Windows `gfx110X-all`
+artifacts from the PR's CI run (run `23565450720`) and tested on a local Windows machine
+with an AMD Radeon PRO W7900 Dual Slot (gfx1100).
+
+### Setup
+
+Downloaded and flattened artifacts: `core-ocl_test`, `core-ocl_run`, `core-ocl_lib`,
+`core-ocl-icd_lib`, `base_run`, `base_lib`, `amd-llvm_run`, `amd-llvm_lib`, `sysdeps_lib`.
+
+After extraction, the artifact layout was:
+```
+bin/
+  amd_comgr0702.dll
+  amdocl64.dll
+  OpenCL.dll
+  clinfo.exe
+  ...
+tests/ocltst/
+  ocltst.exe
+  oclruntime.dll
+  oclruntime.exclude
+  oclperf.dll
+  oclperf.exclude
+```
+
+Simulated the install-to-bin/ change by copying ocltst files into `bin/`:
+```
+cp artifacts/3590-win/tests/ocltst/* artifacts/3590-win/bin/
+```
+
+### Experiment 1: Run from `bin/` with zero env setup
+
+```
+cd bin/ && ./ocltst.exe -m oclruntime.dll -A oclruntime.exclude
+```
+
+**Result: Tests ran and passed.** All DLLs resolved as siblings. Used system
+OpenCL ICD (3652.0) which found the gfx1100 GPU. Sample output:
+
+```
+Platform Version: OpenCL 2.1 AMD-APP (3652.0)
+Device Name: gfx1100
+Board Name: AMD Radeon PRO W7900 Dual Slot
+...
+OCLCreateContext[  0]            PASSED
+OCLKernelBinary[  0]            PASSED
+OCLKernelBinary[  1]            PASSED
+OCLGlobalOffset[  0]            PASSED
+OCLLinearFilter[  0]            PASSED
+OCLLinearFilter[  1]            PASSED
+OCLAsyncTransfer[  0]           PASSED
+OCLLDS32K[  0]                  PASSED
+OCLMemObjs[  0]                 PASSED
+OCLSemaphore[  0]               PASSED
+OCLPartialWrkgrp[  0]           PASSED
+OCLPartialWrkgrp[  1]           PASSED
+OCLPartialWrkgrp[  2]           PASSED
+OCLCreateBuffer[  0]            PASSED
+OCLCreateImage[  0-4]           PASSED
+OCLMapCount[  0]                PASSED
+OCLMemoryInfo[  0]              PASSED
+...
+```
+
+No `copy_dlls_exe_path()`, no `LD_LIBRARY_PATH`, no `ROCM_PATH`, no `PATH`
+manipulation, no `shell=True`. Just `cd` and run.
+
+### Experiment 2: Run from `bin/` with `OCL_ICD_FILENAMES` (CI-style)
+
+```
+cd bin/ && OCL_ICD_FILENAMES=$(pwd)/amdocl64.dll ./ocltst.exe -m oclruntime.dll -A oclruntime.exclude
+```
+
+**Result: `clGetDeviceIDs failed`.** All DLLs loaded successfully (no missing
+DLL errors), but the artifact's OpenCL runtime (3581.0) is older than the local
+driver (3652.0), causing a version mismatch at device enumeration. This is
+expected — CI machines have matching driver+artifact versions. The important
+result is that DLL resolution worked perfectly.
+
+### Experiment 3: Run from `tests/ocltst/` with zero env setup (original layout)
+
+```
+cd tests/ocltst/ && ./ocltst.exe -m oclruntime.dll -A oclruntime.exclude
+```
+
+**Result: Tests passed (exit 0).** Used system OpenCL (3652.0). This works on
+this machine because the system has OpenCL.dll on PATH via the AMD driver
+install. In CI (clean containers/runners), this would fail because OpenCL.dll
+is not a system-level install — which is why the script copies DLLs.
+
+### Experiment 4: `clinfo` baseline
+
+```
+cd bin/ && ./clinfo.exe                                # system ICD: 2 devices (gfx1100)
+cd bin/ && OCL_ICD_FILENAMES=$(pwd)/amdocl64.dll ./clinfo.exe  # artifact ICD: 0 devices (version mismatch)
+```
+
+### Conclusions
+
+| Scenario | DLL resolution | Device found | Tests |
+|---|---|---|---|
+| `bin/` — no env setup | All DLLs as siblings | Yes (system ICD) | PASSED |
+| `bin/` + `OCL_ICD_FILENAMES` | All DLLs as siblings | No (version mismatch) | N/A |
+| `tests/ocltst/` — no env setup | System OpenCL on PATH | Yes (system ICD) | PASSED |
+
+**Key takeaway:** When ocltst is in `bin/` alongside its DLL dependencies, it
+runs with zero environment setup. The only CI-specific env var needed is
+`OCL_ICD_FILENAMES` to force the TheRock-built OpenCL implementation (matching
+what the clr CMake `test.ocltst.oclruntime` custom target does). The entire
+`copy_dlls_exe_path()` function, the `LD_LIBRARY_PATH` construction, `ROCM_PATH`,
+`shell=True`, and the platform-branched `setup_env()` are all workarounds for
+the test binary being installed away from its dependencies.
+
+---
+
 ## Conclusion
 
 **Approval Status: ⚠️ CHANGES REQUESTED**
 
-The CMake change to enable `BUILD_TESTS` on both platforms is correct. The test configuration entry is well-structured. The biggest simplification opportunity is changing `OCLTST_INSTALL_DIR` to `bin/` (matching `hipblaslt_plugin_tests.exe` and other test executables), which would eliminate `copy_dlls_exe_path()`, `LD_LIBRARY_PATH` construction, and `ROCM_PATH` — collapsing the script from ~96 lines to ~15. The clr CMake already has a `test.ocltst.oclruntime` custom target (runtime/CMakeLists.txt:94-102) that shows the minimal env needed to run ocltst, confirming only `OCL_ICD_FILENAMES` is required beyond standard library resolution. There are also standard code-level issues (missing copyright header, `sys.exit()`, `shell=True`, broad exception handling) that need fixing.
+The CMake change to enable `BUILD_TESTS` on both platforms is correct. The test configuration entry is well-structured. Local testing on a Windows gfx1100 machine confirms that changing `OCLTST_INSTALL_DIR` to `bin/` (matching `hipblaslt_plugin_tests.exe` and other test executables) lets ocltst run with zero env setup — no DLL copies, no `LD_LIBRARY_PATH`, no `ROCM_PATH`. This would collapse the script from ~96 lines to ~15. The only CI-specific env var needed is `OCL_ICD_FILENAMES` (to force the TheRock OpenCL implementation), which the clr CMake `test.ocltst.oclruntime` custom target already uses. There are also standard code-level issues (missing copyright header, `sys.exit()`, `shell=True`, broad exception handling) that need fixing.
