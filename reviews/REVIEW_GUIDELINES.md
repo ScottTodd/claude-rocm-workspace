@@ -240,6 +240,24 @@ This makes the finding actionable without asserting certainty.
 
 ---
 
+## Linking to Source Code
+
+When referencing files in the reviewed repository, use GitHub permalink URLs
+rather than bare file paths. This makes reviews much more useful to human
+readers who can click through to see context.
+
+- **Do:** `[`s3_buckets.md`](https://github.com/ROCm/TheRock/blob/main/docs/development/s3_buckets.md)`
+- **Don't:** `docs/development/s3_buckets.md`
+
+For files changed in the PR, link to the PR's diff or the branch head. For
+files on main that provide context, link to `blob/main/...`.
+
+Inline code references (e.g., `` `_fetch_index` catches all exceptions ``) are
+fine without links — the review reader can search the diff. Links are most
+valuable for files *outside* the PR diff that provide important context.
+
+---
+
 ## Review Structure Template
 
 ```markdown
