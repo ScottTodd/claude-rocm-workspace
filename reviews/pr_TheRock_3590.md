@@ -368,10 +368,45 @@ cd bin/ && OCL_ICD_FILENAMES=$(pwd)/amdocl64.dll ./ocltst.exe -m oclruntime.dll 
 
 **Result: `clGetDeviceIDs failed`.** All DLLs loaded successfully (no missing
 DLL errors), but the artifact's `amdocl64.dll` failed to enumerate devices.
+
+Full output:
+```
+$ cd bin/ && OCL_ICD_FILENAMES=$(pwd)/amdocl64.dll ./ocltst.exe -m oclruntime.dll -A oclruntime.exclude
+clGetDeviceIDs failed
+(exit code 1)
+```
+
+`clinfo` with the same ICD confirms the platform loads but finds 0 devices:
+```
+$ cd bin/ && OCL_ICD_FILENAMES=$(pwd)/amdocl64.dll ./clinfo.exe
+Number of platforms:                     1
+  Platform Version:                      OpenCL 2.1 AMD-APP (3581.0)
+  Platform Name:                         AMD Accelerated Parallel Processing
+  Platform Vendor:                       Advanced Micro Devices, Inc.
+  Platform Extensions:                   cl_khr_icd cl_khr_d3d10_sharing cl_khr_d3d11_sharing cl_khr_dx9_media_sharing cl_amd_event_callback
+
+  Platform Name:                         AMD Accelerated Parallel Processing
+Number of devices:                       0
+```
+
+For comparison, `clinfo` with the system ICD finds 2 devices:
+```
+$ cd bin/ && ./clinfo.exe
+Number of platforms:                     1
+  Platform Version:                      OpenCL 2.1 AMD-APP (3652.0)
+  Platform Name:                         AMD Accelerated Parallel Processing
+  Platform Extensions:                   ... cl_amd_offline_devices
+
+  Platform Name:                         AMD Accelerated Parallel Processing
+Number of devices:                       2
+  Device Type:                           CL_DEVICE_TYPE_GPU
+  Board name:                            AMD Radeon PRO W7900 Dual Slot
+```
+
 The CI runners that passed show OpenCL `AMD-APP (3628.0)` at runtime (from
 the ocltst output on both the gfx110X and gfx1151 jobs). Our local system
-driver reports 3652.0, which is newer. It's unclear why the artifact works
-with CI driver 3628.0 but not our local 3652.0 — this could be a driver
+driver reports 3652.0, which is newer. It's unclear why the artifact (3581.0)
+works with CI driver 3628.0 but not our local 3652.0 — this could be a driver
 compatibility issue worth investigating separately. The relevant result for
 the install-to-bin/ question is that **DLL resolution worked correctly** —
 the failure was at OpenCL device enumeration, not at library loading.
@@ -379,20 +414,13 @@ the failure was at OpenCL device enumeration, not at library loading.
 ### Experiment 3: Run from `tests/ocltst/` with zero env setup (original layout)
 
 ```
-cd tests/ocltst/ && ./ocltst.exe -m oclruntime.dll -A oclruntime.exclude
+$ cd tests/ocltst/ && ./ocltst.exe -m oclruntime.dll -A oclruntime.exclude
+(tests passed, exit code 0 — used system OpenCL 3652.0)
 ```
 
-**Result: Tests passed (exit 0).** Used system OpenCL (3652.0). This works on
-this machine because the system has OpenCL.dll on PATH via the AMD driver
-install. In CI (clean containers/runners), this would fail because OpenCL.dll
-is not a system-level install — which is why the script copies DLLs.
-
-### Experiment 4: `clinfo` baseline
-
-```
-cd bin/ && ./clinfo.exe                                # system ICD: 2 devices (gfx1100)
-cd bin/ && OCL_ICD_FILENAMES=$(pwd)/amdocl64.dll ./clinfo.exe  # artifact ICD: 0 devices (version mismatch)
-```
+This works on this machine because the system has OpenCL.dll on PATH via the
+AMD driver install. In CI (clean containers/runners), this would fail because
+OpenCL.dll is not a system-level install — which is why the script copies DLLs.
 
 ### Conclusions
 
