@@ -18,7 +18,7 @@ This PR enables execution of the OpenCL test suite (`ocltst`) in TheRock CI on b
 
 ## Overall Assessment
 
-**⚠️ CHANGES REQUESTED** — Tests pass in CI, and the CMake change and test config are correct. Local testing confirms that if ocltst installs to `bin/` (like other test executables), the entire DLL-copy / LD_LIBRARY_PATH / ROCM_PATH machinery in the script becomes unnecessary. Standard code-level fixes also needed.
+**⚠️ CHANGES REQUESTED** — Tests pass in CI, and the CMake change and test config are correct. Local testing confirms that if ocltst installs to `bin/` (like other test executables), the entire DLL-copy / LD_LIBRARY_PATH / ROCM_PATH machinery in the script becomes unnecessary. Code-level fixes also needed.
 
 **Strengths:**
 - Enabling ocltst is a useful addition to CI coverage — tests pass on Linux (gfx94X) and Windows (gfx110X, gfx1151)
@@ -27,18 +27,15 @@ This PR enables execution of the OpenCL test suite (`ocltst`) in TheRock CI on b
 
 **Blocking/Important Issues:**
 - Install ocltst to `bin/` (like other test executables) to eliminate DLL copy, LD_LIBRARY_PATH, ROCM_PATH — validated locally (see "Local Experiment" section)
-- Missing copyright header
-- `sys.exit(1)` instead of exception
 - `shell=True` on Windows subprocess call
 - Broad `except Exception` swallows errors
 - Unused variable `OCL_ICD_DLL`
-- CMake indentation
 
 ---
 
 ## Detailed Review
 
-### 0. `test_ocltst.py` — Install to `bin/` to eliminate DLL copy and LD_LIBRARY_PATH workarounds
+### 1. Install to `bin/` to eliminate DLL copy and LD_LIBRARY_PATH workarounds
 
 ### ⚠️ IMPORTANT: Changing the install destination would simplify the entire script
 
@@ -88,9 +85,9 @@ cmd = ["./ocltst", "-m", "liboclruntime.so", "-A", "oclruntime.exclude"]  # Linu
 # or  ["ocltst.exe", "-m", "oclruntime.dll", "-A", "oclruntime.exclude"]  # Windows
 ```
 
-No `copy_dlls_exe_path()`, no `LD_LIBRARY_PATH`, no `ROCM_PATH`, no platform-branching for env setup — just locate and run.
+No `copy_dlls_exe_path()`, no `LD_LIBRARY_PATH`, no `ROCM_PATH`, no platform-branching for env setup — just locate and run. **We validated this locally — see the "Local Experiment" section below.**
 
-The `OCL_ICD_FILENAMES` env var (Windows) would still be needed — the existing CMake custom target `test.ocltst.oclruntime` (runtime/CMakeLists.txt:94-102) already does this:
+The `OCL_ICD_FILENAMES` env var (Windows) would still be needed in CI — the existing CMake custom target `test.ocltst.oclruntime` (runtime/CMakeLists.txt:94-102) already does this:
 ```cmake
 COMMAND ${CMAKE_COMMAND} -E env "OCL_ICD_FILENAMES=$<TARGET_FILE:amdocl>"
         $<TARGET_FILE:ocltst> -p 0 -m $<TARGET_FILE:oclruntime> -A oclruntime.exclude
@@ -110,45 +107,7 @@ if is_windows:
 
 ---
 
-### 1. `test_ocltst.py` — Missing copyright header
-
-### ❌ BLOCKING: Missing copyright header
-
-All test scripts in this directory have the standard AMD copyright header:
-```python
-# Copyright Advanced Micro Devices, Inc.
-# SPDX-License-Identifier: MIT
-```
-This file is missing it.
-
-**Required action:** Add the copyright header at the top of the file.
-
----
-
-### 2. `test_ocltst.py:13-16` — `sys.exit()` for error reporting
-
-### ❌ BLOCKING: Uses `sys.exit()` instead of raising an exception
-
-Per the [Python style guide fail-fast section](https://github.com/ROCm/TheRock/blob/main/docs/development/style_guides/python_style_guide.md#fail-fast-behavior), error conditions should raise exceptions, not call `sys.exit()`:
-
-```python
-# Current:
-if THEROCK_BIN_DIR_STR is None:
-    logging.info("++ Error: ...")
-    sys.exit(1)
-
-# Should be:
-if THEROCK_BIN_DIR_STR is None:
-    raise RuntimeError("env(THEROCK_BIN_DIR) is not set. Please set it before executing tests.")
-```
-
-Also uses `logging.info` for an error message — should use `logging.error` if logging is retained.
-
-**Required action:** Replace `sys.exit(1)` with `raise RuntimeError(...)`.
-
----
-
-### 3. `test_ocltst.py:87` — `shell=True` on Windows
+### 2. `shell=True` on Windows
 
 ### ❌ BLOCKING: Uses `shell=True` for subprocess on Windows
 
@@ -158,13 +117,13 @@ shell_var = True  # Windows path
 subprocess.run(cmd, cwd=OCLTST_PATH, check=True, env=env, shell=shell_var)
 ```
 
-No other test script in this directory uses `shell=True`. This was likely added so Windows would search PATH for the .exe, but `subprocess.run` with a list already does that when `cwd` is set. The proper fix is the PATH manipulation from finding #0 above, then `shell=True` becomes unnecessary.
+No other test script in this directory uses `shell=True`. This was likely added so Windows would search PATH for the .exe, but `subprocess.run` with a list already does that when `cwd` is set. The proper fix is the install-to-bin/ change from finding #1, then `shell=True` becomes unnecessary.
 
 **Required action:** Remove `shell=True` (set `shell_var = False` for both platforms, or remove the parameter entirely).
 
 ---
 
-### 4. `test_ocltst.py:33-35` — Broad `except Exception`
+### 3. Broad `except Exception`
 
 ### ❌ BLOCKING: Broad exception handler swallows errors
 
@@ -175,11 +134,11 @@ except Exception as e:
 
 This catches all exceptions (including `PermissionError`, `OSError`, etc.), logs them as `info`, and continues. If a DLL fails to copy, the test will likely fail in a confusing way later. Per fail-fast principles, let the exception propagate.
 
-**Required action:** Remove the try/except. If `shutil.copy` fails, it should be a hard error. If some DLLs are optional, document which ones and catch only `FileNotFoundError` for those specific cases.
+**Required action:** Remove the try/except (or moot if `copy_dlls_exe_path` is removed per finding #1). If `shutil.copy` fails, it should be a hard error.
 
 ---
 
-### 5. `test_ocltst.py:62` — Unused variable `OCL_ICD_DLL`
+### 4. Unused variable `OCL_ICD_DLL`
 
 ### ❌ BLOCKING: Unused variable
 
@@ -193,9 +152,11 @@ This variable is assigned but never used. It's unclear if it was intended to be 
 
 ---
 
-### 6. `test_ocltst.py:48-52` — LD_LIBRARY_PATH handling doesn't follow existing pattern
+### 5. LD_LIBRARY_PATH handling
 
 ### ⚠️ IMPORTANT: LD_LIBRARY_PATH clobbers existing value
+
+Moot if the install-to-bin/ change from finding #1 is adopted (eliminates LD_LIBRARY_PATH entirely). If it stays:
 
 The existing pattern in other scripts (e.g., `test_hiptests.py:124-130`) preserves the existing `LD_LIBRARY_PATH`:
 
@@ -207,24 +168,15 @@ else:
     env["LD_LIBRARY_PATH"] = new_path
 ```
 
-This script reads it with `os.getenv`, but then unconditionally overwrites it in a string that may include `None` as a literal string if it wasn't set:
+This script reads it with `os.getenv`, then unconditionally overwrites it in a string that may include `None` as a literal string if it wasn't set. Also wraps a colon-separated path list in `Path()`, which is incorrect — `Path` treats the whole string as a single path.
 
-```python
-LD_LIBRARY_PATH = os.getenv("LD_LIBRARY_PATH")
-if LD_LIBRARY_PATH is not None:
-    LD_LIBRARY_PATH = Path(LD_LIBRARY_PATH)  # Path() is wrong for a colon-separated list
-env["LD_LIBRARY_PATH"] = f"...:{LD_LIBRARY_PATH}:..."
-```
-
-Also, wrapping a colon-separated path list in `Path()` is incorrect — `Path` treats the whole string as a single path.
-
-**Recommendation:** Follow the `test_hiptests.py` pattern for LD_LIBRARY_PATH prepending.
+**Recommendation:** Follow the `test_hiptests.py` check-then-prepend pattern.
 
 ---
 
-### 7. `core/CMakeLists.txt:398-400` — CMake indentation
+### 6. CMake indentation
 
-### ⚠️ IMPORTANT: Incorrect CMake indentation
+### 💡 SUGGESTION: Incorrect CMake indentation
 
 The moved `list(APPEND ...)` has the argument at the same level as `list(`:
 
@@ -243,42 +195,42 @@ Should be:
 
 Per the [CMake style guide](https://github.com/ROCm/TheRock/blob/main/docs/development/style_guides/cmake_style_guide.md), arguments should be indented relative to the function call.
 
-**Recommendation:** Indent the argument by 2 spaces.
+---
+
+### 7. Missing copyright header
+
+### 💡 SUGGESTION: Missing copyright header
+
+All test scripts in this directory have the standard AMD copyright header:
+```python
+# Copyright Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: MIT
+```
+This file is missing it.
 
 ---
 
-### 8. `fetch_test_configurations.py:73` — Misleading comment
+### 8. `sys.exit()` for error reporting
 
-### 💡 SUGGESTION: Comment says "ocltest" but key is "ocltst"
+### 💡 SUGGESTION: Consider using exceptions instead of `sys.exit()`
 
 ```python
-    # ocltest
-    "ocltst": {
+if THEROCK_BIN_DIR_STR is None:
+    logging.info("++ Error: ...")
+    sys.exit(1)
 ```
 
-Minor typo — the comment doesn't match the key name.
-
-**Recommendation:** Change comment to `# ocltst` for consistency.
+`sys.exit()` works fine for a standalone script, but `raise RuntimeError(...)` gives a clearer traceback. Also uses `logging.info` for an error message — `logging.error` would be more appropriate.
 
 ---
 
-### 9. `test_ocltst.py` — `container_options` uses `=` syntax inconsistently
+### 9. Minor issues
 
-### 💡 SUGGESTION: Inconsistent `--cap-add` syntax
+### 💡 SUGGESTION: Assorted nits
 
-The ocltst entry uses `--cap-add=SYS_PTRACE` (with `=`) while the sanity entry uses `--cap-add SYS_MODULE` (with space). Both work for Docker, but consistency is preferable.
-
----
-
-### 10. `test_ocltst.py:19` — Redundant `Path()` wrapping
-
-### 💡 SUGGESTION: Redundant Path conversion
-
-```python
-THEROCK_DIR = Path(THEROCK_BIN_DIR).parent
-```
-
-`THEROCK_BIN_DIR` is already a `Path` (line 17), so `Path(THEROCK_BIN_DIR)` is redundant. Same issue on lines 41-43 where `Path(THEROCK_DIR)` and `Path(ROCK_LIB_PATH)` are used on values that are already `Path` objects.
+- **Comment typo** (`fetch_test_configurations.py:73`): Comment says `# ocltest` but key is `"ocltst"`
+- **Inconsistent `--cap-add` syntax**: ocltst uses `--cap-add=SYS_PTRACE` (with `=`) while sanity uses `--cap-add SYS_MODULE` (with space)
+- **Redundant `Path()` wrapping** (`test_ocltst.py:19`): `THEROCK_BIN_DIR` is already a `Path`, so `Path(THEROCK_BIN_DIR)` is redundant. Same on lines 41-43.
 
 ---
 
@@ -286,24 +238,22 @@ THEROCK_DIR = Path(THEROCK_BIN_DIR).parent
 
 ### ❌ REQUIRED (Blocking):
 
-1. Add copyright header to `test_ocltst.py`
-2. Replace `sys.exit(1)` with `raise RuntimeError(...)`
-3. Remove `shell=True` (see finding #3)
-4. Remove broad `except Exception` — let DLL copy failures be hard errors (or moot if `copy_dlls_exe_path` is removed per finding #0)
-5. Remove or use the `OCL_ICD_DLL` variable
+1. **Install ocltst to `bin/` instead of `tests/ocltst/` / `share/opencl/ocltst/`** — change `OCLTST_INSTALL_DIR` in `rocm-systems/projects/clr/opencl/tests/ocltst/CMakeLists.txt` to `bin/` (both platforms). This matches how `hipblaslt_plugin_tests.exe`, `hipdnn_backend_tests.exe`, etc. are installed and eliminates the need for DLL copying, `LD_LIBRARY_PATH`, and `ROCM_PATH` entirely. Update `artifact-core-ocl.toml` accordingly. Validated locally — see "Local Experiment" section. (Finding #1)
+   - If this subproject change is out of scope, the interim PATH workaround (`env["PATH"] = f"{THEROCK_BIN_DIR};{env.get('PATH', '')}"`) works for Windows.
+2. Remove `shell=True` (finding #2)
+3. Remove broad `except Exception` — moot if `copy_dlls_exe_path` is removed per #1 (finding #3)
+4. Remove or use the `OCL_ICD_DLL` variable (finding #4)
 
 ### ⚠️ IMPORTANT:
 
-1. **Install ocltst to `bin/` instead of `tests/ocltst/` / `share/opencl/ocltst/`** — change `OCLTST_INSTALL_DIR` in `rocm-systems/projects/clr/opencl/tests/ocltst/CMakeLists.txt` to `bin/` (both platforms). This matches how `hipblaslt_plugin_tests.exe`, `hipdnn_backend_tests.exe`, etc. are installed and eliminates the need for DLL copying, `LD_LIBRARY_PATH`, and `ROCM_PATH` entirely. Update `artifact-core-ocl.toml` accordingly. (See finding #0 for full details.)
-   - If this subproject change is out of scope, the interim PATH workaround (`env["PATH"] = f"{THEROCK_BIN_DIR};{env.get('PATH', '')}"`) works for Windows.
-2. **Linux: If install path stays in `share/`, simplify LD_LIBRARY_PATH** — drop `ROCM_PATH`, use check-then-prepend pattern, verify which `lib/` subdirectories are actually needed at runtime
-3. Fix CMake indentation for `list(APPEND ...)`
+1. **Linux: If install path stays in `share/`, simplify LD_LIBRARY_PATH** — drop `ROCM_PATH`, use check-then-prepend pattern, verify which `lib/` subdirectories are actually needed at runtime (finding #5)
 
 ### 💡 Consider:
 
-1. Fix "ocltest" → "ocltst" comment typo
-2. Consistent `--cap-add` syntax across test configs
-3. Remove redundant `Path()` wrapping
+1. Fix CMake indentation for `list(APPEND ...)` (finding #6)
+2. Add copyright header (finding #7)
+3. Use `raise RuntimeError(...)` instead of `sys.exit(1)` (finding #8)
+4. Assorted nits: comment typo, `--cap-add` syntax, redundant `Path()` (finding #9)
 
 ### 📋 Future Follow-up:
 
@@ -462,4 +412,4 @@ the test binary being installed away from its dependencies.
 
 **Approval Status: ⚠️ CHANGES REQUESTED**
 
-The CMake change to enable `BUILD_TESTS` on both platforms is correct. The test configuration entry is well-structured. Local testing on a Windows gfx1100 machine confirms that changing `OCLTST_INSTALL_DIR` to `bin/` (matching `hipblaslt_plugin_tests.exe` and other test executables) lets ocltst run with zero env setup — no DLL copies, no `LD_LIBRARY_PATH`, no `ROCM_PATH`. This would collapse the script from ~96 lines to ~15. The only CI-specific env var needed is `OCL_ICD_FILENAMES` (to force the TheRock OpenCL implementation), which the clr CMake `test.ocltst.oclruntime` custom target already uses. There are also standard code-level issues (missing copyright header, `sys.exit()`, `shell=True`, broad exception handling) that need fixing.
+The CMake change to enable `BUILD_TESTS` on both platforms is correct. The test configuration entry is well-structured. Local testing on a Windows gfx1100 machine confirms that changing `OCLTST_INSTALL_DIR` to `bin/` (matching `hipblaslt_plugin_tests.exe` and other test executables) lets ocltst run with zero env setup — no DLL copies, no `LD_LIBRARY_PATH`, no `ROCM_PATH`. This would collapse the script from ~96 lines to ~15. The only CI-specific env var needed is `OCL_ICD_FILENAMES` (to force the TheRock OpenCL implementation), which the clr CMake `test.ocltst.oclruntime` custom target already uses. There are also code-level issues (`shell=True`, broad exception handling, unused variable) that need fixing.
