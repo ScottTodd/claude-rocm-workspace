@@ -64,7 +64,7 @@ Both have problems. We propose a third approach.
 
 ### Design constraints
 
-**CDN URLs don't follow bucket-derived patterns.** From `docs/development/s3_buckets.md`:
+**CDN URLs don't follow bucket-derived patterns.** From [`s3_buckets.md`](https://github.com/ROCm/TheRock/blob/main/docs/development/s3_buckets.md):
 
 | Bucket | S3 URL | CDN URL |
 |--------|--------|---------|
