@@ -73,6 +73,39 @@ At time of review:
 
 Foundation passing is a good early signal. Full validation depends on compiler-runtime and downstream stages completing.
 
+### 5. Build Log Size Comparison (gfx94X-dcgpu)
+
+Compared log file sizes between [before](https://therock-nightly-artifacts.s3.amazonaws.com/23578094439-linux/logs/gfx94X-dcgpu/index.html) (run 23578094439, main) and [after](https://therock-dev-artifacts.s3.amazonaws.com/23655164842-linux/logs/gfx94X-dcgpu/index.html) (run 23655164842, this PR). Top 10 size increases:
+
+```markdown
+| File | Before | After | Increase |
+|------|--------|-------|----------|
+| composable_kernel_build.log | 431 KB | 3 MB | ~2.6 MB |
+| rocm_smi_lib_build.log | 8 KB | 15 KB | ~7 KB |
+| rocSOLVER_build.log | 58 KB | 62 KB | ~4 KB |
+| rocWMMA_build.log | 179 KB | 183 KB | ~4 KB |
+| rocRAND_build.log | 81 KB | 83 KB | ~2 KB |
+| hipSPARSE_build.log | 414 KB | 416 KB | ~2 KB |
+| therock-SuiteSparse_configure.log | 14 KB | 16 KB | ~2 KB |
+| rocshmem_configure.log | 6 KB | 8 KB | ~2 KB |
+| rocBLAS_build.log | 123 KB | 124 KB | ~1 KB |
+| rocThrust_build.log | 91 KB | 92 KB | ~1 KB |
+```
+
+**composable_kernel_build.log** is the outlier (~7x increase). The new output is ~60+ `ld.lld` linker warnings, all the same pattern:
+
+```
+ld.lld: warning: <unknown>:0:0: failed to meet occupancy target given by
+'amdgpu-waves-per-eu' in '<mangled CK kernel>':
+desired occupancy was 2, final occupancy is 1
+```
+
+These hit grouped convolution backward-data/weight kernels across f16/f32/bf16 data types. Each warning includes a very long mangled template name, which accounts for the size blowup. These are **performance warnings, not correctness issues** — the linker is reporting that certain CK kernels couldn't achieve the requested wave occupancy (got 1 instead of 2). Likely the new `ld.lld` is more aggressive about reporting occupancy misses that the previous linker silently accepted.
+
+The remaining increases (items 2–10) are all small and within normal noise.
+
+Notable decreases: `amd-comgr_build.log` (5 KB → 2 KB), `therock-flatbuffers_build.log` (16 KB → 3 KB), `amd-llvm_build.log` (2 MB → 1 MB) — likely warnings eliminated by upstreamed fixes.
+
 ---
 
 ## Recommendations
