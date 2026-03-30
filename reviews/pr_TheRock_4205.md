@@ -18,13 +18,16 @@ Enables Triton Windows wheels in the PyTorch CI/release pipeline. The PR makes t
 
 ## Overall Assessment
 
-**✅ APPROVED** — Clean, well-scoped change. The package name switch from `triton` to `triton_windows` is consistently applied across all three files (build script, version detection, workflow). The version suffix and ccache support mirror the existing Linux patterns appropriately.
+**⚠️ CHANGES REQUESTED** — The build script and version detection changes are clean and consistent. However, the triton-windows checkout uses a single static commit pin (`ci_commit_pins/triton-windows.txt`) regardless of which pytorch release branch is being built. Unlike Linux — where the triton commit is derived from the torch checkout itself (nightly: `get_triton_pin(torch_dir)`, stable: release branch from `get_triton_version(torch_dir)`) — Windows always checks out the same triton-windows commit. A single triton-windows commit can't be expected to work across `release/2.9`, `release/2.10`, nightly, etc.
 
 **Strengths:**
 - All touchpoints updated consistently — no dangling references to the old `TRITON_WHEEL_NAME: "triton"` override
 - Version suffix handling mirrors the Linux `build_triton_linux()` pattern closely
 - Selective copying of `CMAKE_*_COMPILER_LAUNCHER` from the shared env is cleaner than copying the entire env dict (which would pull in Linux-specific vars)
 - The `write_torch_versions.py` change correctly tightens validation — triton is no longer optional on Windows
+
+**Blocking Issues:**
+- Stable builds will use the same triton-windows commit for every pytorch version — needs per-version pin resolution
 
 ---
 
@@ -56,24 +59,19 @@ No issues found. The `os` parameter (shadowing the module) is pre-existing and s
 
 **Overall:** Correct. Triton checkout, build flags, version output, and S3 promotion are all wired consistently.
 
-#### 💡 SUGGESTION: Stable triton checkout lacks `--require-related-commit`
+#### ❌ BLOCKING: Triton-windows uses a single static commit pin for all torch versions
 
-The stable checkout block for audio and vision both pass `--require-related-commit`:
-```yaml
-python ./external-builds/pytorch/pytorch_audio_repo.py checkout \
-    --checkout-dir ${{ env.CHECKOUT_ROOT }}/audio \
-    --torch-dir ${{ env.CHECKOUT_ROOT }}/torch \
-    --require-related-commit
-```
+[`pytorch_triton_repo.py`](https://github.com/ROCm/TheRock/blob/main/external-builds/pytorch/pytorch_triton_repo.py) on Windows always checks out the commit in `ci_commit_pins/triton-windows.txt` (lines 64–71), regardless of which pytorch release branch is being built. This means the same triton-windows commit is used for `release/2.9`, `release/2.10`, nightly, etc.
 
-The triton stable checkout does not:
-```yaml
-python ./external-builds/pytorch/pytorch_triton_repo.py checkout \
-    --checkout-dir ${{ env.CHECKOUT_ROOT }}/triton \
-    --torch-dir ${{ env.CHECKOUT_ROOT }}/torch
-```
+Compare with Linux, where the triton commit is derived from the torch checkout:
+- **Nightly:** `get_triton_pin(torch_dir)` reads `torch/.ci/docker/ci_commit_pins/triton.txt`
+- **Stable:** `get_triton_version(torch_dir)` reads `torch/.ci/docker/triton_version.txt` and derives a release branch
 
-This appears to be because [`pytorch_triton_repo.py` doesn't implement `--require-related-commit`](https://github.com/ROCm/TheRock/blob/main/external-builds/pytorch/pytorch_triton_repo.py). For stable releases, this means triton could be built from a commit that doesn't correspond to the pytorch release branch. Consider adding this support to `pytorch_triton_repo.py` as a follow-up if triton-windows has release branches.
+A single triton-windows commit can't be expected to work across pytorch versions. The workflow also doesn't pass `--release` for stable builds, so even if version-aware logic were added, it wouldn't be invoked.
+
+**Required action:** Either:
+1. Add per-version pin resolution to `pytorch_triton_repo.py` for Windows (analogous to the Linux `--release` path), or
+2. Scope the PR to nightly-only and skip the triton checkout in the stable block until per-version pins are supported.
 
 #### 📋 FUTURE WORK: Indentation inconsistency in stable checkout block
 
@@ -97,6 +95,10 @@ Both work but the difference between nightly (2-space continuation indent) and s
 
 ## Recommendations
 
+### ❌ REQUIRED (Blocking):
+
+1. Triton-windows commit pin must be version-aware for stable builds, or triton must be excluded from the stable checkout path until per-version pins are supported
+
 ### ✅ Recommended:
 
 1. Verify in a CI run that `triton_windows-*.whl` is produced and the `write_torch_versions` step picks it up correctly (the PR states "awaiting" test results)
@@ -104,11 +106,6 @@ Both work but the difference between nightly (2-space continuation indent) and s
 ### 💡 Consider:
 
 1. Adding triton uninstall before build for parity with Linux (low priority, mainly for local dev)
-2. Future `--require-related-commit` support in `pytorch_triton_repo.py` for stable release builds
-
-### 📋 Future Follow-up:
-
-1. Add `--require-related-commit` to `pytorch_triton_repo.py` once triton-windows has release branches that align with pytorch stable
 
 ---
 
@@ -124,6 +121,6 @@ Both work but the difference between nightly (2-space continuation indent) and s
 
 ## Conclusion
 
-**Approval Status: ✅ APPROVED**
+**Approval Status: ⚠️ CHANGES REQUESTED**
 
-Well-scoped change that consistently wires triton Windows builds through the CI pipeline. The package name transition from `triton` to `triton_windows` is complete across all touchpoints. No blocking issues. Recommend waiting for CI validation before merging since the triton build + version detection flow hasn't been exercised on Windows yet.
+The build script and version detection changes are solid — the `triton` → `triton_windows` transition is consistent across all touchpoints. The blocking issue is that `pytorch_triton_repo.py` uses a single static commit pin for all pytorch versions on Windows, so stable builds will check out a triton-windows commit that may be incompatible with the target pytorch release branch. This needs per-version pin resolution (like the Linux path) or the stable checkout should skip triton until that's implemented.
