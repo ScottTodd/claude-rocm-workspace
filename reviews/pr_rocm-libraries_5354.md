@@ -204,6 +204,140 @@ The "before-fix" tests in Mode A simulate the bug by constructing mock data and 
 
 ---
 
+## CI Artifact Inspection
+
+CI run [#23671466182](https://github.com/ROCm/rocm-libraries/actions/runs/23671466182?pr=5354)
+failed overall, but produced artifacts for two families. This is single-family CI
+(not multi-arch), so each workflow built for one GPU target without cooperative
+shards. We downloaded and inspected the `blas_lib` artifacts for gfx94X and
+gfx950 to validate the build-time layout.
+
+**Artifact indexes:**
+- [gfx94X](https://therock-ci-artifacts-external.s3.amazonaws.com/ROCm-rocm-libraries/23671466182-linux/index-gfx94X-dcgpu.html)
+- [gfx950](https://therock-ci-artifacts-external.s3.amazonaws.com/ROCm-rocm-libraries/23671466182-linux/index-gfx950-dcgpu.html)
+
+### Directory layout (extracted from archives)
+
+Both archives show the per-arch subdirectory layout working as intended:
+
+```
+$ xz -dc blas_lib_gfx94X-dcgpu.tar.xz | tar tf - | grep 'hipblaslt.*(ExtOp|Transform|extop|hsaco|lazy_Mapping|rr_custom)'
+math-libs/BLAS/hipBLASLt/stage/lib/hipblaslt/library/rr_custom_kernels.co
+math-libs/BLAS/hipBLASLt/stage/lib/hipblaslt/library/gfx942/Kernels.so-000-gfx942.hsaco
+math-libs/BLAS/hipBLASLt/stage/lib/hipblaslt/library/gfx942/extop_gfx942.co
+math-libs/BLAS/hipBLASLt/stage/lib/hipblaslt/library/gfx942/TensileLiteLibrary_lazy_Mapping.dat
+math-libs/BLAS/hipBLASLt/stage/lib/hipblaslt/library/gfx942/hipblasltTransform.hsaco
+math-libs/BLAS/hipBLASLt/stage/lib/hipblaslt/library/gfx942/hipblasltExtOpLibrary.dat
+math-libs/BLAS/hipSPARSELt/stage/lib/hipsparselt/library/gfx942/hipblasltTransform.hsaco
+math-libs/BLAS/hipSPARSELt/stage/lib/hipsparselt/library/gfx942/hipblasltExtOpLibrary.dat
+
+$ xz -dc blas_lib_gfx950-dcgpu.tar.xz | tar tf - | grep 'hipblaslt.*(ExtOp|Transform|extop|hsaco|lazy_Mapping|rr_custom)'
+math-libs/BLAS/hipBLASLt/stage/lib/hipblaslt/library/gfx950/extop_gfx950.co
+math-libs/BLAS/hipBLASLt/stage/lib/hipblaslt/library/gfx950/TensileLiteLibrary_lazy_Mapping.dat
+math-libs/BLAS/hipBLASLt/stage/lib/hipblaslt/library/gfx950/Kernels.so-000-gfx950.hsaco
+math-libs/BLAS/hipBLASLt/stage/lib/hipblaslt/library/gfx950/hipblasltTransform.hsaco
+math-libs/BLAS/hipBLASLt/stage/lib/hipblaslt/library/gfx950/hipblasltExtOpLibrary.dat
+math-libs/BLAS/hipBLASLt/stage/lib/hipblaslt/library/rr_custom_kernels.co
+math-libs/BLAS/hipSPARSELt/stage/lib/hipsparselt/library/gfx950/hipblasltTransform.hsaco
+math-libs/BLAS/hipSPARSELt/stage/lib/hipsparselt/library/gfx950/hipblasltExtOpLibrary.dat
+```
+
+All three problem artifacts are in per-arch subdirectories. The only file at the
+flat `library/` level is `rr_custom_kernels.co`.
+
+### Arch resolution
+
+gfx94X resolved to a single arch (`gfx942`), gfx950 resolved to a single arch
+(`gfx950`). This means `libraryDir()` correctly hit the `len(archs) == 1` branch,
+routing output into `library/<arch>/`.
+
+```
+$ xz -dc blas_lib_gfx94X-dcgpu.tar.xz | tar tf - | grep 'hipblaslt/library/' | grep -oP 'gfx\w+' | sort -u
+gfx942
+
+$ xz -dc blas_lib_gfx950-dcgpu.tar.xz | tar tf - | grep 'hipblaslt/library/' | grep -oP 'gfx\w+' | sort -u
+gfx950
+```
+
+### rr_custom_kernels.co (flat-layout overlap check)
+
+The only file remaining in flat `library/` is `rr_custom_kernels.co`. Byte-identical
+across families — safe to overlay:
+
+```
+$ sha256sum overlay_94X/hipblaslt/library/rr_custom_kernels.co overlay_950/hipblaslt/library/rr_custom_kernels.co
+efd0334ff473330155ad953c6bb2f9a5821c2f135e36f5b4ac9e0aca09832008  overlay_94X/hipblaslt/library/rr_custom_kernels.co
+efd0334ff473330155ad953c6bb2f9a5821c2f135e36f5b4ac9e0aca09832008  overlay_950/hipblaslt/library/rr_custom_kernels.co
+```
+
+### ExtOp metadata content
+
+Each arch's `hipblasltExtOpLibrary.dat` is properly keyed to only its own arch:
+
+```
+$ python -c "import msgpack; data = msgpack.unpackb(open('.../gfx942/hipblasltExtOpLibrary.dat','rb').read(), raw=False, strict_map_key=False); print(list(data.keys()), {k: list(v.keys()) for k,v in data.items()})"
+['gfx942'] {'gfx942': ['AMax', 'LayerNorm', 'Softmax']}
+
+$ python -c "import msgpack; data = msgpack.unpackb(open('.../gfx950/hipblasltExtOpLibrary.dat','rb').read(), raw=False, strict_map_key=False); print(list(data.keys()), {k: list(v.keys()) for k,v in data.items()})"
+['gfx950'] {'gfx950': ['LayerNorm', 'Softmax', 'AMax']}
+```
+
+### tensile_host.cpp guard validation
+
+The guard checks for `TensileLibrary_lazy_<processor>.dat`. The actual file
+produced by the build is `TensileLibrary_lazy_gfx942.dat` (and `_gfx950.dat`),
+which is present in the per-arch subdir alongside the `TensileLiteLibrary_lazy_Mapping.dat`.
+The guard would correctly detect the Tensile library presence and enter the subdir.
+
+### Key metadata file sizes (gfx942)
+
+```
+$ ls -lh overlay_94X/hipblaslt/library/gfx942/{hipblasltExtOpLibrary.dat,extop_gfx942.co,TensileLiteLibrary_lazy_Mapping.dat,TensileLibrary_lazy_gfx942.dat,hipblasltTransform.hsaco}
+ 1.4K  hipblasltExtOpLibrary.dat
+  41K  extop_gfx942.co
+  56K  TensileLiteLibrary_lazy_Mapping.dat
+ 407K  TensileLibrary_lazy_gfx942.dat
+ 425K  hipblasltTransform.hsaco
+```
+
+### File counts
+
+```
+gfx942 subdir: 1118 files
+gfx950 subdir:  448 files
+```
+
+### hipsparselt
+
+The hipsparselt artifacts also use per-arch layout:
+`hipSPARSELt/stage/lib/hipsparselt/library/gfx942/{hipblasltTransform.hsaco, hipblasltExtOpLibrary.dat}`
+
+### What this CI run cannot tell us
+
+- **No overlay test** — each family ran independently, not as cooperative shards
+  with overlay. We can see the per-arch subdirs are correct in isolation but
+  can't verify the overlay merges cleanly from a single CI run.
+- **No host library comparison** — both families share a single S3 key
+  (`host-blas_lib_generic.tar.xz`), so we can't compare `libhipblaslt.so`
+  across families. (The `host-blas` artifact turned out to be OpenBLAS,
+  not hipblaslt; `libhipblaslt.so` lives in `blas_lib` itself.)
+- **No runtime validation** — can't test that the per-arch path probe actually
+  loads correctly on hardware.
+
+### Conclusion from CI evidence
+
+The build-time layout change is working: all three formerly-conflicting
+artifacts are now in per-arch subdirectories, the only flat-level file
+(`rr_custom_kernels.co`) is byte-identical across families, and the Tensile
+guard file (`TensileLibrary_lazy_<arch>.dat`) is present for runtime
+discovery. The PR description's claim about "byte-for-byte identical
+artifacts" via `HIPBLASLT_DIST_TARGETS` does not match the actual
+implementation, which uses additive per-arch subdirectories instead — a
+different (and arguably better) approach, but the description should be
+updated to match.
+
+---
+
 ## Testing Recommendations
 
 - Run Mode A of `test_shard_convergence.py` (no build required) to validate the overlay simulation
@@ -217,4 +351,4 @@ The "before-fix" tests in Mode A simulate the bug by constructing mock data and 
 
 **Approval Status: ⚠️ CHANGES REQUESTED**
 
-The approach is well-designed — per-arch subdirectories with backward-compatible fallback is the right solution for shard overlay convergence. The one blocking item (hardcoded developer path in the test script) is a quick fix. The recommended items around PR description accuracy and code duplication should also be addressed before merge.
+The approach is well-designed — per-arch subdirectories with backward-compatible fallback is the right solution for shard overlay convergence. CI artifact inspection confirms the layout is working correctly in single-family builds. The one blocking item (hardcoded developer path in the test script) is a quick fix. The recommended items around PR description accuracy and code duplication should also be addressed before merge.
