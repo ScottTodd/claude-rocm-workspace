@@ -1,215 +1,163 @@
-# PR Review: #4168 — Split out index file generation from post upload script
+# PR Review: Split out index file generation from post upload script
 
-* **PR:** https://github.com/ROCm/TheRock/pull/4168
+* **PR:** [#4168](https://github.com/ROCm/TheRock/pull/4168)
 * **Author:** marbre (Marius Brehler)
-* **Base:** `main`
-* **Branch:** `users/marbre/post_build_index`
-* **Reviewed:** 2026-03-25
-* **Status:** Open
+* **Branch:** `users/marbre/post_build_index` → `main`
+* **Reviewed:** 2026-03-27
+* **Status:** OPEN
 
 ---
 
 ## Summary
 
-Removes client-side HTML index generation from `post_build_upload.py` and
-introduces a standalone `generate_s3_index.py` script for server-side index
-generation (to be called from an AWS Lambda handler). Also moves the
-`github_actions_api` import in `workflow_outputs.py` to a lazy import inside
-`_retrieve_bucket_info()` to keep the Lambda deployment package small.
+Removes client-side HTML index generation from `post_build_upload.py` and introduces a standalone `generate_s3_index.py` script designed to be called from an AWS Lambda handler. The script discovers directories under a CI run prefix and generates `index.html` files for each, supporting both S3 and local filesystem backends. The deferred import of `github_actions_api` in `workflow_outputs.py` keeps the Lambda deployment package lean.
 
-**Net changes:** +601 lines, -86 lines across 6 files
+**Net changes:** +670 lines, -88 lines across 6 files
 
 ---
 
 ## Overall Assessment
 
-**⚠️ CHANGES REQUESTED** — Clean separation of concerns and good architecture,
-but two issues with HTML/URL escaping should be fixed before merge.
+**✅ APPROVED** — Clean separation of concerns. The new script is well-structured, properly testable with the local backend, and the removal from `post_build_upload.py` is complete (index generation + upload + unused imports all removed). Tests are meaningful and test real behavior via `LocalStorageBackend`.
 
 **Strengths:**
-- Good architectural decision: server-side index generation decouples CI runners
-  from index page concerns
-- Layout-agnostic directory discovery (works with any nesting depth)
-- Lazy import of `github_actions_api` keeps Lambda deployment minimal
-- Comprehensive test coverage (local mode) for listing, discovery, HTML generation,
-  and integration
+
+- Good architecture: server-side indexing eliminates CI-time work and is layout-agnostic
+- Clean local/S3 backend abstraction — tests don't need S3 mocks
+- Proper HTML escaping via `html.escape()` and `urllib.parse.quote()`
+- Correct deferred import pattern for Lambda compatibility
+- Test mock patch target correctly updated to match deferred import semantics
+- `parent_href` parameter with run-root awareness (no parent link for root dirs)
 
 **Issues:**
-- Hand-rolled `_escape_html` should use stdlib `html.escape()`
-- `href` values need `urllib.parse.quote()`, not HTML escaping (broken links for
-  filenames with spaces/special chars)
-- One design note re: multi-arch composability
+
+- Pre-commit (black) is failing — minor formatting issues
 
 ---
 
 ## Detailed Review
 
-### 1. `build_tools/generate_s3_index.py`
+### 1. Pre-commit / Black Formatting Failure
 
-#### ⚠️ IMPORTANT: Per-directory indexes only — no recursive/flat listing
+### ❌ BLOCKING: Black formatting failure in CI
 
-The current implementation generates per-directory indexes that list only
-immediate files (`_list_files_local` and `_list_files_s3` both skip files
-in subdirectories). This is correct for single-arch CI where all logs are
-flat in `logs/{group}/`.
+CI shows black reformatted two files:
 
-For multi-arch CI, logs are nested: `logs/{stage}/{family}/`. A developer
-debugging a build failure will want to search across all stages (e.g., Ctrl+F
-for `_install.log` to find which subproject failed). The current per-directory
-indexes require opening each stage/family directory separately.
+1. **`workflow_outputs.py`**: Missing blank line after the deferred `from` import inside `_retrieve_bucket_info` (black wants a blank line between the import and the call).
+2. **`post_build_upload.py`**: Likely extra blank line or trailing whitespace from the removal.
 
-A recursive index at the top level (e.g., `logs/index.html` listing files
-like `math-libs/gfx1151/rocBLAS_build.log`) would preserve the "search
-across everything" workflow that single-arch CI provides today.
+This is the second push that still has this failure, so it's worth running `pre-commit run --all-files` locally.
 
-**Recommendation:** Consider adding a recursive listing mode for parent
-directories (where immediate children are subdirectories, not files). This
-could be a follow-up — the per-directory indexes are useful on their own,
-and the Lambda can be extended later. Just noting it as a design gap for
-multi-arch composability.
+**Required action:** Run `pre-commit run --all-files` and commit the formatting fixes.
 
-#### ⚠️ IMPORTANT: `_escape_html` should use stdlib `html.escape`
+### 2. `generate_s3_index.py` — New Script
 
-The hand-rolled `_escape_html()` reimplements `html.escape()` from the
-standard library. Use the stdlib version — it's battle-tested and handles
-edge cases (e.g., single quotes via `quote=True`).
+**Overall:** Well-organized with clear separation between HTML generation, S3 listing, local listing, and upload orchestration.
+
+### 💡 SUGGESTION: `_pretty_size` rounds down via `int()` truncation
+
+`int(size_bytes / factor)` truncates (e.g., 1536 bytes → `1 KB` rather than `1.5 KB`). This is fine for a directory listing, but worth noting as a conscious choice.
+
+### 💡 SUGGESTION: Variable shadowing in `run()`
+
+In `run()`, the loop variable `dir_prefix` shadows the outer scope:
 
 ```python
-from html import escape
-# Instead of: _escape_html(text)
-# Use:        escape(text)
+for dir_prefix in dirs:  # shadows the parameter-derived dir_prefix used above
 ```
 
-#### ⚠️ IMPORTANT: `href` values need URL encoding, not just HTML escaping
+Consider renaming the loop variable to `dir_path` or similar to avoid confusion during maintenance.
 
-`_generate_index_html` uses `_escape_html(entry.href)` for the `href`
-attribute. HTML escaping is necessary for the display text but insufficient
-for URLs — filenames with spaces, `#`, `?`, `%`, etc. will produce broken
-links. Use `urllib.parse.quote(entry.href, safe='/')` for the href.
+### 3. `post_build_upload.py` — Removal
 
-See commit `67a475287e` which fixed a similar issue.
+**Overall:** Clean removal. The `index_log_files`, `index_artifact_files`, and `run_command` functions are all gone along with their imports (`shlex`, `subprocess`, `indexer`). The `upload_artifacts` function no longer uploads `index.html` to the artifact index path.
 
-```python
-from urllib.parse import quote
-# href attribute:  quote(entry.href, safe='/')
-# display text:    escape(entry.name)
-```
+The artifact index URL is still used in the job summary link (line 271 on main via `output_root.artifact_index(artifact_group).https_url`) — this is correct since the Lambda will generate the index at that URL after upload.
 
-#### 💡 SUGGESTION: `_upload_html` takes `dry_run` but doesn't use it
+### 4. `workflow_outputs.py` — Deferred Import
 
-`_upload_html()` accepts a `dry_run` parameter (line 263) but never uses it —
-the dry-run behavior is already handled by the backend. The parameter can be
-removed.
+**Overall:** Correct approach. The module-level docstring addition clearly documents the Lambda packaging boundary. The deferred import inside the `if` guard is clean.
 
-```python
-def _upload_html(html: str, dest: StorageLocation, backend: StorageBackend, dry_run: bool) -> None:
-```
+### 5. Test Changes
 
-The `dry_run` parameter is passed through from `generate_index_for_directory`
-but the backend already handles dry-run mode internally.
+### `generate_s3_index_test.py`
 
-#### 💡 SUGGESTION: `generate_index_for_directory` has mixed abstraction levels
+Good test coverage using `LocalStorageBackend` for integration tests — avoids S3 mocking entirely. Tests cover:
+- Immediate listing (files + subdirs, excluding index.html)
+- Missing directory handling
+- Sorted order
+- Directory discovery at various depths
+- Single-arch and multi-arch layouts
+- Empty directory behavior
+- HTML content (entries, parent links, escaping)
 
-The function takes both `s3_client` and `staging_dir` as optional kwargs, with
-the caller responsible for knowing which to pass. This works but means every
-caller needs to implement the same if/else dispatch. Consider whether the
-backend abstraction could be extended to handle listing (not just upload), or
-at least document the mutual exclusivity clearly.
+### ⚠️ IMPORTANT: No test for `_discover_dirs_with_files_local` excluding `index.html`
 
-This is fine for now since there are only two callers (CLI `run()` and the
-future Lambda handler).
+`_discover_dirs_with_files_local` skips `index.html` files when discovering directories. This is important behavior (prevents stale index.html from creating phantom directory entries on re-indexing), but there's no test that verifies a directory containing *only* `index.html` is excluded from results.
 
-### 2. `build_tools/github_actions/post_build_upload.py`
+**Recommendation:** Add a test case where a directory contains only `index.html` and verify it's not in the discovered dirs.
 
-Clean removal. The `index_log_files()`, `index_artifact_files()`,
-`run_command()`, and the `indexer` import are all gone. The artifact index
-upload (`artifact_index(artifact_group)`) is also removed since index pages
-are now server-side.
+### 💡 SUGGESTION: No test for the S3 listing paths
 
-The `write_gha_build_summary` still references `log_index_url` and
-`artifact_index` for building summary links. These URLs will now point to
-server-generated pages. This should still work as long as the Lambda runs
-before anyone clicks the links — which is fine since the Lambda is triggered
-by PutObject events.
+The S3 listing functions (`_list_files_s3`, `_discover_dirs_with_files_s3`) have no unit tests. The local equivalents are well-tested, and S3 tests would require mocking boto3, so this is understandable — but it's a gap worth noting.
 
-### 3. `build_tools/_therock_utils/workflow_outputs.py`
+### `post_build_upload_test.py`
 
-Lazy import change is clean and correct. The import only runs when
-`workflow_run_id` is provided, which doesn't happen in the Lambda path.
+Correctly updated: removed `index.html` creation in test setup and flipped the assertion from `assertTrue` to `assertFalse` for the artifact index path.
 
-### 4. Test changes
+### `workflow_outputs_test.py`
 
-#### `build_tools/tests/generate_s3_index_test.py`
+Mock patch target correctly updated to `github_actions.github_actions_api.gha_query_workflow_run_by_id` (the definition site) since the import is now deferred. Comment explains the reasoning clearly.
 
-Good coverage of local-mode listing, discovery, HTML generation, and
-integration. Tests both single-arch and multi-arch layouts.
+### 6. Architecture — Lambda Integration Surface
 
-The mock patch path in `workflow_outputs_test.py` correctly updates from
-`_therock_utils.workflow_outputs.gha_query_workflow_run_by_id` to
-`github_actions.github_actions_api.gha_query_workflow_run_by_id` to match
-the lazy import location.
+### 📋 FUTURE WORK: Lambda handler not included
 
-#### `build_tools/github_actions/tests/post_build_upload_test.py`
+The PR description notes the Lambda handler is not part of this PR. The function signature of `generate_index_for_directory` is clean for Lambda use — `bucket`, `dir_prefix`, `backend`, and `s3_client` can all be provided by the handler.
 
-Test updates are minimal and correct — removes `index.html` creation from
-test fixtures and flips the assertion from `assertTrue` to `assertFalse`
-for the artifact index path.
-
----
-
-## Composability with Multi-Arch Log Uploads
-
-We're working on `post_stage_upload.py` (branch `multi-arch-log-upload`)
-which uploads logs to `logs/{stage_name}/` or `logs/{stage_name}/{family}/`.
-This PR's `generate_s3_index.py` already handles both layouts via
-`_discover_dirs_with_files_s3` — it finds all directories at any depth that
-contain files and generates an index for each. The two PRs compose cleanly.
-
-The one gap is the recursive index discussed above — a parent `logs/index.html`
-that lists files from all subdirectories. This would bridge the UX gap between
-single-arch (flat, searchable) and multi-arch (nested, browsable). Can be a
-follow-up.
+One note: `_discover_dirs_with_files_s3` lists all objects under the run prefix (full enumeration). For the Lambda (triggered per-object PutObject event), only the parent directory of the uploaded object needs indexing, so `generate_index_for_directory` is the right entry point — `run()` and the discovery functions are CLI-only. This is a clean separation.
 
 ---
 
 ## Recommendations
 
+### ❌ REQUIRED (Blocking):
+
+1. Fix black formatting failures (run `pre-commit run --all-files`)
+
 ### ✅ Recommended:
-1. Replace `_escape_html()` with `html.escape()` from stdlib
-2. Use `urllib.parse.quote(href, safe='/')` for `href` attributes instead of
-   HTML escaping (filenames with spaces/special chars will produce broken links)
+
+1. Add a test case for `_discover_dirs_with_files_local` where a directory contains only `index.html` — verify it's excluded
 
 ### 💡 Consider:
-1. Remove unused `dry_run` parameter from `_upload_html()`
-2. Add a note/TODO about recursive parent indexes for multi-arch composability
+
+1. Rename loop variable `dir_prefix` in `run()` to avoid shadowing
 
 ### 📋 Future Follow-up:
-1. Recursive index generation for parent directories (bridges single-arch
-   searchability with multi-arch nesting)
-2. Lambda handler deployment (noted as out of scope in PR description)
-3. Removal of `third-party/indexer.py` (noted as out of scope)
+
+1. Lambda handler implementation (noted as out of scope)
+2. Removal of third-party `indexer.py` script (noted as out of scope)
 
 ---
 
 ## Testing Recommendations
 
+Run the tests listed in the PR description:
 ```bash
 python -m pytest build_tools/tests/generate_s3_index_test.py \
                  build_tools/tests/workflow_outputs_test.py \
                  build_tools/github_actions/tests/post_build_upload_test.py
 ```
 
-Also test composability with `post_stage_upload.py` once both PRs land:
-upload stage logs, then run `generate_s3_index.py` against the same
-output directory to verify indexes are generated for the nested layout.
+Verify pre-commit passes:
+```bash
+pre-commit run --all-files
+```
 
 ---
 
 ## Conclusion
 
-**Approval Status: ⚠️ CHANGES REQUESTED**
+**Approval Status: ✅ APPROVED** (pending pre-commit fix)
 
-Well-structured extraction of index generation to a standalone, server-side
-script. Composes cleanly with our multi-arch log upload work. Fix the escaping
-issues (`html.escape` + `urllib.parse.quote` for hrefs), then this is good to
-merge.
+Solid PR that cleanly separates index generation from the upload pipeline. The only blocking issue is the black formatting failure in CI, which is a trivial fix. The architecture is sound for the Lambda integration described in the PR body. The test coverage is good, with one recommended addition for the index.html exclusion behavior.
