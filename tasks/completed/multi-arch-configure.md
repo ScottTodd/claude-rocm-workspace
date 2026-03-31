@@ -5,10 +5,10 @@ repositories:
 
 # Multi-Arch Configure: Source-Aware CI Configuration
 
-- **Status:** Ready to send upstream PR
+- **Status:** Complete (PR #4123 merged 2026-03-31)
 - **Priority:** P1 (High)
 - **Started:** 2026-03-11
-- **Target:** TBD
+- **Completed:** 2026-03-31
 
 ## Overview
 
@@ -1220,4 +1220,16 @@ it's worth noting.
 
 ## Completion Notes
 
-<!-- Fill this in when task is done -->
+PR #4123 merged 2026-03-31. Delivered:
+- `configure_multi_arch_ci.py`: 6-step pipeline replacing the multi-arch
+  codepath in `configure_ci.py` (~920 lines, 90% coverage, 43 tests)
+- `configure_multi_arch_ci_summary.py`: rich step summary formatting
+- `setup_multi_arch.yml`: new setup workflow (reads GITHUB_EVENT_PATH directly)
+- Removed ~500 lines of multi-arch code from `configure_ci.py`
+- `ci:run-multi-arch` label gate for PR triggers during transition
+
+Follow-ups tracked separately:
+- Phases 4-6 (topology-driven stage decisions, prebuilt integration, test determination)
+- PR trigger policy expansion / deprecate non-multi-arch CI (#3340)
+- PR #3653 dataclass migration (when it lands)
+- `run_functional_tests` port
