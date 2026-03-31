@@ -5,7 +5,7 @@ repositories:
 
 # Multi-Arch Migration
 
-- **Status:** In progress
+- **Status:** Completed
 - **Priority:** P1 (High)
 - **Started:** 2026-03-25
 - **Tracking:** #3337 (pre-submit enablement), parent #3336 (extend multi-arch CI)
