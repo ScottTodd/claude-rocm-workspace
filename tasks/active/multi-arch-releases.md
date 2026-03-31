@@ -381,6 +381,18 @@ everything, and has a final "promote" gate.
   environment protection rules (manual approval) or complex conditional
   logic to achieve the same thing.
 
+**Related precedent: CI vs. release pytorch workflows.** The same CI/CD
+divergence already exists at the pytorch level.
+`build_portable_linux_pytorch_wheels_ci.yml` installs ROCm via
+`--find-links` (CI artifacts), builds only torch, and skips S3 upload.
+`build_portable_linux_pytorch_wheels.yml` (release) installs via
+`--index-url` (CloudFront CDN), builds the full suite (torchvision,
+torchaudio, triton), and handles staging/promotion. They share
+`build_prod_wheels.py` for build logic but diverge on plumbing. See
+#3291 for convergence plans. This pattern — shared build scripts,
+separate workflow plumbing for CI vs. release — is consistent with our
+chosen approach.
+
 If test infrastructure stabilizes significantly, revisiting this decision
 would be reasonable — a monolithic workflow is simpler when all jobs are
 fast and reliable. The separate-workflow approach is the pragmatic choice
