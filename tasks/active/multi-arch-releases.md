@@ -34,30 +34,46 @@ multi_arch_ci.yml                         (top-level, TheRock)
   └── ci_summary
 ```
 
-### Proposed release call chain
+### Proposed release job graph
+
+Follows the existing release pattern: separate workflows connected by
+`benc-uk/workflow-dispatch`, each independently retryable. Tests are NOT
+in the critical path — they run separately (via CI or a dedicated test
+workflow). This matches the current non-multi-arch release pipeline.
 
 ```
-rockrel: multi_arch_release_portable_linux.yml     (orchestrator)
+Workflow 1: rockrel/multi_arch_release_portable_linux.yml (orchestrator)
   │
-  ├── TheRock: setup_multi_arch.yml                (matrix + version + infra config)
-  │     └── NEW: release_type input → computes iam_role, artifacts_bucket
+  ├── TheRock: setup_multi_arch.yml           (matrix + version + infra config)
+  │     └── NEW: release_type → computes iam_role, artifacts_bucket
   │
-  ├── TheRock: multi_arch_ci_linux.yml             (build + test)
-  │     └── NEW: iam_role, artifacts_bucket inputs → threaded to all build jobs
+  ├── TheRock: multi_arch_build_portable_linux.yml  (build all stages)
+  │     └── iam_role, artifacts_bucket threaded to each stage job
   │
-  └── NEW: publish job(s)
-        ├── Phase 1: Copy tarballs → therock-{type}-tarball/{s3_subdir}/
-        ├── Phase 2: Copy python packages → therock-{type}-python/{s3_subdir}/
-        └── (No index generation — moving server-side per #3344)
+  ├── publish tarballs → therock-{type}-tarball/{s3_subdir}/
+  │
+  ├── build python packages → publish python → therock-{type}-python/{s3_subdir}/
+  │
+  ├── dispatch: pytorch wheels workflow (per-family)
+  ├── dispatch: jax wheels workflow (per-family)
+  └── dispatch: native packages workflow (deb + rpm)
 ```
 
-### Two-phase publishing: staging → production
+Each dispatched workflow receives `run_id`, `release_type`, `rocm_version`,
+`amdgpu_family`, etc. as inputs — same pattern as existing releases.
+
+### Publishing: staging → production
 
 Nightly/prerelease: publish to **staging** subdir immediately after build,
 then copy to **production** subdir only after tests pass. Users can choose
 between "latest build" (staging) and "latest tested" (production).
+Promotion is a separate step (manual or gated on test results from CI).
 
 Dev releases: single publish (no staging/production distinction).
+
+Tests run separately and don't block the release pipeline. This avoids
+the retryability and queue bottleneck problems that would come from putting
+flaky/slow tests in the critical path.
 
 ## Workstreams
 
@@ -321,6 +337,54 @@ Single-stage releases continue using `v2`. Both coexist during migration.
 4. **Consolidate with `get_s3_config.py`**: The native package workflow's
    `get_s3_config.py` has overlapping bucket/role logic. Should we consolidate
    into shared code in `configure_multi_arch_ci.py` or a shared utility?
+
+## Alternatives Considered
+
+### Single monolithic workflow (build + test + package in one graph)
+
+The multi-arch CI pipeline (`multi_arch_ci_linux.yml`) runs builds, tests,
+python packaging, and pytorch builds as jobs within a single workflow. We
+could do the same for releases: one workflow that builds ROCm, runs tests,
+builds all downstream packages (python, pytorch, jax, native), publishes
+everything, and has a final "promote" gate.
+
+**Why it's appealing:**
+- Matches the CI pipeline structure — CI and CD use the same job graph,
+  reducing divergence and making it easier to reason about "what ran."
+- Single workflow run = single place to check status. No hunting across
+  multiple dispatched workflow runs to see if a release succeeded.
+- Job dependencies are explicit in YAML — no cross-workflow coordination.
+
+**Why we chose separate workflows instead:**
+- **Retryability.** GitHub Actions "re-run failed jobs" is coarse-grained
+  within a workflow. If a pytorch wheel build fails after 4 hours, re-running
+  it may also re-run unrelated failed jobs. With separate workflows, each
+  is independently retryable without touching the others.
+- **Test instability.** Current tests are flaky/unstable. Putting them in
+  the critical path of the release workflow means flaky failures block
+  everything downstream. With separate workflows, tests can run in parallel
+  (or separately) without blocking package builds or publishing.
+- **Queue bottlenecks.** Different jobs need different runner types with
+  different queue depths. A 6-hour test queue on one machine type shouldn't
+  bottleneck pytorch wheel builds that use a different runner. Monolithic
+  workflows serialize these waits.
+- **Incremental testing expansion.** We want to run more tests for nightly
+  releases in the future. Adding slow/comprehensive test jobs to a
+  monolithic release workflow makes the whole pipeline slower and more
+  fragile. With separate workflows, adding tests is low-risk.
+- **Existing precedent.** The current (non-multi-arch) release pipeline
+  already uses `benc-uk/workflow-dispatch` to trigger pytorch, jax, and
+  native package workflows separately. This is a proven pattern.
+- **Promotion flexibility.** Separating "publish to staging" from "promote
+  to production" lets us gate promotion on test results without blocking
+  the build/publish pipeline. A monolithic workflow would need GitHub
+  environment protection rules (manual approval) or complex conditional
+  logic to achieve the same thing.
+
+If test infrastructure stabilizes significantly, revisiting this decision
+would be reasonable — a monolithic workflow is simpler when all jobs are
+fast and reliable. The separate-workflow approach is the pragmatic choice
+given current constraints.
 
 ## Script inventory: `WorkflowOutputRoot.from_workflow_run()` callsites
 
