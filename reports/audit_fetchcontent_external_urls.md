@@ -120,6 +120,13 @@ their own copies from GitHub. Could be fixed systematically with
 `FETCHCONTENT_SOURCE_DIR_*` or `FETCHCONTENT_URL_*` overrides at the
 super-project level, or by ensuring `find_package` resolves first.
 
+Current `third-party/` contents for reference: boost, Catch2, eigen, fftw3,
+flatbuffers, fmt, frugally-deep, FunctionalPlus, googletest, grpc, host-blas
+(OpenBLAS), libdivide, msgpack-cxx, nlohmann-json, openmpi, simde, spdlog,
+SuiteSparse, yaml-cpp.
+
+Subproject fetches that duplicate these mirrors:
+
 - googletest (~11 locations)
 - fmt (2 locations)
 - Catch2
@@ -127,11 +134,13 @@ super-project level, or by ensuring `find_package` resolves first.
 - nlohmann-json
 - yaml-cpp
 - libdivide
+- boost (rocprofiler-systems/cmake/DyninstBoost.cmake)
+- spdlog (hipdnn/cmake/Dependencies.cmake)
 
 ### P2 — Not yet mirrored (need S3 upload + patch or override)
 
-- nanobind, cereal, perfetto, mongoose, curl, boost, lapack, getopt, spdlog,
-  benchmark, check, pybind11
+- nanobind, cereal, perfetto, mongoose, curl, lapack, getopt, benchmark,
+  check, pybind11
 
 ### P3 — rocm-cmake (structural)
 
