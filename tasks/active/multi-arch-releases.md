@@ -1,7 +1,7 @@
 # Multi-Arch Release Workflows
 
 **Tracking issue:** https://github.com/ROCm/TheRock/issues/3334
-**Status:** Design
+**Status:** In progress — workstream 1 (bucket/role plumbing)
 
 ## Goal
 
@@ -485,3 +485,88 @@ Scripts that DON'T need changes (read from other runs via API lookup):
 
 Script that uses it for summary formatting (read-only, cosmetic):
 - `configure_multi_arch_ci_summary.py`
+
+## Worklog
+
+### Approach 1: Explicit bucket/role plumbing (`multi-arch-release-type-explicit`)
+
+Commit `9f69d16f`. 15 files, +391/-35.
+
+- Added `InfraConfig` dataclass + `compute_infra_config()` to `configure_multi_arch_ci.py`
+- Added `bucket` param to `WorkflowOutputRoot.from_workflow_run()` and
+  `create_backend_from_env()`
+- Added `--bucket` CLI arg to `artifact_manager.py` and `post_stage_upload.py`
+- `setup_multi_arch.yml` outputs `artifacts_bucket` + `artifacts_bucket_iam_role`
+- Threaded both through the full workflow chain (Linux + Windows)
+- Leaf workflows use `inputs.artifacts_bucket_iam_role` for AWS credentials
+  (no `github.repository` guard needed)
+
+**Pros:** Fully explicit — no env var inference at point of use.
+**Cons:** Large surface area, touches Python code that PR #4199 also modifies.
+Friction: `external_repo` still inferred from env (noted with TODO).
+
+### Approach 2: Implicit bucket via RELEASE_TYPE env var (`multi-arch-release-type-implicit`)
+
+Commits `8e04296f`, `a7427d17`, `3d378139`, `cafa2eee`, `8b8b5191`. 7-8 workflow files only.
+
+- Thread `release_type` input through workflows
+- Set `RELEASE_TYPE` env var on push/upload steps → existing
+  `_retrieve_bucket_info()` in `workflow_outputs.py` picks the right bucket
+- "Determine IAM role" bash step selects the right OIDC role
+- Extracted into `configure_aws_artifacts_credentials` composite action
+- Test run: https://github.com/ROCm/TheRock/actions/runs/23873686956
+  - Found: RELEASE_TYPE needed in setup_multi_arch.yml for summary URLs
+  - Found: ccache preset should vary by release_type (TODO added)
+
+**Pros:** Much smaller change, no Python modifications, ships fast.
+**Cons:** Bucket selection implicit (env var), IAM role in bash (untestable),
+duplicates logic that exists in multiple places.
+
+### Approach 3: s3_buckets inventory library (current direction)
+
+Building on approach 2. Added `build_tools/_therock_utils/s3_buckets.py` as
+centralized bucket inventory (code version of `docs/development/s3_buckets.md`).
+
+- `S3BucketConfig` dataclass: name, region, iam_role, iam_namespace
+- `s3_bucket_configs` list: full inventory of CI + release buckets
+- `get_artifacts_bucket_config()`: lookup with validation (release_type,
+  repo, fork, event_name)
+- `ALLOWED_RELEASE_REPOS`: shared constant for repo validation
+- `get_artifacts_iam_role.py`: thin CLI wrapper reading GHA env vars,
+  writes iam_role + aws_region to GITHUB_OUTPUT
+- `configure_aws_artifacts_credentials` composite action calls the script
+
+**Next steps:**
+- Tests for `s3_buckets.py` and `get_artifacts_iam_role.py`
+- Wire `s3_buckets.py` into `workflow_outputs.py` (replace `_retrieve_bucket_info`)
+- Coordinate with PR #4199 on `StorageConfig` using `s3_buckets.py`
+- Squash/clean up commits on the implicit branch before PR
+
+**Open design questions:**
+
+1. **`_is_fork_pr()` location:** Currently in `get_artifacts_iam_role.py`.
+   Should it move to `github_actions_api.py`? It reads `GITHUB_EVENT_PATH`
+   and `GITHUB_REPOSITORY` — general-purpose GHA utility, not specific to
+   artifacts.
+
+2. **`get_artifacts_bucket_config()` env-var reading:** Currently the script
+   (`get_artifacts_iam_role.py`) reads GHA env vars and passes them as args.
+   Should `get_artifacts_bucket_config()` have a `_for_env()` variant that
+   reads directly from the environment? Would reduce boilerplate in callers
+   but couples the library to GHA.
+
+3. **Interaction with `_retrieve_bucket_info()`:** If `workflow_outputs.py`
+   switches to use `s3_buckets.py`, it would also need fork detection and
+   env-var reading. The answers to questions 1 and 2 shape whether that's
+   clean (shared `_is_fork_pr()` + `_for_env()`) or messy (duplicated env
+   reading).
+
+4. **CDN/HTTPS URL support on `S3BucketConfig`:** The bucket inventory in
+   `s3_buckets.md` includes CloudFront CDN URLs for each release bucket
+   (e.g. `rocm.devreleases.amd.com/v2/`). PR #4199 defines `StorageConfig`
+   with `s3_url_schema`, `https_url_schema`, `bucket_schema`. Should
+   `S3BucketConfig` grow CDN URL fields so it becomes the single source of
+   truth for both bucket identity and access URLs? Or should that stay in
+   `StorageConfig`/`StorageLocation`? Need to consider the design space
+   before extending `S3BucketConfig` further — it could either stay a
+   simple bucket+role struct or become the general-purpose storage config.
