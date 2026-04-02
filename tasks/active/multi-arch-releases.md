@@ -12,9 +12,12 @@ infrastructure, uploading artifacts to release S3 buckets
 from the artifacts bucket to package-specific buckets (`therock-dev-tarball`,
 `therock-dev-python`).
 
-Release workflows live in **rockrel** (`ROCm/rockrel`) for credential
-isolation. Build workflows in TheRock are modified to accept explicit
-bucket/role configuration computed once in setup.
+Release workflows (including dev release dispatch) live in **TheRock** to
+keep workflow code close together. **rockrel** has thin wrappers that run
+on a schedule and set nightly/prerelease release type — rockrel owns the
+schedule/triggering/run history for nightly and prerelease releases, not the
+workflow logic itself. Build workflows in TheRock are modified to accept
+explicit bucket/role configuration computed once in setup.
 
 ## Architecture
 
@@ -42,12 +45,12 @@ in the critical path — they run separately (via CI or a dedicated test
 workflow). This matches the current non-multi-arch release pipeline.
 
 ```
-Workflow 1: rockrel/multi_arch_release_portable_linux.yml (orchestrator)
+TheRock: multi_arch_release_portable_linux.yml    (release workflow, manual dispatch)
   │
-  ├── TheRock: setup_multi_arch.yml           (matrix + version + infra config)
-  │     └── NEW: release_type → computes iam_role, artifacts_bucket
+  ├── setup_multi_arch.yml                        (matrix + version + infra config)
+  │     └── release_type → computes iam_role, artifacts_bucket
   │
-  ├── TheRock: multi_arch_build_portable_linux.yml  (build all stages)
+  ├── multi_arch_build_portable_linux.yml         (build all stages)
   │     └── iam_role, artifacts_bucket threaded to each stage job
   │
   ├── publish tarballs → therock-{type}-tarball/{s3_subdir}/
@@ -57,10 +60,19 @@ Workflow 1: rockrel/multi_arch_release_portable_linux.yml (orchestrator)
   ├── dispatch: pytorch wheels workflow (per-family)
   ├── dispatch: jax wheels workflow (per-family)
   └── dispatch: native packages workflow (deb + rpm)
+
+rockrel: multi_arch_release_portable_linux.yml    (thin wrapper, schedule only)
+  └── calls TheRock workflow with release_type=nightly (or prerelease)
 ```
 
 Each dispatched workflow receives `run_id`, `release_type`, `rocm_version`,
 `amdgpu_family`, etc. as inputs — same pattern as existing releases.
+
+**Workflow location rationale:** Release workflow logic lives in TheRock so
+it's close to the build workflows it calls and can be manually dispatched
+for dev releases. rockrel owns schedule triggers and nightly/prerelease
+run history — its workflows are thin wrappers that set release_type and
+call the TheRock workflow.
 
 ### Publishing: staging → production
 
@@ -85,6 +97,18 @@ environment. Currently `workflow_outputs.py` reads `RELEASE_TYPE`,
 This is fragile and doesn't generalize to cross-repo (rockrel) workflows.
 
 **Approach: compute once in setup, pass explicitly everywhere.**
+
+**Scope: artifacts bucket only.** The setup-computed config covers the
+*artifacts bucket* (`therock-ci-artifacts`, `therock-dev-artifacts`, etc.)
+where build outputs (tarballs, logs, packages) are stored during a workflow
+run. All artifacts buckets are in the same AWS account and region.
+
+The downstream *release buckets* (`therock-dev-python`, `therock-dev-tarball`,
+`therock-nightly-packages`, etc.) are a separate concern — some are in a
+different AWS account and region. The publish jobs that copy from artifacts
+to release buckets will handle their own bucket/role configuration. We
+intentionally do NOT plumb a full list of release bucket configs through
+the build pipeline.
 
 #### 1a. `configure_multi_arch_ci.py` computes infra config
 
@@ -225,15 +249,23 @@ After:
       ...
 ```
 
-### Workstream 2: Release orchestrator (rockrel)
+### Workstream 2: Release workflows
 
 Depends on workstream 1 being complete.
 
-**New file in rockrel:**
-`multi_arch_release_portable_linux.yml`
+**New file in TheRock:** `multi_arch_release_portable_linux.yml`
+
+The release workflow lives in TheRock alongside the build workflows it calls.
+It supports manual `workflow_dispatch` for dev releases and can be called by
+rockrel wrappers for nightly/prerelease.
 
 ```yaml
 on:
+  workflow_call:
+    inputs:
+      release_type:
+        type: string
+        required: true
   workflow_dispatch:
     inputs:
       release_type:
@@ -252,34 +284,62 @@ on:
       ref:
         type: string
         default: ''
-  schedule:
-    - cron: '0 04 * * *'  # nightly
 
 jobs:
   setup:
-    uses: ROCm/TheRock/.github/workflows/setup_multi_arch.yml@main
+    uses: ./.github/workflows/setup_multi_arch.yml
     with:
-      release_type: ${{ inputs.release_type || 'nightly' }}
+      release_type: ${{ inputs.release_type }}
 
-  linux_build_and_test:
+  build:
     needs: setup
-    uses: ROCm/TheRock/.github/workflows/multi_arch_ci_linux.yml@main
+    uses: ./.github/workflows/multi_arch_build_portable_linux.yml
     with:
-      build_config: ${{ needs.setup.outputs.linux_build_config }}
-      rocm_package_version: ${{ needs.setup.outputs.rocm_package_version }}
-      test_type: ${{ needs.setup.outputs.test_type }}
+      # ... build config from setup ...
       iam_role: ${{ needs.setup.outputs.iam_role }}
       artifacts_bucket: ${{ needs.setup.outputs.artifacts_bucket }}
 
   publish_tarballs:
-    needs: [linux_build_and_test]
+    needs: [build]
     # Copy from therock-{type}-artifacts to therock-{type}-tarball
+    # This job handles its own release bucket credentials (possibly
+    # different AWS account/region from the artifacts bucket)
     ...
 
   publish_python:
-    needs: [linux_build_and_test]
+    needs: [build]
     # Copy from therock-{type}-artifacts to therock-{type}-python
     ...
+```
+
+**New file in rockrel:** `multi_arch_release_portable_linux.yml`
+
+Thin wrapper — owns the nightly schedule and run history, delegates to TheRock.
+
+```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        type: choice
+        options: [nightly, prerelease]
+        default: nightly
+      ref:
+        type: string
+        default: ''
+  schedule:
+    - cron: '0 04 * * *'  # nightly
+
+jobs:
+  release:
+    uses: ROCm/TheRock/.github/workflows/multi_arch_release_portable_linux.yml@main
+    secrets: inherit
+    with:
+      release_type: ${{ inputs.release_type || 'nightly' }}
+    permissions:
+      contents: read
+      actions: write
+      id-token: write
 ```
 
 ### Workstream 3: Publish jobs
@@ -296,10 +356,16 @@ Staging → production promotion:
 
 ### IAM / OIDC Changes
 
-- Update trust policies for `therock-dev`, `therock-nightly`,
-  `therock-prerelease` roles to accept OIDC from `ROCm/rockrel`
 - The `github.repository == 'ROCm/TheRock'` guard is eliminated entirely
-  (replaced by `if: inputs.iam_role != ''`)
+  for artifacts bucket access (replaced by `if: inputs.iam_role != ''`)
+- `therock-ci` and `therock-{dev,nightly,prerelease}` roles already trust
+  `ROCm/TheRock` — no change needed for the artifacts bucket path since
+  release workflows live in TheRock
+- rockrel's thin wrappers call TheRock workflows via `workflow_call`, so the
+  jobs run in TheRock's context — OIDC tokens come from `ROCm/TheRock`
+- Publish jobs that write to release buckets in other AWS accounts/regions
+  will need their own IAM role configuration (separate from the artifacts
+  bucket role computed in setup)
 
 ### Name Collision Avoidance
 
@@ -309,14 +375,17 @@ Single-stage releases continue using `v2`. Both coexist during migration.
 ## MVP Scope
 
 **MVP:**
-1. Workstream 1: explicit bucket/role plumbing
-2. Workstream 2: rockrel orchestrator (tarballs only, dev release_type)
-3. Manual `workflow_dispatch` only (no schedule yet)
+1. Workstream 1: explicit bucket/role plumbing (artifacts bucket only)
+2. Workstream 2: release workflow in TheRock (tarballs, dev release_type,
+   manual dispatch)
+3. Coordinate with PR #4199 (StorageConfig refactor) on workflow_outputs.py
 
 **Follow-up:**
-- Workstream 3: publish jobs
+- Workstream 3: publish jobs (copy artifacts → release buckets, handling
+  cross-account/cross-region credentials)
 - Python package publishing
-- Nightly schedule + prerelease support
+- rockrel nightly schedule wrapper
+- Prerelease support
 - Windows multi-arch releases
 - PyTorch/JAX wheel publishing
 - Migrate non-multi-arch workflows to explicit bucket plumbing
