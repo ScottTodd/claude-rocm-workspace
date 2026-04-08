@@ -1,7 +1,7 @@
 # Multi-Arch Release Workflows
 
 **Tracking issue:** https://github.com/ROCm/TheRock/issues/3334
-**Status:** In progress — workstream 1 (bucket/role plumbing)
+**Status:** In progress — workstream 1 PR #4386 (draft), workstream 1b (release_type plumbing) needs rebase
 
 ## Goal
 
@@ -524,49 +524,34 @@ duplicates logic that exists in multiple places.
 
 ### Approach 3: s3_buckets inventory library (current direction)
 
-Building on approach 2. Added `build_tools/_therock_utils/s3_buckets.py` as
-centralized bucket inventory (code version of `docs/development/s3_buckets.md`).
+Building on approach 2. Landed as two stacked branches:
+
+**Branch `users/scotttodd/s3-iam-lookup` — PR #4386 (draft)**
+
+Centralizes bucket selection into `s3_buckets.py`, no-op for current workflows:
 
 - `S3BucketConfig` dataclass: name, region, iam_role, iam_namespace
 - `s3_bucket_configs` list: full inventory of CI + release buckets
-- `get_artifacts_bucket_config()`: lookup with validation (release_type,
-  repo, fork, event_name)
-- `ALLOWED_RELEASE_REPOS`: shared constant for repo validation
-- `get_artifacts_iam_role.py`: thin CLI wrapper reading GHA env vars,
-  writes iam_role + aws_region to GITHUB_OUTPUT
+- `get_artifacts_bucket_config()`: pure lookup with validation
+- `get_artifacts_bucket_config_for_workflow_run()`: GHA-aware wrapper
+  (reads RELEASE_TYPE env, event payload for fork detection, optional API lookup)
+- `_is_current_run_pr_from_fork()`: fork detection from event payload
+- `write_artifacts_bucket_info.py`: thin CLI writing bucket/iam_role/aws_region to GITHUB_OUTPUT
 - `configure_aws_artifacts_credentials` composite action calls the script
+- `workflow_outputs.py` `_retrieve_bucket_info()` delegates to `get_artifacts_bucket_config_for_workflow_run()`
+- Migrated 8 workflows from inline `aws-actions/configure-aws-credentials` to composite action
+- Updated `docs/development/s3_buckets.md` Authentication section
+- Tests: `s3_buckets_test.py` (23 tests covering both public APIs)
 
-**Next steps:**
-- Tests for `s3_buckets.py` and `get_artifacts_iam_role.py`
-- Wire `s3_buckets.py` into `workflow_outputs.py` (replace `_retrieve_bucket_info`)
-- Coordinate with PR #4199 on `StorageConfig` using `s3_buckets.py`
-- Squash/clean up commits on the implicit branch before PR
+**Branch `users/scotttodd/multi-arch-release-type-4` (stacked on s3-iam-lookup)**
 
-**Open design questions:**
+Threads `release_type` through multi-arch workflows. Needs rebase after #4386 merges.
 
-1. **`_is_fork_pr()` location:** Currently in `get_artifacts_iam_role.py`.
-   Should it move to `github_actions_api.py`? It reads `GITHUB_EVENT_PATH`
-   and `GITHUB_REPOSITORY` — general-purpose GHA utility, not specific to
-   artifacts.
+**Resolved design questions:**
 
-2. **`get_artifacts_bucket_config()` env-var reading:** Currently the script
-   (`get_artifacts_iam_role.py`) reads GHA env vars and passes them as args.
-   Should `get_artifacts_bucket_config()` have a `_for_env()` variant that
-   reads directly from the environment? Would reduce boilerplate in callers
-   but couples the library to GHA.
-
-3. **Interaction with `_retrieve_bucket_info()`:** If `workflow_outputs.py`
-   switches to use `s3_buckets.py`, it would also need fork detection and
-   env-var reading. The answers to questions 1 and 2 shape whether that's
-   clean (shared `_is_fork_pr()` + `_for_env()`) or messy (duplicated env
-   reading).
-
-4. **CDN/HTTPS URL support on `S3BucketConfig`:** The bucket inventory in
-   `s3_buckets.md` includes CloudFront CDN URLs for each release bucket
-   (e.g. `rocm.devreleases.amd.com/v2/`). PR #4199 defines `StorageConfig`
-   with `s3_url_schema`, `https_url_schema`, `bucket_schema`. Should
-   `S3BucketConfig` grow CDN URL fields so it becomes the single source of
-   truth for both bucket identity and access URLs? Or should that stay in
-   `StorageConfig`/`StorageLocation`? Need to consider the design space
-   before extending `S3BucketConfig` further — it could either stay a
-   simple bucket+role struct or become the general-purpose storage config.
+1. Fork detection lives in `s3_buckets.py` as `_is_current_run_pr_from_fork()` (private)
+2. `get_artifacts_bucket_config_for_workflow_run()` reads env vars directly — callers
+   can override `release_type` explicitly, falls back to RELEASE_TYPE env var
+3. `workflow_outputs.py` delegates to `get_artifacts_bucket_config_for_workflow_run()` —
+   no duplicate logic
+4. CDN/HTTPS URL support deferred — `S3BucketConfig` stays a simple bucket+role struct
