@@ -404,12 +404,43 @@ The existing release workflow (`release_portable_linux_packages.yml`) builds
 `therock-dist` CMake target then runs `tar cfz`, but for multi-arch we want
 to work from pre-built artifacts rather than rebuilding.
 
+**Done:**
+- Prototyped locally: `artifact_manager.py fetch --flatten` produces clean
+  per-family install-prefix layouts. Verified gfx94X-dcgpu and gfx110X-all
+  have correctly filtered GPU-specific files (e.g. `*.co` only for that family).
+- Added `--download-cache-dir` to `artifact_manager.py` + cache-hit check in
+  `download_artifact()` — avoids re-downloading generic artifacts across families.
+- Created `build_tarballs.py` script: fetch/flatten/compress per family,
+  shared download cache, `tar cfz` compression.
+- Created `multi_arch_build_tarballs.yml` workflow scaffold.
+- Tested end-to-end with Windows artifacts (Linux has a harmless ncurses
+  symlink error on Windows hosts).
+- Branch: `multi-arch-tarball-1`
+
+**Tarball structure decisions:**
+- KPACK_SPLIT=OFF (current default): per-family tarballs, since files from
+  different families conflict when flattened together.
+- KPACK_SPLIT=ON (future): single combined tarball possible, files are additive.
+  Could use matrix `include:` to produce both per-family and combined tarballs.
+
+**Compression performance:**
+- Python `tarfile` module: ~72s for 1.4GB, 3.5GB output (broken compression?)
+- `tar cfz` subprocess: ~22s for 1.4GB, 419MB output — 3x faster, correct size
+- CI timings: ~4min (Windows) / ~6min (Linux) per family for full tarball
+- Sequential across all families would be too slow; need matrix sharding at
+  the orchestrator level (one job per family, matching the pattern used by
+  `test_python_packages_per_family` and `build_pytorch_wheels_per_family`).
+- `.tar.zst` would be faster and smaller than `.tar.gz` (artifacts are already
+  zstd in S3 — currently decompressing zstd then recompressing gzip). Keeping
+  `.tar.gz` for now to match existing release tarballs, but `.tar.zst` is worth
+  benchmarking as a follow-up.
+
 **Next steps:**
-- Prototype locally: run `artifact_manager.py fetch` against a recent
-  multi-arch CI run, explore the layout, determine tarball contents
-- Decide tarball structure: KPACK_SPLIT on/off, per-family vs combined
-- Create standalone workflow, test via `workflow_dispatch`
+- Decide on matrix sharding: orchestrator-level matrix over families, with
+  optional combined-all job for KPACK_SPLIT=ON case
+- Write `upload_tarballs.py` + add `WorkflowOutputRoot.tarballs()` location
 - Wire into `multi_arch_ci_linux.yml` as a downstream job
+- Test via `workflow_dispatch` on CI
 
 ### Workstream 2b: release_multi_arch.yml scaffold
 
