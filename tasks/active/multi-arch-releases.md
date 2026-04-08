@@ -377,8 +377,8 @@ Single-stage releases continue using `v2`. Both coexist during migration.
 **MVP:**
 1. ~~Workstream 1: explicit bucket/role plumbing (artifacts bucket only)~~ — done (#4386)
 2. ~~Workstream 1b: thread release_type through full workflow chain~~ — in review (#4408)
-3. Workstream 2: release workflow in TheRock (tarballs, dev release_type,
-   manual dispatch)
+3. Workstream 2a: build multi-arch tarballs workflow (standalone, then wire into CI)
+4. Workstream 2b: release_multi_arch.yml scaffold (calls builds, copies to release buckets)
 
 **Follow-up:**
 - Workstream 3: publish jobs (copy artifacts → release buckets, handling
@@ -388,6 +388,37 @@ Single-stage releases continue using `v2`. Both coexist during migration.
 - Prerelease support
 - Windows multi-arch releases
 - PyTorch/JAX wheel publishing
+
+### Workstream 2a: Build multi-arch tarballs
+
+**Current focus.** Standalone workflow that fetches multi-arch build artifacts,
+flattens them into ROCm tarballs, and uploads to the artifacts bucket.
+
+Structure similar to `build_portable_linux_python_packages.yml`:
+1. Fetch artifacts via `artifact_manager.py fetch --flatten` (or fetch then
+   flatten manually)
+2. Produce tarballs (TBD: with/without KPACK_SPLIT, which families)
+3. Upload tarballs to artifacts bucket in a subfolder
+
+The existing release workflow (`release_portable_linux_packages.yml`) builds
+`therock-dist` CMake target then runs `tar cfz`, but for multi-arch we want
+to work from pre-built artifacts rather than rebuilding.
+
+**Next steps:**
+- Prototype locally: run `artifact_manager.py fetch` against a recent
+  multi-arch CI run, explore the layout, determine tarball contents
+- Decide tarball structure: KPACK_SPLIT on/off, per-family vs combined
+- Create standalone workflow, test via `workflow_dispatch`
+- Wire into `multi_arch_ci_linux.yml` as a downstream job
+
+### Workstream 2b: release_multi_arch.yml scaffold
+
+Depends on 2a. Top-level release workflow that:
+- Calls multi-arch build workflows across GPU families (via
+  `setup_multi_arch.yml` or `fetch_package_targets.py`)
+- Runs tarball workflow from 2a
+- Copies outputs from artifacts bucket to release buckets
+  (e.g. `therock-dev-artifacts` → `therock-dev-tarball`)
 
 ## Open Questions
 
