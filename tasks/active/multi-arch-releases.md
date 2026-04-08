@@ -1,7 +1,7 @@
 # Multi-Arch Release Workflows
 
 **Tracking issue:** https://github.com/ROCm/TheRock/issues/3334
-**Status:** In progress — workstream 1 PR #4386 (draft), workstream 1b (release_type plumbing) needs rebase
+**Status:** In progress — workstream 1 PR #4386 (merged), workstream 1b PR #4408 (in review)
 
 ## Goal
 
@@ -375,10 +375,10 @@ Single-stage releases continue using `v2`. Both coexist during migration.
 ## MVP Scope
 
 **MVP:**
-1. Workstream 1: explicit bucket/role plumbing (artifacts bucket only)
-2. Workstream 2: release workflow in TheRock (tarballs, dev release_type,
+1. ~~Workstream 1: explicit bucket/role plumbing (artifacts bucket only)~~ — done (#4386)
+2. ~~Workstream 1b: thread release_type through full workflow chain~~ — in review (#4408)
+3. Workstream 2: release workflow in TheRock (tarballs, dev release_type,
    manual dispatch)
-3. Coordinate with PR #4199 (StorageConfig refactor) on workflow_outputs.py
 
 **Follow-up:**
 - Workstream 3: publish jobs (copy artifacts → release buckets, handling
@@ -388,7 +388,6 @@ Single-stage releases continue using `v2`. Both coexist during migration.
 - Prerelease support
 - Windows multi-arch releases
 - PyTorch/JAX wheel publishing
-- Migrate non-multi-arch workflows to explicit bucket plumbing
 
 ## Open Questions
 
@@ -526,26 +525,40 @@ duplicates logic that exists in multiple places.
 
 Building on approach 2. Landed as two stacked branches:
 
-**Branch `users/scotttodd/s3-iam-lookup` — PR #4386 (draft)**
+**PR #4386 — S3 bucket inventory + composite action (merged)**
 
-Centralizes bucket selection into `s3_buckets.py`, no-op for current workflows:
+Centralizes bucket selection into `s3_buckets.py`, replaces inline
+`aws-actions/configure-aws-credentials` blocks with a composite action:
 
-- `S3BucketConfig` dataclass: name, region, iam_role, iam_namespace
-- `s3_bucket_configs` list: full inventory of CI + release buckets
+- `S3BucketConfig` dataclass: name, region, iam_account, iam_role
 - `get_artifacts_bucket_config()`: pure lookup with validation
 - `get_artifacts_bucket_config_for_workflow_run()`: GHA-aware wrapper
-  (reads RELEASE_TYPE env, event payload for fork detection, optional API lookup)
-- `_is_current_run_pr_from_fork()`: fork detection from event payload
-- `write_artifacts_bucket_info.py`: thin CLI writing bucket/iam_role/aws_region to GITHUB_OUTPUT
-- `configure_aws_artifacts_credentials` composite action calls the script
-- `workflow_outputs.py` `_retrieve_bucket_info()` delegates to `get_artifacts_bucket_config_for_workflow_run()`
-- Migrated 8 workflows from inline `aws-actions/configure-aws-credentials` to composite action
-- Updated `docs/development/s3_buckets.md` Authentication section
-- Tests: `s3_buckets_test.py` (23 tests covering both public APIs)
+- `write_artifacts_bucket_info.py`: thin CLI for GITHUB_OUTPUT
+- `configure_aws_artifacts_credentials` composite action
+- `workflow_outputs.py` delegates to `get_artifacts_bucket_config_for_workflow_run()`
+- Migrated 8 workflows to composite action
+- Updated `docs/development/s3_buckets.md`
+- Tests: `s3_buckets_test.py` (17 tests)
 
-**Branch `users/scotttodd/multi-arch-release-type-4` (stacked on s3-iam-lookup)**
+Also merged separately: PR #4402 (ccache preset rename, `--release-type` shorthand).
 
-Threads `release_type` through multi-arch workflows. Needs rebase after #4386 merges.
+**PR #4408 — release_type plumbing (in review)**
+
+Threads `release_type` through the full multi-arch workflow chain:
+
+- `setup_multi_arch.yml` → `multi_arch_ci_{linux,windows}.yml` (existing)
+- → `multi_arch_build_{portable_linux,windows}_artifacts.yml` (existing)
+- → `build_{portable_linux,windows}_python_packages.yml` (new)
+- → `test_artifacts_structure.yml` (new)
+- → `test_artifacts.yml` → `test_component.yml` → `setup_test_environment` (new)
+- `configure_aws_artifacts_credentials` receives `release_type` for IAM role selection
+- `RELEASE_TYPE` env var set at job level for scripts that read it
+- Build artifact workflows use `--release-type` for ccache preset selection
+
+Known limitation: manual `workflow_dispatch` with `artifact_run_id` requires
+the caller to match `release_type` manually — no way to query which bucket
+a past run used. Acceptable for now; a central run metadata store could
+fix this later.
 
 **Resolved design questions:**
 
