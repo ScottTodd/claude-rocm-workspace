@@ -424,20 +424,79 @@ to work from pre-built artifacts rather than rebuilding.
   Could use matrix `include:` to produce both per-family and combined tarballs.
 
 **Compression performance:**
-- Python `tarfile` module: ~72s for 1.4GB, 3.5GB output (broken compression?)
+
+*Initial benchmarks (Python tarfile vs subprocess):*
+- Python `tarfile` module: ~72s for 1.4GB, 3.5GB output (default compresslevel
+  appears broken or very low — `compresslevel` kwarg may need tuning)
 - `tar cfz` subprocess: ~22s for 1.4GB, 419MB output — 3x faster, correct size
 - CI timings: ~4min (Windows) / ~6min (Linux) per family for full tarball
-- Sequential across all families would be too slow; need matrix sharding at
-  the orchestrator level (one job per family, matching the pattern used by
-  `test_python_packages_per_family` and `build_pytorch_wheels_per_family`).
-- `.tar.zst` would be faster and smaller than `.tar.gz` (artifacts are already
-  zstd in S3 — currently decompressing zstd then recompressing gzip). Keeping
-  `.tar.gz` for now to match existing release tarballs, but `.tar.zst` is worth
-  benchmarking as a follow-up.
+
+*Comprehensive benchmark (2026-04-10, Windows, 64-core machine, 1423MB source):*
+
+```
+Method                 Time (s)  Size (MB)    Ratio
+----------------------------------------------------
+tar-cfz                    21.0      419.4   29.5%    <- current default
+gz-1                       12.2      449.8   31.6%
+gz-3                       15.2      440.5   31.0%
+gz-6                       26.4      420.9   29.6%
+gz-9                       67.9      420.2   29.5%
+zst-1                       3.3      420.2   29.5%    <- matches gz-6 ratio, 6x faster
+zst-3                       4.4      360.5   25.3%    <- sweet spot
+zst-6                       8.0      343.9   24.2%
+zst-9                      10.0      317.9   22.3%
+zst-19                    197.9      199.4   14.0%
+
+Parallel (2 families, wall time):
+  tar-cfz x2: 24.9s  (vs 21s single — some slowdown but not 2x)
+  zst-3   x2:  9.7s  (vs 4.4s single — good scaling)
+```
+
+zst used pyzstd (Python binding), not the zstd CLI. gz used subprocess
+`gzip -N` piped from `tar cf -`. `tar cfz` is the baseline matching current
+`build_tarballs.py`.
+
+*Analysis:*
+- `zst-3` is the sweet spot: 14% smaller than gz-6, 5x faster
+- For full ~19GB gfx94X-dcgpu, extrapolating: gz ~5-6 min, zst-3 ~1 min
+- gz-9 is 3x slower than gz-6 for negligible improvement (0.1%)
+- Serial compression uses ~3% of 64 cores (one core pinned). Parallel
+  compression reached ~30% utilization (spread across logical processors).
+  zstd's native `-T0` multi-threading (not benchmarked, needs CLI tool)
+  could saturate all cores for a single tarball.
+- Keeping `.tar.gz` for now to match existing release tarballs. Switching
+  to `.tar.zst` would cut compression time ~5x and reduce output ~14% —
+  worth proposing if downstream consumers can handle zstd.
+
+*Parallelism scaling (2026-04-10, 64-core Windows, 10 jobs × 1.4GB each):*
+
+```
+Workers   Wall (s)    Avg/job  Speedup  Efficiency
+------------------------------------------------------
+      1      244.2       24.4     1.0x       103%
+      2      128.3       25.6     2.0x        98%
+      4       79.4       26.6     3.2x        79%
+      6       54.4       27.2     4.6x        77%
+      8       54.0       27.6     4.7x        58%
+     10       28.8       28.6     8.8x        88%
+```
+
+Per-job time barely increases (25→29s) even at 10 concurrent — gzip is
+CPU-bound on one core and 64 cores have plenty of headroom. Anecdotally,
+serial compression showed ~3% CPU utilization (one core pinned), parallel
+reached ~30% (spread across logical processors).
+
+*Decision: single job with script-level parallelism.*
+- 10 families in one job with ProcessPoolExecutor: ~29s wall for 1.4GB
+  sources, extrapolating to full-size (~19GB) ≈ 6-7 min total.
+- Compare to 10 separate CI jobs: each ~6 min compression + ~2 min setup
+  overhead = ~8 min wall, but 10x the runner cost.
+- Single job is cheaper, simpler (no matrix coordination), and wall time
+  is comparable. `build_tarballs.py` parallelizes fetch+compress per family.
+- Fetch is still sequential (shared download cache for generic artifacts),
+  only compression is parallelized.
 
 **Next steps:**
-- Decide on matrix sharding: orchestrator-level matrix over families, with
-  optional combined-all job for KPACK_SPLIT=ON case
 - Write `upload_tarballs.py` + add `WorkflowOutputRoot.tarballs()` location
 - Wire into `multi_arch_ci_linux.yml` as a downstream job
 - Test via `workflow_dispatch` on CI
