@@ -377,7 +377,7 @@ Single-stage releases continue using `v2`. Both coexist during migration.
 **MVP:**
 1. ~~Workstream 1: explicit bucket/role plumbing (artifacts bucket only)~~ — done (#4386)
 2. ~~Workstream 1b: thread release_type through full workflow chain~~ — in review (#4408)
-3. Workstream 2a: build multi-arch tarballs workflow (standalone, then wire into CI)
+3. Workstream 2a: build multi-arch tarballs workflow — branch `multi-arch-tarball-1`, testing on fork
 4. Workstream 2b: release_multi_arch.yml scaffold (calls builds, copies to release buckets)
 
 **Follow-up:**
@@ -496,10 +496,33 @@ reached ~30% (spread across logical processors).
 - Fetch is still sequential (shared download cache for generic artifacts),
   only compression is parallelized.
 
+**Implementation (branch `multi-arch-tarball-1`):**
+
+Commits:
+- `artifact_manager.py`: download cache check + `--download-cache-dir` flag
+- `multi_arch_build_tarballs.yml`: workflow scaffold (dispatch + call)
+- `build_tarballs.py`: fetch/flatten/compress with shared cache, parallel
+  compression, KPACK_SPLIT multiarch tarball support
+- `upload_tarballs.py`: uploads .tar.gz to `{run_id}-{platform}/tarballs/`
+  via `WorkflowOutputRoot.tarballs()` + `StorageBackend`
+- `build_tarballs_test.py`: unit tests for `is_kpack_split`, `compress_tarball`
+- `workflow_outputs.md`: tarballs layout + consumer entry
+
+Testing on fork — may hit disk space limits on github-hosted runners
+(fetch + flatten + compress for multiple families needs significant disk).
+
+**Known issues:**
+- KPACK_SPLIT artifact fetching broken for family groups (#4433) — with
+  KPACK split enabled, artifacts are keyed by individual targets (gfx942)
+  not family groups (gfx94X-dcgpu). `build_tarballs.py` works when given
+  individual targets but the orchestrator passes family groups.
+- Disk space: full tarball builds for all families may exceed github-hosted
+  runner disk. May need compress→upload→delete pipeline or self-hosted runners.
+
 **Next steps:**
-- Write `upload_tarballs.py` + add `WorkflowOutputRoot.tarballs()` location
+- Validate workflow_dispatch on fork CI
 - Wire into `multi_arch_ci_linux.yml` as a downstream job
-- Test via `workflow_dispatch` on CI
+- Address #4433 (family→target expansion) for KPACK split builds
 
 ### Workstream 2b: release_multi_arch.yml scaffold
 
