@@ -508,8 +508,17 @@ Commits:
 - `build_tarballs_test.py`: unit tests for `is_kpack_split`, `compress_tarball`
 - `workflow_outputs.md`: tarballs layout + consumer entry
 
-Testing on fork — may hit disk space limits on github-hosted runners
-(fetch + flatten + compress for multiple families needs significant disk).
+Tested on fork CI (https://github.com/ScottTodd/TheRock/actions/runs/24205988455):
+- Fetch + flatten + parallel compress working end-to-end on Linux
+- Two families (gfx1151 + gfx110X-all): ~58s first fetch, ~51s second
+  (generics cached), ~6 min parallel compress
+- Tarballs: 2.7GB + 2.8GB
+- Upload failed as expected (fork, no OIDC credentials)
+
+PRs to split out:
+1. `--run-github-repo` for artifact_manager.py
+2. Download cache + `--download-cache-dir`
+3. build_tarballs + upload_tarballs + workflow
 
 **Known issues:**
 - KPACK_SPLIT artifact fetching broken for family groups (#4433) — with
@@ -519,9 +528,22 @@ Testing on fork — may hit disk space limits on github-hosted runners
 - Disk space: full tarball builds for all families may exceed github-hosted
   runner disk. May need compress→upload→delete pipeline or self-hosted runners.
 
+**CI integration strategy:**
+- Tarballs add ~2.8GB per family to S3 per CI run. With 5 families that's
+  ~14GB extra per run — significant storage cost.
+- Short term: opt-in only. Don't build tarballs on every CI run. Trigger
+  via label or flag when needed (e.g. for JAX wheel builds, see #3878).
+  Release workflows always build tarballs.
+- Long term: KPACK split reduces this to one multiarch tarball (~3GB)
+  instead of N per-family tarballs. Once KPACK split is the default,
+  tarball builds in CI become cheaper.
+- JAX wheels currently depend on tarballs (see `tar_url` input in
+  `build_linux_jax_wheels.yml`). Multi-arch CI can build tarballs
+  on-demand when JAX builds are requested.
+
 **Next steps:**
-- Validate workflow_dispatch on fork CI
-- Wire into `multi_arch_ci_linux.yml` as a downstream job
+- Split into PRs and send for review
+- Wire into `multi_arch_ci_linux.yml` as opt-in downstream job
 - Address #4433 (family→target expansion) for KPACK split builds
 
 ### Workstream 2b: release_multi_arch.yml scaffold
