@@ -377,7 +377,7 @@ Single-stage releases continue using `v2`. Both coexist during migration.
 **MVP:**
 1. ~~Workstream 1: explicit bucket/role plumbing (artifacts bucket only)~~ — done (#4386)
 2. ~~Workstream 1b: thread release_type through full workflow chain~~ — in review (#4408)
-3. Workstream 2a: build multi-arch tarballs workflow — branch `multi-arch-tarball-1`, testing on fork
+3. Workstream 2a: build multi-arch tarballs workflow — PRs #4443, #4444, #4448 (tracking #4441)
 4. Workstream 2b: release_multi_arch.yml scaffold (calls builds, copies to release buckets)
 
 **Follow-up:**
@@ -496,17 +496,10 @@ reached ~30% (spread across logical processors).
 - Fetch is still sequential (shared download cache for generic artifacts),
   only compression is parallelized.
 
-**Implementation (branch `multi-arch-tarball-1`):**
-
-Commits:
-- `artifact_manager.py`: download cache check + `--download-cache-dir` flag
-- `multi_arch_build_tarballs.yml`: workflow scaffold (dispatch + call)
-- `build_tarballs.py`: fetch/flatten/compress with shared cache, parallel
-  compression, KPACK_SPLIT multiarch tarball support
-- `upload_tarballs.py`: uploads .tar.gz to `{run_id}-{platform}/tarballs/`
-  via `WorkflowOutputRoot.tarballs()` + `StorageBackend`
-- `build_tarballs_test.py`: unit tests for `is_kpack_split`, `compress_tarball`
-- `workflow_outputs.md`: tarballs layout + consumer entry
+**Implementation — tracking issue #4441, PRs:**
+- PR #4443: `--run-github-repo` for artifact_manager.py + workflows + tests
+- PR #4444: download cache check + `--download-cache-dir` flag + tests
+- PR #4448: build_tarballs.py, upload_tarballs.py, workflow, tests, docs
 
 Tested on fork CI (https://github.com/ScottTodd/TheRock/actions/runs/24205988455):
 - Fetch + flatten + parallel compress working end-to-end on Linux
@@ -514,11 +507,6 @@ Tested on fork CI (https://github.com/ScottTodd/TheRock/actions/runs/24205988455
   (generics cached), ~6 min parallel compress
 - Tarballs: 2.7GB + 2.8GB
 - Upload failed as expected (fork, no OIDC credentials)
-
-PRs to split out:
-1. `--run-github-repo` for artifact_manager.py
-2. Download cache + `--download-cache-dir`
-3. build_tarballs + upload_tarballs + workflow
 
 **Known issues:**
 - KPACK_SPLIT artifact fetching broken for family groups (#4433) — with
