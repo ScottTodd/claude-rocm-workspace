@@ -382,9 +382,15 @@ Single-stage releases continue using `v2`. Both coexist during migration.
 
 **Follow-up:**
 - Workstream 3: publish jobs (copy artifacts → release buckets, handling
-  cross-account/cross-region credentials)
+  cross-account/cross-region credentials). CloudFront URLs computed here,
+  not in setup.
 - Python package publishing
-- rockrel nightly schedule wrapper
+- rockrel nightly schedule wrapper — needs env var overrides in
+  `configure_multi_arch_ci.py` for family lists passed via `workflow_call`
+  (event payload is rockrel's, not TheRock's, so the script can't read
+  `linux_amdgpu_families` from the event inputs). Add `LINUX_AMDGPU_FAMILIES`
+  / `WINDOWS_AMDGPU_FAMILIES` env var overrides to `from_environ()` and
+  corresponding inputs to `setup_multi_arch.yml`.
 - Prerelease support
 - Windows multi-arch releases
 - PyTorch/JAX wheel publishing
@@ -536,29 +542,105 @@ Tested on fork CI (https://github.com/ScottTodd/TheRock/actions/runs/24205988455
 
 ### Workstream 2b: release_multi_arch.yml scaffold
 
-Depends on 2a. Top-level release workflow that:
-- Calls multi-arch build workflows across GPU families (via
-  `setup_multi_arch.yml` or `fetch_package_targets.py`)
-- Runs tarball workflow from 2a
-- Copies outputs from artifacts bucket to release buckets
-  (e.g. `therock-dev-artifacts` → `therock-dev-tarball`)
+Branch: `multi-arch-release-workflows` (commit `62e7ff07c`)
+
+**Approach: fork the CI orchestrator, reuse setup and build workflows.**
+
+The release workflow does NOT go through `multi_arch_ci_linux.yml`. Instead
+it calls the same lower-level reusable workflows directly (`setup_multi_arch`,
+`multi_arch_build_portable_linux`, `build_portable_linux_python_packages`,
+`test_artifacts`, etc.) and adds release-specific jobs (tarballs, publish,
+dispatch downstream). This avoids conditional spaghetti in the CI orchestrator.
+
+**Files created:**
+
+- `release_multi_arch.yml` — top-level: `workflow_dispatch` + `workflow_call`.
+  Uses same input names as `multi_arch_ci.yml` (`linux_amdgpu_families`,
+  `windows_amdgpu_families`) so `configure_multi_arch_ci.py` reads them
+  from the event payload implicitly (no workflow_call passthrough needed).
+
+- `release_multi_arch_linux.yml` — Linux orchestrator, forked from
+  `multi_arch_ci_linux.yml`. Differences:
+  - Dropped: `copy_prebuilt_stages` (releases build from scratch)
+  - Dropped: `build_pytorch_wheels_per_family` (releases dispatch external
+    workflow later)
+  - Dropped: `test_python_packages_per_family` (follow-up)
+  - Kept: `build_multi_arch_stages`, `validate_artifact_structure`,
+    `test_artifacts_per_family`, `build_python_packages`
+  - TODO: `build_tarballs` (pending PR #4448), publish jobs, downstream
+    dispatch (pytorch, jax, native packages)
+
+**Script change: `configure_multi_arch_ci.py`**
+
+Added `release_type` to `CIInputs` (read from `RELEASE_TYPE` env var).
+In `select_targets()`, when `release_type` is set via `workflow_dispatch`
+and no explicit families are given, defaults to all families. This means
+release dispatches don't need to enumerate every family.
+
+The fallback behavior: explicit families in `workflow_dispatch` inputs
+still take precedence. This matches how rockrel currently passes explicit
+family lists for stable releases.
+
+**Decided:**
+
+1. **GPU families for releases**: use `configure_multi_arch_ci.py` via
+   `setup_multi_arch.yml`, same as CI. `release_type` + empty families =
+   all families. Explicit families override. No `fetch_package_targets.py`.
+
+2. **Fork vs share orchestrator**: fork. The CI orchestrator has CI-specific
+   jobs (prebuilt copy, CI pytorch). The release orchestrator will diverge
+   further (publish, dispatch downstream). Keeping them separate avoids
+   conditional complexity. They share all leaf build/test workflows.
+
+3. **CI-only vs release-only jobs**: separate orchestrator files, no
+   conditional flags. CI orchestrator runs CI pytorch (inline, one python
+   version). Release orchestrator will dispatch release pytorch (external,
+   full matrix) — not implemented yet.
+
+4. **Test scope for releases**: kept tests in the release orchestrator
+   (`test_artifacts_per_family`, `validate_artifact_structure`). Tests
+   don't block publish (they run in parallel). `test_labels` hardcoded
+   to `""` for now — may want to revisit test_type for releases.
+
+5. **CloudFront URLs**: NOT computed in setup. They'll be computed in the
+   publish script (workstream 3), which copies from artifacts bucket to
+   release bucket and knows the destination CDN path.
+
+6. **Release-specific metadata** (`rpm_version`, `deb_version`, `s3_subdir_tar`,
+   CloudFront URLs): NOT added to `configure_multi_arch_ci.py`. These are
+   release-workflow concerns. The existing `setup_multi_arch.yml` outputs
+   (`build_config`, `rocm_package_version`, `test_type`) are sufficient
+   for the build/test phase. Publish jobs will compute their own metadata.
+
+**Deferred:**
+
+- **rockrel `workflow_call` support**: when rockrel calls TheRock's release
+  workflow via `workflow_call`, the event payload is rockrel's (different
+  input names). Need env var overrides (`LINUX_AMDGPU_FAMILIES` etc.) in
+  `configure_multi_arch_ci.py` and corresponding inputs in
+  `setup_multi_arch.yml`. For now, manual `workflow_dispatch` on TheRock
+  works because the event payload has the right input names.
+
+- **Publish timing**: should publish happen after builds complete (before
+  tests) or after tests pass? Current thinking: publish after builds,
+  don't gate on tests. Tests are informational — flaky tests shouldn't
+  block releases. Staging/production promotion (later) can gate on tests.
+  Need CI run timing data to validate this assumption.
+
+- **Windows release orchestrator**: `release_multi_arch_windows.yml`,
+  same pattern as Linux.
 
 ## Open Questions
 
-1. **`setup_multi_arch.yml` inputs for release**: `configure_multi_arch_ci.py`
-   reads `GITHUB_EVENT_PATH` for GPU families from PR labels / dispatch inputs.
-   When called from rockrel, the event payload is rockrel's dispatch event.
-   Does `setup_multi_arch.yml` need explicit family inputs for the release case?
-
-2. **Which GPU families for releases?** Hardcode defaults in the orchestrator,
-   or make it configurable?
-
-3. **Publish script**: New `publish_release.py`, extend `artifact_manager.py`
+1. **Publish script**: New `publish_release.py`, extend `artifact_manager.py`
    with a `publish` subcommand, or inline S3 commands?
 
-4. **Consolidate with `get_s3_config.py`**: The native package workflow's
+2. **Consolidate with `get_s3_config.py`**: The native package workflow's
    `get_s3_config.py` has overlapping bucket/role logic. Should we consolidate
    into shared code in `configure_multi_arch_ci.py` or a shared utility?
+
+3. **Publish timing vs test completion**: See "CI run timing analysis" section
+   below for data on build vs test wall times.
 
 ## Alternatives Considered
 
@@ -638,6 +720,37 @@ Scripts that DON'T need changes (read from other runs via API lookup):
 
 Script that uses it for summary formatting (read-only, cosmetic):
 - `configure_multi_arch_ci_summary.py`
+
+## CI Run Timing Analysis
+
+Analyzing run https://github.com/ROCm/TheRock/actions/runs/24258568482
+(Multi-Arch CI, nightly-like families, 2026-04-10). Run still in progress —
+will update with final timings when complete.
+
+**Families in this run:** gfx900, gfx906, gfx908, gfx90a, gfx94X-dcgpu,
+gfx950-dcgpu, gfx101X-dgpu, gfx103X-dgpu, gfx110X-all, gfx1150, gfx1151,
+gfx1152, gfx1153, gfx120X-all (14 families, Linux + Windows)
+
+**Build stage timings (Linux):**
+
+| Stage | Duration | Notes |
+|-------|----------|-------|
+| foundation | ~5 min | Generic (shared across families) |
+| compiler-runtime | ~23 min | Generic |
+| iree-compiler | ~4 min | Generic |
+| media-libs | ~3 min | Generic |
+| debug-tools | ~5 min | Generic |
+| dctools-core | TBD | Generic |
+| profiler-apps | TBD | Generic |
+| comm-libs | TBD | Per-family (14 jobs) |
+| math-libs | TBD | Per-family (14 jobs), typically longest |
+
+**Key questions for publish timing:**
+- How long from build start to all builds complete?
+- How long from build complete to all tests complete?
+- If publish triggers after builds, how much earlier is that vs after tests?
+
+TODO: Fill in final timings when run completes.
 
 ## Worklog
 
