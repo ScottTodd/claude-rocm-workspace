@@ -565,10 +565,12 @@ dispatch downstream). This avoids conditional spaghetti in the CI orchestrator.
   - Dropped: `build_pytorch_wheels_per_family` (releases dispatch external
     workflow later)
   - Dropped: `test_python_packages_per_family` (follow-up)
-  - Kept: `build_multi_arch_stages`, `validate_artifact_structure`,
-    `test_artifacts_per_family`, `build_python_packages`
+  - Dropped: `test_artifacts_per_family`, `validate_artifact_structure`
+    (will dispatch tests as separate workflows — see "dispatched tests"
+    design note below)
+  - Kept: `build_multi_arch_stages`, `build_python_packages`
   - TODO: `build_tarballs` (pending PR #4448), publish jobs, downstream
-    dispatch (pytorch, jax, native packages)
+    dispatch (pytorch, jax, native packages, tests)
 
 **Script change: `configure_multi_arch_ci.py`**
 
@@ -597,10 +599,15 @@ family lists for stable releases.
    version). Release orchestrator will dispatch release pytorch (external,
    full matrix) — not implemented yet.
 
-4. **Test scope for releases**: kept tests in the release orchestrator
-   (`test_artifacts_per_family`, `validate_artifact_structure`). Tests
-   don't block publish (they run in parallel). `test_labels` hardcoded
-   to `""` for now — may want to revisit test_type for releases.
+4. **Tests as dispatched workflows**: instead of running tests inline in
+   the release orchestrator (as in CI), dispatch them as separate workflow
+   runs per family — same pattern as pytorch/jax/native package dispatch.
+   Benefits: each family gets its own retryable workflow run with separate
+   logs; tests never block the build→publish pipeline; matches the existing
+   release pattern. Requires adding `workflow_dispatch` trigger to
+   `test_artifacts.yml` (or a thin wrapper). For MVP, tests are omitted
+   from the release orchestrator entirely — will add dispatched tests
+   alongside pytorch dispatch.
 
 5. **CloudFront URLs**: NOT computed in setup. They'll be computed in the
    publish script (workstream 3), which copies from artifacts bucket to
@@ -627,8 +634,36 @@ family lists for stable releases.
   block releases. Staging/production promotion (later) can gate on tests.
   Need CI run timing data to validate this assumption.
 
+- **Single vs separate platform workflows**: currently using `workflow_call`
+  (platform orchestrators are inline jobs in one workflow run). This keeps
+  setup simple — shared version/config from the setup job. Tradeoffs:
+  - Single run: one version computation, no risk of diverging manifests.
+    But no per-platform status badges, and "re-run failed jobs" reruns
+    both platforms.
+  - Separate runs (via `workflow_dispatch`): per-platform badges, independent
+    retryability, isolation from cross-platform runner queues (e.g. Windows
+    gfx1151 20h queue doesn't stall Linux publishing). But requires a
+    pre-trigger job to freeze commit/version per #1236 so re-runs don't
+    pick up new commits.
+  - With dispatched tests and publish-before-tests, runner queue isolation
+    matters less for the critical path. Queue issues mainly affect tests,
+    which are dispatched out-of-band anyway.
+  - Decision: `workflow_call` for now, switch to `workflow_dispatch` later
+    if we need per-platform badges or independent retryability. The #1236
+    commit-freeze proposal is a prerequisite for the switch.
+
 - **Windows release orchestrator**: `release_multi_arch_windows.yml`,
   same pattern as Linux.
+
+- **Release summary job**: `release_summary` in `release_multi_arch.yml`
+  collects dispatched workflow run URLs into GITHUB_STEP_SUMMARY.
+  `benc-uk/workflow-dispatch` outputs `runUrlHtml` per dispatch call.
+  Platform orchestrators will expose these as `workflow_call` outputs so
+  the top-level summary can aggregate them. With KPACK_SPLIT off, we
+  dispatch one pytorch/test run per family (N URLs). With KPACK_SPLIT on,
+  potentially one pytorch run per platform (simpler summary). The summary
+  gives a single place to see the full release status: build results,
+  test run links, pytorch/jax/native package run links.
 
 ## Open Questions
 
@@ -723,34 +758,104 @@ Script that uses it for summary formatting (read-only, cosmetic):
 
 ## CI Run Timing Analysis
 
-Analyzing run https://github.com/ROCm/TheRock/actions/runs/24258568482
-(Multi-Arch CI, nightly-like families, 2026-04-10). Run still in progress —
-will update with final timings when complete.
+### Run 24258568482 (14 families, 2026-04-10, in progress)
 
-**Families in this run:** gfx900, gfx906, gfx908, gfx90a, gfx94X-dcgpu,
+https://github.com/ROCm/TheRock/actions/runs/24258568482
+
+**Families:** gfx900, gfx906, gfx908, gfx90a, gfx94X-dcgpu,
 gfx950-dcgpu, gfx101X-dgpu, gfx103X-dgpu, gfx110X-all, gfx1150, gfx1151,
 gfx1152, gfx1153, gfx120X-all (14 families, Linux + Windows)
 
-**Build stage timings (Linux):**
+**Linux generic stages:**
 
-| Stage | Duration | Notes |
-|-------|----------|-------|
-| foundation | ~5 min | Generic (shared across families) |
-| compiler-runtime | ~23 min | Generic |
-| iree-compiler | ~4 min | Generic |
-| media-libs | ~3 min | Generic |
-| debug-tools | ~5 min | Generic |
-| dctools-core | TBD | Generic |
-| profiler-apps | TBD | Generic |
-| comm-libs | TBD | Per-family (14 jobs) |
-| math-libs | TBD | Per-family (14 jobs), typically longest |
+| Stage | Duration | Wall from start |
+|-------|----------|-----------------|
+| foundation | 5m | 7m |
+| compiler-runtime | 23m | 32m |
+| iree-compiler | 4m | 36m |
+| media-libs | 3m | 36m |
+| debug-tools | 5m | 38m |
+| profiler-apps | 18m | 51m |
+| dctools-core | 25m | 58m |
+| fusilli-libs | 7m | 215m (waits for math-libs) |
 
-**Key questions for publish timing:**
-- How long from build start to all builds complete?
-- How long from build complete to all tests complete?
-- If publish triggers after builds, how much earlier is that vs after tests?
+**Linux math-libs per family (sorted by duration):**
 
-TODO: Fill in final timings when run completes.
+| Family | Duration | Wall | ccache hit |
+|--------|----------|------|------------|
+| gfx1150 | 173m | 207m | low (cold) |
+| gfx1152 | 142m | 177m | low (cold) |
+| gfx1153 | 141m | 175m | low (cold) |
+| gfx908 | 129m | 163m | low (cold) |
+| gfx103X-dgpu | 127m | 162m | low (cold) |
+| gfx90a | 125m | 160m | low (cold) |
+| gfx101X-dgpu | 88m | 124m | ~41% |
+| gfx94X-dcgpu | 87m | 122m | ~41% |
+| gfx950-dcgpu | 85m | 119m | low |
+| gfx906 | 58m | 92m | warm |
+| gfx900 | 57m | 92m | warm |
+| gfx120X-all | 42m | 78m | ~96% |
+| gfx110X-all | 23m | 58m | ~95% |
+| gfx1151 | 15m | 50m | ~96% |
+
+**Linux comm-libs per family (sorted by duration):**
+
+| Family | Duration | Wall | Notes |
+|--------|----------|------|-------|
+| gfx1153 | 172m | 206m | RCCL linking slow |
+| gfx900 | 97m | 130m | |
+| gfx1150 | 69m | 103m | |
+| gfx908 | 66m | 100m | |
+| gfx906 | 66m | 100m | |
+| gfx1151 | 64m | 98m | |
+| gfx1152 | 63m | 96m | |
+| gfx110X-all | 54m | 88m | |
+| gfx90a | 40m | 75m | |
+| gfx94X-dcgpu | 23m | 57m | |
+| gfx950-dcgpu | 23m | 57m | |
+| gfx120X-all | 18m | 52m | |
+
+**Key observations:**
+
+- **ccache hit rate dominates build time.** Families built on every commit
+  (gfx1151, gfx110X-all, gfx120X-all) have 95%+ hit rates and finish in
+  15-42m. Nightly/release-only families have cold caches and take 125-173m.
+  As multi-arch CI runs more frequently, caches will warm.
+
+- **RCCL linking is a known bottleneck for comm-libs.** gfx1153 comm-libs
+  takes 172m, nearly as long as math-libs. Under investigation — may
+  disable LTO and/or skip RCCL for consumer GPU targets (gfx10/11/12),
+  keeping it for datacenter/MI targets (gfx9) where multi-GPU matters.
+
+- **Windows ccache is broken** (~1-2% hit rates across all families) due to
+  the clang compiler embedding timestamps, making each build look like a
+  different compiler. Fix in testing: #4419.
+
+- **Build DAG bottleneck.** Unlike the current release workflow (which
+  builds each family independently), the multi-arch pipeline has generic
+  stages followed by per-family stages, then fusilli-libs (generic, depends
+  on all per-family). Downstream jobs (tarballs, python packages) can't
+  start until the entire build DAG completes. The slowest family gates
+  everything. No good way to bypass this — need to optimize builds and
+  eject targets that compromise the overall pipeline.
+
+- **Estimated wall time for all Linux builds:** ~215-220m (~3.6h) with
+  14 families and current cache state. Will improve as caches warm.
+
+### Run 24243130384 (5 families, postsubmit, 2026-04-10)
+
+Reference data from a completed push run with fewer families:
+
+| Milestone | Wall from start |
+|-----------|-----------------|
+| All build stages done | ~142m (2.4h) |
+| Python packages done | ~184m (3.1h) |
+| All tests done | ~205m (3.4h) |
+| PyTorch wheels done | ~251m (4.2h) |
+
+Tests add ~1h after builds. Publish-after-builds (not waiting for tests)
+saves that hour. With dispatched tests this is the natural flow — publish
+and test dispatch both happen after builds, neither blocks the other.
 
 ## Worklog
 
