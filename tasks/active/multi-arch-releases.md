@@ -1,7 +1,7 @@
 # Multi-Arch Release Workflows
 
 **Tracking issue:** https://github.com/ROCm/TheRock/issues/3334
-**Status:** In progress — workstream 1 PR #4386 (merged), workstream 1b PR #4408 (in review)
+**Status:** In progress — workstream 2a PRs in review, workstream 2b release workflow scaffold started
 
 ## Goal
 
@@ -535,10 +535,42 @@ Tested on fork CI (https://github.com/ScottTodd/TheRock/actions/runs/24205988455
   `build_linux_jax_wheels.yml`). Multi-arch CI can build tarballs
   on-demand when JAX builds are requested.
 
-**Next steps:**
-- Split into PRs and send for review
-- Wire into `multi_arch_ci_linux.yml` as opt-in downstream job
-- Address #4433 (family→target expansion) for KPACK split builds
+**PRs:**
+- PR #4443: `--run-github-repo` (merged)
+- PR #4444: `--download-cache-dir` (merged)
+- PR #4448: build_tarballs + upload_tarballs + workflow (in review)
+- PR #4449: `--expand-family-to-targets` (in review, by marbre, addresses #4433)
+
+**Next steps (week of 2026-04-14):**
+
+Priority: get `release_multi_arch.yml` to the starting line.
+
+1. **Wire tarballs into release workflow.** Add `build_tarballs` job to
+   `release_multi_arch_linux.yml` after `build_multi_arch_stages`. Calls
+   `multi_arch_build_tarballs.yml` with `dist_amdgpu_families` and
+   `package_version` from setup. This is the first concrete release output.
+
+2. **Publish tarballs to release bucket.** New script/job to copy tarballs
+   from `therock-{release_type}-artifacts/{run_id}/tarballs/` to
+   `therock-{release_type}-tarball/{s3_subdir}/`. This is the artifacts→release
+   bucket hop. Needs its own IAM role config (release bucket may be different
+   account/region). Checkpoint after this — we'll have a working
+   build→tarball→publish pipeline.
+
+3. **Follow-up after checkpoint:**
+   - Wire tarballs into CI as opt-in downstream job
+   - Python package publishing (similar pattern)
+   - Dispatched tests, pytorch, jax, native packages
+   - `expect_failure` cleanup — rip out broken plumbing from multi-arch
+     workflows (side task)
+   - `fail-fast` strategy for releases — add validation gate before publish
+
+**Side tasks:**
+- `expect_failure` is broken for multi-arch CI — `continue-on-error` doesn't
+  work on reusable workflow calls (`uses:`). The build stages fail hard and
+  block downstream jobs that check `!failure()`. Options: rip out the
+  plumbing (simplest), or accept the cosmetic workflow failure. Filed as
+  follow-up for next week.
 
 ### Workstream 2b: release_multi_arch.yml scaffold
 
