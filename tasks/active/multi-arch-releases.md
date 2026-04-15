@@ -376,9 +376,10 @@ Single-stage releases continue using `v2`. Both coexist during migration.
 
 **MVP:**
 1. ~~Workstream 1: explicit bucket/role plumbing (artifacts bucket only)~~ — done (#4386)
-2. ~~Workstream 1b: thread release_type through full workflow chain~~ — in review (#4408)
-3. Workstream 2a: build multi-arch tarballs workflow — PRs #4443, #4444, #4448 (tracking #4441)
-4. Workstream 2b: release_multi_arch.yml scaffold (calls builds, copies to release buckets)
+2. ~~Workstream 1b: thread release_type through full workflow chain~~ — done (#4408)
+3. ~~Workstream 2a: build multi-arch tarballs workflow~~ — done (#4443, #4444, #4448)
+4. ~~Workstream 2b: release_multi_arch.yml scaffold~~ — done (#4509)
+5. Workstream 3: publish tarballs to release buckets — branch `multi-arch-release-publish`, testing
 
 **Follow-up:**
 - Workstream 3: publish jobs (copy artifacts → release buckets, handling
@@ -541,25 +542,34 @@ Tested on fork CI (https://github.com/ScottTodd/TheRock/actions/runs/24205988455
 - PR #4448: build_tarballs + upload_tarballs + workflow (in review)
 - PR #4449: `--expand-family-to-targets` (in review, by marbre, addresses #4433)
 
-**Next steps (week of 2026-04-14):**
+**Done (week of 2026-04-14):**
 
-Priority: get `release_multi_arch.yml` to the starting line.
+1. **Workstream 2b scaffold** — `release_multi_arch.yml` +
+   `release_multi_arch_linux.yml` merged in PR #4509.
 
-1. **Wire tarballs into release workflow.** Add `build_tarballs` job to
-   `release_multi_arch_linux.yml` after `build_multi_arch_stages`. Calls
-   `multi_arch_build_tarballs.yml` with `dist_amdgpu_families` and
-   `package_version` from setup. This is the first concrete release output.
+2. **Workstream 3: publish tarballs to release bucket.** Script
+   `publish_rocm_to_release_buckets.py` copies tarballs from
+   `therock-{release_type}-artifacts/{run_id}-linux/tarballs/` to
+   `therock-{release_type}-tarball/v3/tarball/`. Uses `StorageBackend.copy_directory`
+   (new method) for S3-to-S3 server-side copies.
 
-2. **Publish tarballs to release bucket.** New script/job to copy tarballs
-   from `therock-{release_type}-artifacts/{run_id}/tarballs/` to
-   `therock-{release_type}-tarball/{s3_subdir}/`. This is the artifacts→release
-   bucket hop. Needs its own IAM role config (release bucket may be different
-   account/region). Checkpoint after this — we'll have a working
-   build→tarball→publish pipeline.
+   Infrastructure added:
+   - `s3_buckets.py`: `get_release_bucket_config(release_type, bucket_type)`
+   - `storage_backend.py`: `list_files()`, `copy_files()`, `copy_directory()`
+   - `workflow_outputs.py`: `release_type` plumbed through `from_workflow_run()`
+   - `upload_tarballs.py`: aligned style (`main(argv)`, logging, `--release-type`)
 
-3. **Follow-up after checkpoint:**
+   Workflow wiring: `publish_to_release_buckets` job in
+   `release_multi_arch_linux.yml` after `build_tarballs`.
+
+   Branch: `multi-arch-release-publish`
+   Test run: https://github.com/ROCm/TheRock/actions/runs/24429137657
+   (dispatch with release_type=dev, should copy to therock-dev-tarball)
+
+**Next steps:**
+   - Verify test run results (check therock-dev-tarball/v3/tarball/)
+   - Python package publishing (similar pattern to tarballs)
    - Wire tarballs into CI as opt-in downstream job
-   - Python package publishing (similar pattern)
    - Dispatched tests, pytorch, jax, native packages
    - `expect_failure` cleanup — rip out broken plumbing from multi-arch
      workflows (side task)
