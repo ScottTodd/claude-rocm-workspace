@@ -381,20 +381,7 @@ Single-stage releases continue using `v2`. Both coexist during migration.
 4. ~~Workstream 2b: release_multi_arch.yml scaffold~~ — done (#4509)
 5. Workstream 3: publish tarballs to release buckets — branch `multi-arch-release-publish`, testing
 
-**Follow-up:**
-- Workstream 3: publish jobs (copy artifacts → release buckets, handling
-  cross-account/cross-region credentials). CloudFront URLs computed here,
-  not in setup.
-- Python package publishing
-- rockrel nightly schedule wrapper — needs env var overrides in
-  `configure_multi_arch_ci.py` for family lists passed via `workflow_call`
-  (event payload is rockrel's, not TheRock's, so the script can't read
-  `linux_amdgpu_families` from the event inputs). Add `LINUX_AMDGPU_FAMILIES`
-  / `WINDOWS_AMDGPU_FAMILIES` env var overrides to `from_environ()` and
-  corresponding inputs to `setup_multi_arch.yml`.
-- Prerelease support
-- Windows multi-arch releases
-- PyTorch/JAX wheel publishing
+**Follow-up:** See ordered next steps list below (week of 2026-04-14).
 
 ### Workstream 2a: Build multi-arch tarballs
 
@@ -559,28 +546,59 @@ Tested on fork CI (https://github.com/ScottTodd/TheRock/actions/runs/24205988455
    - `workflow_outputs.py`: `release_type` plumbed through `from_workflow_run()`
    - `upload_tarballs.py`: aligned style (`main(argv)`, logging, `--release-type`)
 
-   Workflow wiring: `publish_to_release_buckets` job in
-   `release_multi_arch_linux.yml` after `build_tarballs`.
+**Done (week of 2026-04-17):**
 
-   Branch: `multi-arch-release-publish`
-   Test run: https://github.com/ROCm/TheRock/actions/runs/24429137657
-   (dispatch with release_type=dev, should copy to therock-dev-tarball)
+3. **Windows release workflows.** `multi_arch_release_windows.yml` forked
+   from Linux, wired into `multi_arch_release.yml`. Added `run-name` with
+   `|`-separated platform sections. Added "all"/"none" keywords for GPU
+   family inputs with defaults (gfx94x Linux, gfx110x Windows).
+   - PR #4582 (Windows release workflows)
 
-**Next steps:**
-   - Verify test run results (check therock-dev-tarball/v3/tarball/)
-   - Python package publishing (similar pattern to tarballs)
-   - Wire tarballs into CI as opt-in downstream job
-   - Dispatched tests, pytorch, jax, native packages
-   - `expect_failure` cleanup — rip out broken plumbing from multi-arch
-     workflows (side task)
-   - `fail-fast` strategy for releases — add validation gate before publish
+4. **Cross-repo triggering (repository/ref plumbing).** Threaded
+   `repository` and `ref` inputs through all 9 multi-arch workflows so
+   rockrel can check out the correct TheRock commit. Tested end-to-end
+   from ScottTodd/rockrel fork.
+   - PR #4619 (cross-repo triggering support)
+   - rockrel PR #35 (wrapping workflow)
+
+5. **Explicit workflow inputs for configure_multi_arch_ci.py.** Added
+   `linux_amdgpu_families`, `windows_amdgpu_families`, `linux_test_labels`,
+   `windows_test_labels`, `prebuilt_stages`, `baseline_run_id` as explicit
+   inputs to `setup_multi_arch.yml`. All callers now pass them explicitly.
+   Script reads workflow inputs from env vars instead of `event.inputs`
+   (event payload leaks through `workflow_call` but shouldn't be relied on).
+
+6. **Python package publishing.** `publish_rocm_to_release_buckets.py`
+   now copies python packages (.whl, .tar.gz) from
+   `therock-{type}-artifacts/{run_id}-{platform}/python/` to
+   `therock-{type}-python/v3/` (kpack split disabled, per-family subdirs)
+   or `therock-{type}-python/v3-multi-arch/` (kpack split enabled, flat).
+   No index.html copying — server-side index generation.
+   - PR #4625 (python package publishing)
+
+**PR stack (bottom to top):**
+- PR #4575: `--release-type` plumbing (merged)
+- PR #4576: `list_files`/`copy_directory` on StorageBackend (merged)
+- PR #4577: tarball publishing + `publish_rocm_to_release_buckets.py`
+- PR #4582: Windows release workflows
+- PR #4619: cross-repo triggering (repository/ref)
+- PR #4625: python package publishing
+- rockrel PR #35: wrapping workflow
+
+**Next steps (ordered, matching issue #3334 comment):**
+
+In TheRock release workflow:
+   - [ ] Build rocm native packages (`build_native_linux_packages.yml`)
+   - [ ] Trigger test_artifacts per GPU target (dispatch or inline)
+   - [ ] Trigger pytorch release (`release_portable_linux_pytorch_wheels.yml`)
+   - [ ] Trigger jax release (`build_linux_jax_wheels.yml`)
+
+In rockrel:
+   - [ ] Enable schedule for nightly releases
+   - [ ] Prerelease workflow testing
 
 **Side tasks:**
-- `expect_failure` is broken for multi-arch CI — `continue-on-error` doesn't
-  work on reusable workflow calls (`uses:`). The build stages fail hard and
-  block downstream jobs that check `!failure()`. Options: rip out the
-  plumbing (simplest), or accept the cosmetic workflow failure. Filed as
-  follow-up for next week.
+- `expect_failure` cleanup — pending PR #4500
 
 ### Workstream 2b: release_multi_arch.yml scaffold
 
