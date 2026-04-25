@@ -1,7 +1,7 @@
 # Multi-Arch Release Workflows
 
 **Tracking issue:** https://github.com/ROCm/TheRock/issues/3334
-**Status:** In progress — workstream 2a PRs in review, workstream 2b release workflow scaffold started
+**Status:** In progress — MVP complete, working on test integration and commit pinning
 
 ## Goal
 
@@ -379,9 +379,9 @@ Single-stage releases continue using `v2`. Both coexist during migration.
 2. ~~Workstream 1b: thread release_type through full workflow chain~~ — done (#4408)
 3. ~~Workstream 2a: build multi-arch tarballs workflow~~ — done (#4443, #4444, #4448)
 4. ~~Workstream 2b: release_multi_arch.yml scaffold~~ — done (#4509)
-5. Workstream 3: publish tarballs to release buckets — branch `multi-arch-release-publish`, testing
+5. ~~Workstream 3: publish tarballs to release buckets~~ — done (#4577)
 
-**Follow-up:** See ordered next steps list below (week of 2026-04-14).
+**Follow-up:** See ordered next steps list below.
 
 ### Workstream 2a: Build multi-arch tarballs
 
@@ -523,11 +523,11 @@ Tested on fork CI (https://github.com/ScottTodd/TheRock/actions/runs/24205988455
   `build_linux_jax_wheels.yml`). Multi-arch CI can build tarballs
   on-demand when JAX builds are requested.
 
-**PRs:**
-- PR #4443: `--run-github-repo` (merged)
-- PR #4444: `--download-cache-dir` (merged)
-- PR #4448: build_tarballs + upload_tarballs + workflow (in review)
-- PR #4449: `--expand-family-to-targets` (in review, by marbre, addresses #4433)
+**PRs (all merged):**
+- PR #4443: `--run-github-repo`
+- PR #4444: `--download-cache-dir`
+- PR #4448: build_tarballs + upload_tarballs + workflow
+- PR #4449: `--expand-family-to-targets` (by marbre, addresses #4433)
 
 **Done (week of 2026-04-14):**
 
@@ -576,26 +576,63 @@ Tested on fork CI (https://github.com/ScottTodd/TheRock/actions/runs/24205988455
    No index.html copying — server-side index generation.
    - PR #4625 (python package publishing)
 
-**PR stack (bottom to top):**
-- PR #4575: `--release-type` plumbing (merged)
-- PR #4576: `list_files`/`copy_directory` on StorageBackend (merged)
+**PR stack (all merged):**
+- PR #4575: `--release-type` plumbing
+- PR #4576: `list_files`/`copy_directory` on StorageBackend
 - PR #4577: tarball publishing + `publish_rocm_to_release_buckets.py`
 - PR #4582: Windows release workflows
 - PR #4619: cross-repo triggering (repository/ref)
 - PR #4625: python package publishing
+- PR #4792: repository/ref plumbing to more publish jobs
 - rockrel PR #35: wrapping workflow
+- rockrel PR #38: nightly schedule
+
+**Done (week of 2026-04-24):**
+
+7. **Commit SHA pinning.** Setup job now resolves checkout SHA and
+   outputs it. `multi_arch_release.yml` passes the pinned SHA to
+   linux/windows release workflows, ensuring all downstream jobs use
+   the same commit even if the branch HEAD moves during the run.
+   Forward-compatible with #1236 (freezing external repo commits).
+   - PR #4792 (merged): repository/ref to publish jobs
+   - Commit SHA pinning: branch `multi-arch-release-checkout`
+     (setup_multi_arch.yml outputs ref, multi_arch_release.yml uses it)
+
+8. **Inline test jobs in release workflows (issue #2281).** Added
+   `test_artifacts_per_family` jobs to `multi_arch_release_linux.yml`
+   and `multi_arch_release_windows.yml` using `workflow_call` (inline),
+   matching the CI pattern. Plumbed `repository`/`ref` through
+   `test_artifacts.yml`, `test_component.yml`, and
+   `test_artifacts_structure.yml` for correct checkout from rockrel.
+   Replaced hardcoded `repository: "ROCm/TheRock"` in
+   `test_component.yml` with input-based fallback.
+   - Branch `multi-arch-release-artifact-tests-1`: workflow_dispatch approach
+     (with rockrel wrapper). Preserved for reference.
+   - Branch `multi-arch-release-artifact-tests-2`: workflow_call approach
+     (preferred, no rockrel wrapper needed).
+   - Test run: https://github.com/ROCm/TheRock/actions/runs/24917079667
+   - Design note: chose workflow_call over workflow_dispatch because
+     Quartz pub/sub (RFC0011) will handle cross-repo test triggering
+     in the future. Inline tests are simpler and don't need rockrel
+     wrappers. Dispatch approach preserved on branch -1 if needed.
 
 **Next steps (ordered, matching issue #3334 comment):**
 
 In TheRock release workflow:
    - [ ] Build rocm native packages (`build_native_linux_packages.yml`)
-   - [ ] Trigger test_artifacts per GPU target (dispatch or inline)
+   - [x] Test artifacts per GPU target (inline workflow_call, branch -2)
    - [ ] Trigger pytorch release (`release_portable_linux_pytorch_wheels.yml`)
    - [ ] Trigger jax release (`build_linux_jax_wheels.yml`)
 
 In rockrel:
-   - [ ] Enable schedule for nightly releases
+   - [x] Enable schedule for nightly releases (PR #38, merged)
    - [ ] Prerelease workflow testing
+
+Related:
+   - [ ] Commit SHA pinning (branch `multi-arch-release-checkout`, ready for PR)
+   - [ ] Consolidate ci_nightly.yml with release workflows (#4384 comments)
+   - [ ] Frozen external repo commits (#1236) — setup job is the natural
+     place for manifest generation (pytorch/jax commit resolution)
 
 **Side tasks:**
 - `expect_failure` cleanup — pending PR #4500
