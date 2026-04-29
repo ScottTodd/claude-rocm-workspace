@@ -310,6 +310,48 @@ Bad tests are worse than no tests because they create maintenance burden without
 providing value, give false confidence, and make refactoring harder. The following
 patterns should be marked as **BLOCKING** issues.
 
+### 0. Agent-Generated Test Sprawl
+
+**Don't append new tests without checking existing coverage first.**
+
+Coding agents (Copilot, Claude, etc.) fall into a common trap: they write new
+tests for the code they changed without checking whether existing tests already
+cover the behavior. This results in sprawl, duplication, and change-detector
+tests.
+
+Before accepting new tests, ask:
+
+1. **Do existing tests already cover this behavior?** If yes, the new tests
+   are redundant.
+2. **Are tests written from a "change narrative"?** Comments like "test new
+   behavior" or "verify backward compatibility" describe the *change*, not the
+   *code*. Code comments and docstrings must stand on their own — they should
+   describe what the test validates, not what the PR changed.
+3. **Is "backward compatibility" meaningful here?** For internal-only code
+   (scripts, utilities within a single repo with no external consumers),
+   "backward compatible" is a misleading framing. There are no external users
+   to be compatible with. Test the behavior, not the compatibility narrative.
+
+```python
+# BAD: Change-narrative docstring
+class MainFunctionMultiplePackageTypesTest(unittest.TestCase):
+    """Tests for main() with new behavior: compute all types when --package-type omitted."""
+
+# BAD: "backward compatible" framing for internal script
+def test_backward_compatible_with_package_type_specified(self):
+    """Test that when --package-type is provided, only that type is computed (backward compatible)."""
+
+# GOOD: Describes what is tested, not what changed
+class MainFunctionAllOutputsTest(unittest.TestCase):
+    """Tests for main() computing all package type versions."""
+
+def test_single_package_type_computes_only_that_type(self):
+    """When --package-type=deb, only rocm_deb_package_version is output."""
+```
+
+**Severity:** BLOCKING — Remove redundant tests; rewrite change-narrative
+comments to describe the code, not the change.
+
 ### 1. Testing Trivial Wrappers Around Standard Library
 
 **Don't test code that just calls standard library functions.**
@@ -476,6 +518,9 @@ linux_packaging_utils_test.py
 - [ ] Tests are integrated with CI
 
 **Test anti-pattern checks:**
+- [ ] Existing test coverage reviewed first — new tests only where behavior is untested
+- [ ] No "change narrative" comments/docstrings ("new behavior", "backward compatible")
+- [ ] No "backward compatibility" framing for internal-only code with no external consumers
 - [ ] Tests verify OUR code, not standard library functions
 - [ ] Mocks don't defeat the purpose of the test (use real files where possible)
 - [ ] Tests would catch real bugs, not just implementation changes

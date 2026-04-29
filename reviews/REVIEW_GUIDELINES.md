@@ -155,6 +155,25 @@ Is this a correctness/security issue?
                   └─ NO → 📋 FUTURE WORK
 ```
 
+### Key Principle: Simplification Bias
+
+When reviewing code that adds conditional logic (if/else on a flag, optional
+parameters, backward-compatibility paths), always ask: **can the flag or
+option be removed entirely?**
+
+- If a flag has only one caller and can be eliminated by always doing the
+  right thing, recommend removing it
+- If "backward compatibility" is invoked for code with no external consumers,
+  push back — there's nothing to be compatible with
+- Prefer removing dead options over adding new ones (e.g., "remove
+  `--package-type` and always compute all" is better than "add
+  `--package-type=native`")
+
+**Anti-pattern to watch for:** Agent-generated code that preserves options
+"for backward compatibility" when the entire call chain is internal to one
+repository. This creates unnecessary complexity that the style guide's KISS
+principle rejects.
+
 ### Key Principle: Cleanup Scope
 
 **BLOCKING if:**
@@ -182,6 +201,13 @@ When CI run data is available, use it to validate findings from the diff.
 Code-only review can produce false positives — CI logs provide ground truth.
 
 ### Process
+
+0. **Check ALL CI runs, not just the one linked in the PR body.** The author
+   may link a cherry-picked successful run while earlier runs on the same
+   branch failed. Always run `gh pr checks <URL>` to find all CI runs
+   associated with the PR, and inspect any failures. A failure on a different
+   run may reveal real issues (e.g., missing script arguments, broken workflow
+   parsing) that the linked run doesn't surface.
 
 1. **Form hypotheses from the diff.** When reading changes, note potential
    behavioral impacts:
@@ -413,6 +439,7 @@ These test issues should always be marked **BLOCKING**:
 3. **Change detector tests** - Tests that mirror implementation details break on any refactor
 4. **Testing frameworks** - Don't test argparse, json, etc.
 5. **Excessive patching** - 5+ patches means you're testing call sequences, not behavior
+6. **Agent-generated test sprawl** - Tests appended without checking existing coverage. Comments/docstrings written from a "change narrative" ("test new behavior", "verify backward compatibility") rather than describing what the test validates. "Backward compatibility" framing for internal-only code with no external consumers.
 
 ### Quick Reference: Documentation Anti-Patterns (BLOCKING)
 
@@ -431,6 +458,14 @@ These workflow issues should always be marked **BLOCKING**:
 3. **Input source mismatch** - Switching from `github.event.inputs` to `inputs` breaks `workflow_dispatch`
 4. **Complex inline bash** - `run:` blocks with conditionals, loops, string manipulation, or decision trees must be Python scripts per the [style guide](https://github.com/ROCm/TheRock/blob/main/docs/development/style_guides/github_actions_style_guide.md#prefer-python-scripts-over-inline-bash). One-line commands and simple `echo`/`mkdir` are fine.
 5. **Unused checkout** - Workflow checks out multiple repos but a checkout's source is never wired to build/test steps (e.g., missing `-D*_SOURCE_DIR` flag). CI passes but tests the wrong source.
+
+### Quick Reference: GitHub Actions Anti-Patterns (IMPORTANT)
+
+These workflow issues should be marked **IMPORTANT**:
+
+1. **Hard-coded values where passthrough is appropriate** - Using `release_type: ""` or `artifact_run_id: ${{ github.run_id }}` when `${{ inputs.release_type }}` or omitting the parameter would be more consistent and maintainable.
+2. **Duplicated jobs instead of matrix** - Multiple near-identical jobs differing only in one parameter (e.g., os_profile) should use a matrix strategy.
+3. **No CI duration data for new jobs** - New CI jobs should include timing information; ask how they scale with all GPU architectures enabled.
 
 See [guidelines/github_actions.md](guidelines/github_actions.md) for full details.
 
@@ -486,6 +521,9 @@ Before finalizing a review, verify:
 - [ ] Mocks don't defeat the test's purpose (use real files where possible)
 - [ ] No change detector tests or excessive patching (5+ is a red flag)
 - [ ] File naming matches project conventions (`*_test.py`)
+- [ ] Existing test coverage checked first — new tests only where behavior is untested
+- [ ] No "change narrative" comments ("new behavior", "backward compatible") — tests must stand alone
+- [ ] No "backward compatibility" framing for internal-only code with no external consumers
 
 **For PRs adding documentation:** See [guidelines/documentation.md](guidelines/documentation.md) for full checklist
 - [ ] No stale information (counts, percentages, versions)
@@ -508,6 +546,10 @@ Before finalizing a review, verify:
 - [ ] No complex inline bash (conditionals/loops/string manipulation belong in Python scripts)
 - [ ] Multiple checkouts wired correctly (each checkout's source consumed by intended steps)
 - [ ] `runs-on:` labels pinned (not `*-latest`)
+- [ ] Parameters use input passthrough, not hard-coded values
+- [ ] Parameters omitted when child workflow defaults suffice (e.g., `artifact_run_id`)
+- [ ] Duplicated jobs consolidated into matrix where possible
+- [ ] CI time-to-signal impact considered for new jobs
 
 **Security (always check):** See [guidelines/security.md](guidelines/security.md) for full checklist
 - [ ] No private keys or credentials committed (check binary files too)

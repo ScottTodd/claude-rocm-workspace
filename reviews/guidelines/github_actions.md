@@ -508,6 +508,107 @@ When a workflow step runs a Python script (`python script.py` or
 
 ---
 
+## Workflow Call Parameter Hygiene
+
+### Prefer Input Passthrough Over Hard-Coded Values
+
+When calling a reusable workflow, prefer passing the input through from the
+caller rather than hard-coding a value, even if the hard-coded value is what
+the caller currently provides. Hard-coded values silently diverge from the
+caller's intent as the pipeline evolves.
+
+```yaml
+# BAD: Hard-coded value that should come from the caller
+build_native_deb_packages:
+  uses: ./.github/workflows/build_native_packages.yml
+  with:
+    release_type: ""
+    artifact_run_id: ${{ github.run_id }}
+
+# GOOD: Pass through from caller — future changes propagate automatically
+build_native_deb_packages:
+  uses: ./.github/workflows/build_native_packages.yml
+  with:
+    release_type: ${{ inputs.release_type }}
+    # artifact_run_id omitted — child workflow defaults to github.run_id
+```
+
+### Omit Parameters When Child Workflows Have Sensible Defaults
+
+If a child workflow defines a default for an input (e.g.,
+`artifact_run_id != '' && artifact_run_id || github.run_id`), don't override
+it from the caller unless you need a different value. Omitting the parameter:
+
+- Keeps the caller simpler
+- Lets the child workflow's default evolve independently
+- Avoids accidentally breaking scenarios like prebuilt artifact runs where
+  the choice of run ID is meaningful
+
+### Consolidate Duplicated Jobs Into Matrix Strategies
+
+When a workflow defines multiple nearly-identical jobs that differ only in
+one or two parameters (e.g., separate test jobs per OS), flag the duplication
+and suggest a matrix strategy:
+
+```yaml
+# BAD: Three separate jobs that differ only in os_profile
+test_native_packages_ubuntu2404:
+  uses: ./.github/workflows/test_install.yml
+  with:
+    os_profile: ubuntu2404
+test_native_packages_rhel10:
+  uses: ./.github/workflows/test_install.yml
+  with:
+    os_profile: rhel10
+test_native_packages_sles16:
+  uses: ./.github/workflows/test_install.yml
+  with:
+    os_profile: sles16
+
+# GOOD: Matrix over OS profiles
+test_native_packages:
+  strategy:
+    matrix:
+      include:
+        - os_profile: ubuntu2404
+          package_type: deb
+        - os_profile: rhel10
+          package_type: rpm
+        - os_profile: sles16
+          package_type: rpm
+  uses: ./.github/workflows/test_install.yml
+  with:
+    os_profile: ${{ matrix.os_profile }}
+```
+
+**Severity:**
+- Hard-coded value where passthrough is appropriate: **IMPORTANT**
+- Explicit parameter that duplicates child workflow's default: **SUGGESTION**
+- Duplicated jobs that should be a matrix: **SUGGESTION** (or **IMPORTANT** if >3 copies)
+
+---
+
+## CI Time-to-Signal Impact
+
+### Check: New Jobs Don't Blow Up CI Duration
+
+When a PR adds new jobs to a CI pipeline, consider the impact on total
+wall-clock time (time to signal). Ask:
+
+- How long do the new jobs take?
+- Are they on the critical path, or do they run in parallel with existing jobs?
+- How does duration scale with all GPU architectures enabled (not just the
+  subset tested in the PR)?
+- Could the new jobs be gated or run only on specific triggers (e.g., nightly
+  but not pre-submit)?
+
+**Severity:**
+- New jobs that double CI duration without discussion: **IMPORTANT**
+- No duration data provided for new CI jobs: **IMPORTANT** (ask author)
+- Duration concerns with mitigation plan: **SUGGESTION**
+
+---
+
 ## Style
 
 ### Check: Style Guide Compliance
@@ -610,6 +711,10 @@ When modifying workflows with `workflow_call`:
 - [ ] Permissions are minimal
 - [ ] Actions are pinned
 - [ ] No security vulnerabilities
+- [ ] Parameters use input passthrough (not hard-coded) where appropriate
+- [ ] Parameters omitted when child workflow defaults suffice
+- [ ] Duplicated jobs consolidated into matrix strategies where possible
+- [ ] CI time-to-signal impact considered for new jobs
 
 **Before approving:**
 - [ ] Each trigger type has a passing CI run linked
