@@ -161,9 +161,9 @@ Notes:
 ```bash
 # List contents (zstd-compressed)
 python -c "
-from _therock_utils.artifacts import _open_archive_for_read
+from _therock_utils.archive_util import open_archive_for_read
 from pathlib import Path
-with _open_archive_for_read(Path('<archive.tar.zst>')) as tf:
+with open_archive_for_read(Path('<archive.tar.zst>')) as tf:
     for m in tf:
         print(m.name)
 "
