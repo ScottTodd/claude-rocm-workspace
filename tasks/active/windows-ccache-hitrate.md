@@ -231,57 +231,111 @@ This explains:
 - Why the hit rate is ~1.5% (only cl.exe compilations hit, because system
   headers at `C:\Program Files\...` have stable paths)
 
-Note: There appear to be TWO different runner configurations in play:
-1. Older runs: checkout at `C:\{GUID}\`, build at `C:\{GUID}\build\`
-2. Newer runs: checkout at `C:\home\runner\_work\TheRock\TheRock\`,
-   build at `B:\build\`
+### Finding 9: GUID entries are ACTIVELY being written (post-namespace)
 
-Even the newer runs with consistent `C:\home\runner\...` paths can't use
-cache entries from the older GUID-based runs (and vice versa).
+The `CCACHE_NAMESPACE_VERSION = "v1"` namespace was added in PR #4419,
+merged May 4. Our analyzed runs are from May 7 — only 3 days later — and
+already have **111 unique GUID-based workspace paths** in the cache.
 
-### Fix: Set `base_dir` in ccache config
+This means something is **actively writing** entries with `C:\{GUID}\`
+paths to the `therock-v1` namespace RIGHT NOW. Bumping the namespace
+alone won't fix this — the poisoner will follow.
 
-The fix is to set ccache's `base_dir` configuration option. From the
-[ccache manual](https://ccache.dev/manual/latest.html#_base_dir):
+### Finding 10: The GUIDs aren't from TheRock's own CI
 
-> If set to an absolute path, ccache will rewrite absolute paths starting
-> with base_dir into relative paths before computing hash digests.
+Checked both `build_windows_artifacts.yml` (old CI) and
+`multi_arch_build_windows_artifacts.yml` (multi-arch CI):
+- Both use `runs-on: azure-windows-scale-rocm`
+- Both resolve `github.workspace` to `C:\home\runner\_work\TheRock\TheRock`
+- Both use `BUILD_DIR: B:\build`
+- Neither produces GUID-based paths
 
-This would normalize all paths like `C:\{GUID}\build\...` into relative
-paths before hashing, making them runner-independent. This is exactly
-what `base_dir` was designed for.
+The old CI run (25464518294, ci.yml) uses `C:\home\runner\_work\...` and
+gets **71% hit rate** (but that's amortized across all stages including
+the easy-win compiler-runtime, not just math-libs).
 
-For the math-libs stage, the relevant base_dir would need to cover both:
-- The source checkout (variable: `C:\{GUID}\` or `C:\home\runner\_work\...`)
-- The build tree (variable: `C:\{GUID}\build\` or `B:\build\`)
+The GUID paths look like Azure DevOps agent workspace directories or
+a different GitHub Actions runner configuration. The bazelremote cache
+server at `http://bazelremote-svc.bazelremote-ns.svc.cluster.local:8080`
+is accessible to anything on the cluster with no auth, so any other
+workflow/repo/tool using the same server with the same namespace could
+be writing poisoned entries.
 
-The tricky part is that `base_dir` only accepts ONE directory. If the
-source and build trees are under different roots, we'd need to either:
-1. Move the build tree under the checkout (simpler but uses more C: disk)
-2. Use symlinks to unify the paths
-3. Standardize the runner workspace path
+### Finding 11: Multiple repos share the same cache
 
-### Proposed Next Steps
+Searched ROCm org for `azure-windows-scale-rocm`. At least these repos
+share the same runner pool AND the same bazelremote cache:
 
-1. **Standardize workspace path**: Ensure all Windows runners use the same
-   checkout and build paths. The multi-arch workflow already uses
-   `C:\home\runner\_work\...` + `B:\build` — if the GUID-based runners
-   are from the old (non-multi-arch) CI, this may already be resolving
-   itself as we migrate.
+| Repo | Workflows | Workspace path |
+|------|-----------|---------------|
+| ROCm/TheRock | ci, multi-arch | `C:\home\runner\_work\TheRock\TheRock` |
+| ROCm/SPIRV-LLVM-Translator | ci, multi-arch | `C:\home\runner\_work\SPIRV-LLVM-Translator\SPIRV-LLVM-Translator` |
+| ROCm/rocm-libraries | stinkytofu-ci, therock-ci | (skipped in recent runs) |
+| ROCm/rocm-systems | therock-ci-windows | (logs expired) |
+| ROCm/rocMLIR | build_windows_artifacts | (no Windows jobs found recently) |
 
-2. **Set `base_dir` in ccache config**: Even with consistent workspace
-   paths, `base_dir` adds resilience. Configure it to the checkout root
-   (e.g., `C:\home\runner\_work\TheRock\TheRock`) so header paths from
-   the checkout are normalized to relative paths.
+All use `setup_ccache.py` → same namespace `therock-v1` → same bazelremote.
+Each gets a different `C:\home\runner\_work\{repo}\{repo}` workspace path.
 
-3. **Flush stale remote cache entries**: The remote cache has 1,752+
-   accumulated GUID-based entries that will never match. Consider bumping
-   `CCACHE_NAMESPACE_VERSION` from `v1` to `v2` to logically isolate from
-   stale entries and start fresh.
+SPIRV-LLVM-Translator is confirmed to use the same ccache config preset
+(`github-oss-dev`) and namespace. Its entries would pollute TheRock's cache
+with `C:\...\SPIRV-LLVM-Translator\...` paths — not GUIDs, but still
+unreachable from TheRock's workspace.
+
+The GUID-format paths (`C:\B109CE3D-...\`) look like Azure DevOps
+Pipelines agent workspaces, not GitHub Actions. Possibly from:
+- Azure Pipelines builds sharing the same bazelremote server
+- A different runner configuration within the scale set
+- Builds triggered from a different CI system on the same cluster
+
+### Open questions
+
+1. **What is writing GUID-path entries?** 111 unique GUIDs in 3 days.
+   The `C:\{GUID}\` pattern is characteristic of Azure DevOps Pipelines
+   agents, NOT GitHub Actions (which uses `_work/{repo}/{repo}`).
+   Something outside GitHub Actions may be writing to the cache.
+
+2. **Why doesn't the cache self-heal?** Each manifest accumulates entries
+   over time. GUID entries from the poisoner pile up. Even when a valid
+   multi-arch entry exists, it's buried under dozens of GUID entries that
+   each trigger "can't be read" failures. ccache iterates through ALL
+   entries before falling through to preprocessed mode. If the valid entry
+   happens to have the same result key, it might be found eventually, but
+   typically the dependency checksums differ between commits anyway.
+
+3. **Are Linux entries also affected?** Linux uses a different runner pool
+   and likely different workspace paths. If Linux runs also write to the
+   same bazelremote server with `therock-v1`, there could be cross-platform
+   entry pollution (though different compiler hashes would produce different
+   manifest keys, keeping them separate).
+
+### Proposed fixes (prioritized)
+
+1. **Find and stop the poisoner**: Identify what's writing GUID-path
+   entries to the `therock-v1` namespace on the dev bazelremote server.
+   This is the root cause — everything else is a workaround.
+   - Check if other repos (forks, internal mirrors) use the same cache
+   - Check if Azure Pipelines or other CI systems share the cluster
+   - Add logging to the bazelremote server to track write sources
+
+2. **Set `base_dir` in ccache config**: This makes ccache normalize
+   absolute paths to relative before storing in manifests. Even if
+   different runners have different workspace roots, the stored paths
+   would be relative and thus portable. This defends against both the
+   current poisoning AND any future workspace path changes.
+   - `base_dir` only accepts ONE directory, so we'd need it to cover
+     the common prefix of both source and build trees
+   - On current multi-arch CI: source at `C:\home\runner\_work\TheRock\TheRock`,
+     build at `B:\build` — these have no common prefix
+   - Possible approach: symlink one under the other, or move build tree
+
+3. **Bump namespace + namespace per workflow**: Change to `v2` and
+   consider separate namespaces for old CI vs multi-arch CI to prevent
+   cross-pollution. Won't help if the poisoner also picks up the new
+   namespace from `setup_ccache.py`.
 
 4. **Pin ccache version**: Move from dynamic `choco install` to a fixed
-   version baked into the runner image, matching Linux (4.11.2) or at
-   least pinning a specific version.
+   version in the runner image.
 
 ### Finding 8: PR #4419 never fixed math-libs
 
