@@ -282,11 +282,35 @@ SPIRV-LLVM-Translator is confirmed to use the same ccache config preset
 with `C:\...\SPIRV-LLVM-Translator\...` paths — not GUIDs, but still
 unreachable from TheRock's workspace.
 
-The GUID-format paths (`C:\B109CE3D-...\`) look like Azure DevOps
-Pipelines agent workspaces, not GitHub Actions. Possibly from:
-- Azure Pipelines builds sharing the same bazelremote server
-- A different runner configuration within the scale set
-- Builds triggered from a different CI system on the same cluster
+### Finding 12: B:\ is a mount/junction to C:\{GUID}\ — TheRock is the source
+
+`B:\build` is a mount point or junction that resolves to `C:\{GUID}\build\`
+where the GUID is unique per runner VM. When CMake/clang resolves paths,
+it sometimes uses the REAL path (`C:\{GUID}\...`) instead of the mount
+point (`B:\...`). This resolved path leaks into compiler flags.
+
+Proof from the CURRENT run's own command line (MIOpen compilation):
+```
+-DHIP_COMPILER_FLAGS= ... C:/8A0235BC-8248-4249-82CE-CFF4055BEC2F/build/core/clr/dist/lib/llvm/lib/clang/23/lib/windows/clang_rt.builtins-x86_64.lib
+```
+
+The GUID `8A0235BC-...` is THIS runner's real path behind `B:\build`.
+This means:
+1. TheRock's OWN CI writes entries with GUID paths (not an external system)
+2. The `-DHIP_COMPILER_FLAGS` define bakes in the resolved path
+3. Since each runner has a different GUID, the command line differs
+4. Different command line → different manifest key → no cache reuse
+
+This also explains why clang resource headers (`__stdarg_va_copy.h` etc.)
+appear with GUID paths in the manifest entries — clang resolves its own
+resource directory through the real path, not the `B:\` mount.
+
+The GUIDs are NOT from:
+- Azure DevOps Pipelines
+- External repos
+- An older runner configuration
+
+They're from TheRock's own CI, every run, on every runner.
 
 ### Open questions
 
