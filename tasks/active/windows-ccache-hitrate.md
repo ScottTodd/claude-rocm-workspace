@@ -200,40 +200,88 @@ binary + shared libraries via sha256sum. Windows uses `compiler_check =
 content`. Both should produce stable hashes since the binaries are
 identical between runs.
 
-### Active Theories
+### ROOT CAUSE FOUND: GUID-based workspace paths
 
-**Theory E: Non-deterministic header in the dependency chain.**
-Something in the include tree has different content between runs despite
-the source and version headers being identical. Checked `clang/Config/config.h`
-and CMake export headers — no embedded build paths found so far. Need
-`debug_level=3` to see which specific dependency checksum doesn't match.
+Credit to @amd-nicknick for the key log excerpt in
+[issue #4519 comment](https://github.com/ROCm/TheRock/issues/4519#issuecomment-4401521644).
 
-**Theory F: ccache 4.13 behavior change vs 4.11.**
-The different ccache versions produce different key formats (base36 vs hex
-SHA-1). While entries within the same platform version should be compatible,
-a ccache version upgrade (from choco) could have wiped all accumulated
-entries. Also, a behavior change in manifest matching between 4.11 and
-4.13 could explain why the same setup works on Linux but not Windows.
+Each Windows CI runner gets a unique workspace directory:
+```
+C:\B109CE3D-03D2-40EB-AD46-20E30992D028\build\...
+C:\1CADE95B-7057-4C0D-9D47-8E810A59CE46\build\...
+C:\6B7AEB7B-990F-47CB-BB17-C789587A37E2\build\...
+```
 
-### Proposed Next Steps (ranked by impact)
+ccache's direct mode records the absolute paths of ALL included files in
+the manifest. When a subsequent run on a different runner tries to verify
+a manifest entry, it checks whether each dependency file exists and has
+matching content. Since the paths point to `C:\{GUID}\...` directories
+that don't exist on the current runner, the check immediately fails with
+"can't be read (No such file or directory)".
 
-1. **Enable `debug_level = 3` on one Windows CI run**: Add
-   `debug = true` to the ccache config for a single run. This would log
-   exactly which dependency file doesn't match in the manifest. This is
-   the single most direct diagnostic step.
-   - Modify `setup_ccache.py` to accept `--debug` flag
-   - Or just add `debug = true` to the generated config for one run
+Evidence from our analyzed run (25465494022):
+- **184,058 "can't be read" entries** in the ccache log
+- **1,752 unique GUID-based workspace paths** from previous runs
+- Every result entry from every previous run is unusable
 
-2. **Pin ccache version on Windows**: Install ccache 4.11.2 (same as Linux)
-   to test if version is a factor. Also eliminates the risk of future
-   version changes silently invalidating the cache.
+This explains:
+- Why Linux works: consistent `/__w/TheRock/TheRock/` path on all runners
+- Why local builds work: same path every time
+- Why manifest keys sometimes match but entries never do
+- Why the hit rate is ~1.5% (only cl.exe compilations hit, because system
+  headers at `C:\Program Files\...` have stable paths)
 
-3. **Write a Windows `compiler_check` script**: Even if the compiler hash
-   is stable, having parity with the POSIX approach provides consistency
-   and makes it easier to reason about cache key stability across platforms.
+Note: There appear to be TWO different runner configurations in play:
+1. Older runs: checkout at `C:\{GUID}\`, build at `C:\{GUID}\build\`
+2. Newer runs: checkout at `C:\home\runner\_work\TheRock\TheRock\`,
+   build at `B:\build\`
 
-4. **Test `base_dir` locally**: While paths appear consistent across
-   runners, setting `base_dir` is cheap and could help with edge cases.
+Even the newer runs with consistent `C:\home\runner\...` paths can't use
+cache entries from the older GUID-based runs (and vice versa).
+
+### Fix: Set `base_dir` in ccache config
+
+The fix is to set ccache's `base_dir` configuration option. From the
+[ccache manual](https://ccache.dev/manual/latest.html#_base_dir):
+
+> If set to an absolute path, ccache will rewrite absolute paths starting
+> with base_dir into relative paths before computing hash digests.
+
+This would normalize all paths like `C:\{GUID}\build\...` into relative
+paths before hashing, making them runner-independent. This is exactly
+what `base_dir` was designed for.
+
+For the math-libs stage, the relevant base_dir would need to cover both:
+- The source checkout (variable: `C:\{GUID}\` or `C:\home\runner\_work\...`)
+- The build tree (variable: `C:\{GUID}\build\` or `B:\build\`)
+
+The tricky part is that `base_dir` only accepts ONE directory. If the
+source and build trees are under different roots, we'd need to either:
+1. Move the build tree under the checkout (simpler but uses more C: disk)
+2. Use symlinks to unify the paths
+3. Standardize the runner workspace path
+
+### Proposed Next Steps
+
+1. **Standardize workspace path**: Ensure all Windows runners use the same
+   checkout and build paths. The multi-arch workflow already uses
+   `C:\home\runner\_work\...` + `B:\build` — if the GUID-based runners
+   are from the old (non-multi-arch) CI, this may already be resolving
+   itself as we migrate.
+
+2. **Set `base_dir` in ccache config**: Even with consistent workspace
+   paths, `base_dir` adds resilience. Configure it to the checkout root
+   (e.g., `C:\home\runner\_work\TheRock\TheRock`) so header paths from
+   the checkout are normalized to relative paths.
+
+3. **Flush stale remote cache entries**: The remote cache has 1,752+
+   accumulated GUID-based entries that will never match. Consider bumping
+   `CCACHE_NAMESPACE_VERSION` from `v1` to `v2` to logically isolate from
+   stale entries and start fresh.
+
+4. **Pin ccache version**: Move from dynamic `choco install` to a fixed
+   version baked into the runner image, matching Linux (4.11.2) or at
+   least pinning a specific version.
 
 ### Finding 8: PR #4419 never fixed math-libs
 
