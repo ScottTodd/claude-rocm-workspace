@@ -18,8 +18,11 @@ workflows. Related to issue #3332 and the multi-arch-releases task.
 ## Goals
 
 - [x] Test workflows support `multi_arch=true` install path
-- [ ] Multi-arch release workflows call test workflows after build
-- [ ] Script to generate the pytorch test matrix (families, runners, python/torch versions)
+- [x] Drop whl-staging-multi-arch, publish directly to whl-multi-arch
+- [ ] Upfront manifest generation (freeze commits + compute versions)
+- [ ] Restructure release workflow: orchestrator + reusable per-cell workflow
+- [ ] Add test jobs that read from manifest
+- [ ] Test matrix policy script
 - [ ] Multi-arch CI workflows optionally call test workflows
 
 ## Context
@@ -27,7 +30,10 @@ workflows. Related to issue #3332 and the multi-arch-releases task.
 ### Issue and PR references
 
 - Issue: https://github.com/ROCm/TheRock/issues/3332
-- PR #4996: `multi_arch` input for test workflows (step 1, in review)
+- Issue: https://github.com/ROCm/TheRock/issues/5110 (manifest + workflow architecture)
+- Issue: https://github.com/ROCm/TheRock/issues/1236 (commit manifests)
+- PR #4996: `multi_arch` input for test workflows (in review)
+- PR #5107: drop whl-staging, publish directly to whl-multi-arch (in review)
 
 ### Related work
 
@@ -35,23 +41,39 @@ workflows. Related to issue #3332 and the multi-arch-releases task.
 - `tasks/active/pytorch-ci.md` - PyTorch CI integration
 - Issue #2156 - stabilize PyTorch release workflows
 - Issue #3291 - build/test PyTorch in CI
-- Issue #4889 - smoke test runner crash on Windows gfx120X (blocks all gfx120X pytorch tests)
+- Issue #4889 - smoke test runner crash on Windows gfx120X
 
 ### Key files
 
 ```
-.github/workflows/test_pytorch_wheels.yml          # basic test (smoketest + subset)
-.github/workflows/test_pytorch_wheels_full.yml      # full test suite (sharded)
+# Test workflows
+.github/workflows/test_pytorch_wheels.yml
+.github/workflows/test_pytorch_wheels_full.yml
+
+# Multi-arch release workflows (to be restructured)
 .github/workflows/multi_arch_release_linux_pytorch_wheels.yml
 .github/workflows/multi_arch_release_windows_pytorch_wheels.yml
-.github/workflows/multi_arch_release_linux.yml      # parent, has test_artifacts_per_family pattern
-.github/workflows/build_portable_linux_pytorch_wheels.yml  # old per-family, has test+promote pattern
-build_tools/github_actions/amdgpu_family_matrix.py  # runner labels per family
-build_tools/github_actions/configure_target_run.py  # old per-family runner lookup
-build_tools/github_actions/promote_wheels_based_on_policy.py
+.github/workflows/multi_arch_release_linux.yml      # parent, dispatches pytorch
+
+# Old per-family (reference pattern for build→test→promote)
+.github/workflows/release_portable_linux_pytorch_wheels.yml  # orchestrator
+.github/workflows/build_portable_linux_pytorch_wheels.yml    # reusable per-cell
+
+# Manifest generation
+build_tools/github_actions/generate_pytorch_manifest.py      # current (post-build)
+build_tools/github_actions/manifest_utils.py
+
+# Supporting scripts
+build_tools/github_actions/amdgpu_family_matrix.py
+build_tools/github_actions/determine_version.py
+build_tools/github_actions/publish_pytorch_to_release_bucket.py
+external-builds/pytorch/build_prod_wheels.py
+external-builds/pytorch/pytorch_torch_repo.py
 ```
 
-## Completed work (PR #4996)
+## Completed work
+
+### PR #4996 -- multi_arch input for test workflows
 
 Added `multi_arch` boolean input to both test workflows. When true:
 - `expand_amdgpu_families.py --output-mode=device-extras` expands family to
@@ -61,86 +83,119 @@ Added `multi_arch` boolean input to both test workflows. When true:
 - `rocm[devel,device-gfx942]` installed from same index (full test only)
 - `summarize_test_pytorch_workflow.py` handles both args independently
 
-### Validation
+Validation:
+- Linux gfx942: tests passed, no regressions (run 25233709159)
 
-- Linux gfx942: tests passed, no regressions from multi-arch packaging
-  (run 25233709159)
-- Windows gfx1151: queued (testing 2.11.0+rocm7.13.0a20260501 from
-  whl-staging-multi-arch)
+### PR #5107 -- drop whl-staging, publish directly to whl-multi-arch
+
+- Renamed `publish_pytorch_to_staging.py` -> `publish_pytorch_to_release_bucket.py`
+- `v4/whl-staging` -> `v4/whl` (per-family v3 staging unchanged)
+- RELEASES.md: removed staging, added multi-device/device-all examples,
+  nightly instability warning, merged device-all into extras table
+- external-builds/pytorch/README.md: rewrote gating section
 
 ## Design decisions
 
 ### Package promotion for multi-arch
 
 **Decision:** Drop the staging-to-promoted index split for multi-arch.
-Publish directly to `whl-multi-arch`.
+Publish directly to `whl-multi-arch`. Tests run post-publish as signal
+(HUD), not as a gate.
 
-**Rationale:** The shared host `torch` wheel and independent device wheels
-make clean promotion impossible:
-- Publishing `torch` before its device packages breaks `pip install torch[device-gfxNNN]`
-- Partial promotion (gfx1100 passes, gfx942 fails) requires the host wheel
-  to already be in the index
-- Waiting for all targets blocks on the slowest runner (70+ min queues observed)
+**Rationale:** Shared host `torch` wheel + independent device wheels make
+clean promotion impossible. See #3332 discussion.
 
-**Signal instead of gating:** The HUD at therock-hud-dev.amd.com shows test
-status. Stable releases provide the "known good" install path. Nightlies can
-be more permissive.
+### Workflow architecture: orchestrator + reusable per-cell workflow
 
-See discussion: https://github.com/ROCm/TheRock/issues/3332#issuecomment-4361527784
+**Decision:** Mirror the per-family pattern. The orchestrator owns the
+matrix; each cell is a reusable workflow containing build + test jobs.
 
-### Test matrix generation
+**Why:** Tests should start as soon as their build cell finishes, not wait
+for the entire build matrix. A reusable workflow per `(pytorch_ref,
+python_version)` cell achieves this — the inner test job has `needs: build`
+scoped to that cell only.
 
-**Decision:** New Python script (similar to `configure_ci.py`,
-`configure_target_run.py`) that constructs the test matrix.
+The inner test job fans out per-family (different GPU runners) using its
+own `strategy.matrix` over families.
 
-**What it needs to produce per entry:**
-- `amdgpu_family` (e.g. `gfx94X-dcgpu`)
-- `test_runs_on` (runner label from `amdgpu_family_matrix.py`)
-- `torch_version` (from build outputs)
-- `pytorch_git_ref` (which pytorch branch to test)
-- `python_version`
-- Platform (linux/windows)
+### Upfront manifest generation
 
-**Policy control:** The script should define policy for what to test vs what
-to build. Not every (python_version x pytorch_git_ref) combination needs
-testing. For example, if pytorch upstream doesn't test python 3.13, we
-shouldn't overburden ourselves testing it downstream. The script is the right
-place for this policy since it's easy to update and test.
+**Decision:** Generate manifests BEFORE building, not after. Freeze
+commits and compute versions in a lightweight job, write to S3. Build
+and test jobs read from the manifest.
 
-**Data source:** `amdgpu_family_matrix.py` already has `test-runs-on` per
-family per platform. The script reads that plus the semicoloned
-`amdgpu_families` input.
+**Manifest format:** Same as existing manifests (see #5110), extended
+with version info:
 
-### Inline matrix vs separate dispatched jobs
+```json
+{
+  "pytorch": {
+    "commit": "1a2700743c...",
+    "repo": "https://github.com/ROCm/pytorch.git",
+    "branch": "release/2.10",
+    "version": "2.10.0"
+  },
+  "pytorch_audio": { ... },
+  "pytorch_vision": { ... },
+  "triton": { ... },
+  "apex": { ... },
+  "therock": { ... },
+  "rocm_version": "7.13.0a20260501",
+  "version_suffix": "+rocm7.13.0a20260501"
+}
+```
 
-**Trade-offs:**
+**Version derivation:** For torch, torchaudio, torchvision, and apex the
+pattern is `version.txt + version_suffix`. The base version can be fetched
+from the repo at the resolved commit via GitHub API (one file, no clone).
+Triton is more complex (git hash in nightly versions) but gets pulled in
+as a dependency — we don't need its version for testing.
 
-| Approach | Pros | Cons |
-|----------|------|------|
-| Inline matrix (strategy.matrix in the release workflow) | See all families in one workflow run | Can't cancel/retrigger individually |
-| Separate dispatched jobs (workflow_dispatch per family) | Cancel/retrigger individually, feeds into HUD as separate entries | Harder to see cross-GPU picture, more dispatch plumbing |
+**Checkout from manifest:** New entry point script that reads a manifest
+and delegates to the existing `pytorch_*_repo.py checkout` scripts with
+explicit commit SHAs. Single command to reproduce CI checkouts locally.
 
-**Leaning toward:** Separate dispatched jobs, matching the pattern at
-`release_portable_linux_pytorch_wheels.yml` run history. Individual jobs
-are more practical when runners are scarce and queues are long.
+### Test matrix policy
 
-### Torch version extraction
+**Decision:** A Python script (`configure_pytorch_test_matrix.py`)
+generates the test matrix, controlling which `(pytorch_ref,
+python_version, family, test_level)` combinations to test.
 
-The multi-arch build matrix is `python_version x pytorch_git_ref`. Each cell
-produces a torch version like `2.10.0+rocm7.13.0a20260501`. The test needs
-this version string.
+**Policy examples:**
+- Test latest stable pytorch on py3.12 with full suite for gfx942
+- Test other pytorch versions with smoketests only
+- Skip python versions that pytorch upstream doesn't test
+- Skip families with no test runners
 
-**Options:**
-1. Add `write_torch_versions.py` to multi-arch build jobs, output per cell
-2. Pick one representative cell (e.g. py3.12) and test that
-3. Have the test install latest from the index without pinning a version
+**Data sources:**
+- `amdgpu_family_matrix.py` for runner labels
+- Manifest for versions
+- Policy defined in the script itself (easy to update and test)
 
-**Not decided yet.** Depends on whether we test multiple python versions and
-how we structure the test dispatch.
+## PR sequencing
+
+### PR 3: Upfront manifest generation
+
+- New/extended `generate_pytorch_manifest.py`: resolve refs -> commits
+  via GitHub API, fetch `version.txt` per repo, compute versions
+- New checkout-from-manifest script
+- Add `generate_manifest` job to orchestrator
+- Build job reads manifest for checkouts and version info
+- Upload manifest to S3
+
+### PR 4: Test matrix + test jobs
+
+- New `configure_pytorch_test_matrix.py` with test policy
+- Split orchestrator + reusable per-cell workflow
+- Inner test job calls `test_pytorch_wheels.yml` with `multi_arch: true`
+- Per-family fan-out inside the reusable workflow
+
+### Later: Windows, CI integration
+
+- Same pattern for `multi_arch_release_windows_pytorch_wheels.yml`
+- Wire into CI workflows for pre-submit testing (#3291)
 
 ## Windows test signal (as of 2026-05-01)
-
-Investigated the `release_windows_pytorch_wheels.yml` run history:
 
 | Target | Runners? | torch 2.9 | torch 2.10 | torch 2.11+ |
 |--------|----------|-----------|------------|-------------|
@@ -150,14 +205,3 @@ Investigated the `release_windows_pytorch_wheels.yml` run history:
 | Others (8 families) | No runners | Skipped | Skipped | Skipped |
 
 **Only clean signal:** gfx110X-all + torch 2.10 on 20260501.
-This was segfaulting on 0425 and 0430, fixed between 0430 and 0501.
-
-## Next steps
-
-1. [ ] Confirm PR #4996 passes review, merge
-2. [ ] Write the test matrix generation script
-3. [ ] Add test jobs to `multi_arch_release_linux_pytorch_wheels.yml`
-4. [ ] Add test jobs to `multi_arch_release_windows_pytorch_wheels.yml`
-5. [ ] Validate end-to-end on a nightly release run
-6. [ ] Update RELEASES.md note about testing ("we'll recommend 'whl-multi-arch'
-       instead of 'whl-staging-multi-arch' as soon as we automate tests")
