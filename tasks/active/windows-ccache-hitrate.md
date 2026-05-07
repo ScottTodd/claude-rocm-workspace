@@ -1,7 +1,7 @@
 # Windows ccache Hit Rate Investigation
 
 **Issues:** [#4519](https://github.com/ROCm/TheRock/issues/4519), [#4195](https://github.com/ROCm/TheRock/issues/4195)
-**Related PR:** [#4419](https://github.com/ROCm/TheRock/pull/4419) (merged)
+**Related PR:** [#4419](https://github.com/ROCm/TheRock/pull/4419) (merged — fixed foundation/compiler, NOT math-libs)
 
 ## Investigation Log
 
@@ -139,54 +139,112 @@ cache, but the result entries (which include dependency file checksums)
 didn't match. This means some included header files have different content
 between runs.
 
-### Current Theories
+### Theories: Investigated and Eliminated
 
 **Theory A: Generated headers with embedded version/commit info.**
-Many ROCm libraries generate version headers during CMake configure that
-include git commit hashes, build dates, or version strings. These change
-every run even if the actual source code is identical. This would explain
-why manifests are found (same source file) but result entries don't match
-(different header checksums).
+ELIMINATED. Downloaded `hip_version.h` and `rocm_version.h` from both runs.
+Both contain `HIP_VERSION_GITHASH "79e85e14"` and `ROCM_BUILD_INFO
+"7.13.0.0-9999-79e85e14"` — the submodule commit hash didn't change between
+runs, so these headers are identical.
 
 **Theory B: The clr-redistributed clang++.exe differs from amd-llvm's.**
-The math-libs stage uses `core/clr/dist/lib/llvm/bin/clang++.exe`, not the
-amd-llvm dist directly. If CLR's dist produces a different binary (e.g.,
-through a different copy/install mechanism), the `compiler_check = content`
-hash would differ even though the amd-llvm source is identical. Haven't
-verified this yet.
+ELIMINATED. Locally, both paths are hardlinked (34 links, same inode):
+```
+SHA256: 8b9bb99b70872985c5e8ba3fc7fe536f35e5151a1f433d839e9beaa268dfe62d
+```
 
 **Theory C: Source code changes between runs.**
-The two analyzed runs are on different commits (e55ebbc vs c640f2f). If
-source files changed, cache misses are expected. But the ~1.5% hit rate
-is consistent even across runs on the same commit, so this alone doesn't
-explain it.
+PARTIALLY ELIMINATED. 705 out of 1021 common source files have IDENTICAL
+manifest keys (same command line + compiler hash + source content), yet
+693 of those still miss on both runs. Source code changes explain some
+misses but not the bulk.
 
 **Theory D: Absolute paths in -D defines or -I include paths.**
-If any compiler flags embed runner-specific paths (hostnames, workspace
-paths), they'd change the direct hash. The workspace is at
-`C:\home\runner\_work\TheRock\TheRock` — if different runners have different
-paths, this would invalidate the direct hash. However, the working directory
-and build dir (`B:\build`) appear consistent.
+ELIMINATED. Paths are consistent across runners:
+- Build tree: `B:/build/...` (always)
+- Source tree: `C:/home/runner/_work/TheRock/TheRock/...` (always)
+- Working dir: `B:\build\math-libs\...\build` (always)
 
-### Next Steps
+### Finding 6: The critical clue — same manifest key, both miss
 
-1. **Verify Theory B**: Download the `core` stage artifact and compare
-   `clr/dist/lib/llvm/bin/clang++.exe` against `amd-llvm/dist/lib/llvm/bin/clang++.exe`
-   within the same run. If they differ, that's a major contributor.
+705 source files have IDENTICAL manifest keys across two runs, meaning:
+- Same source file content
+- Same compiler command line
+- Same compiler binary hash (from `compiler_check = content`)
 
-2. **Verify Theory A**: Look at specific sessions where manifests were found
-   (entries > 0) and identify which dependency files have different checksums.
-   Need to trace a specific compilation from both runs to compare include
-   file lists.
+Yet **693 of those 705 miss on BOTH runs**. Of those:
+- 591 have entries > 0 in the manifest (remote cache has data, but no entry matches)
+- 89 mixed (entries in one run but not the other)
+- 13 have 0 entries in both (no manifest on remote cache yet)
 
-3. **Check command lines**: Compare the exact compiler command lines from
-   two runs for the same source file. Any path or version differences in
-   -D/-I flags would explain the "0 entries" sessions.
+For a result entry to match, ALL included file checksums must match.
+Since the manifest key is the same, something in the included headers
+that changes is NOT related to the command line or compiler — it's a
+header file whose CONTENT differs between runs despite identical source.
 
-4. **Consider `base_dir` config**: ccache's `base_dir` setting can normalize
-   absolute paths in the hash. If set to the build root, paths like
-   `B:\build\...` would be made relative, improving cross-runner cache hits.
-   Currently `base_dir` is not set (default empty).
+### Finding 7: Linux vs Windows — ccache version difference
+
+| | Linux | Windows |
+|---|---|---|
+| ccache version | **4.11.2** (baked into manylinux container) | **4.13.6** (choco install, latest) |
+| compiler_check | Custom Python script (posix_ccache_compiler_check.py) | `content` |
+| clr/clang++ hit rate | **97.1%** | **0.9%** |
+| Key format | Base36-like (`cc40f2u...`) | Hex SHA-1 (`5ab169...`) |
+
+The different key formats confirm the cache entries from one version
+CANNOT be used by the other. But within Windows, the version is stable
+(4.13.6 in both runs checked).
+
+Linux uses `compiler_check = <python_script>` which hashes the compiler
+binary + shared libraries via sha256sum. Windows uses `compiler_check =
+content`. Both should produce stable hashes since the binaries are
+identical between runs.
+
+### Active Theories
+
+**Theory E: Non-deterministic header in the dependency chain.**
+Something in the include tree has different content between runs despite
+the source and version headers being identical. Checked `clang/Config/config.h`
+and CMake export headers — no embedded build paths found so far. Need
+`debug_level=3` to see which specific dependency checksum doesn't match.
+
+**Theory F: ccache 4.13 behavior change vs 4.11.**
+The different ccache versions produce different key formats (base36 vs hex
+SHA-1). While entries within the same platform version should be compatible,
+a ccache version upgrade (from choco) could have wiped all accumulated
+entries. Also, a behavior change in manifest matching between 4.11 and
+4.13 could explain why the same setup works on Linux but not Windows.
+
+### Proposed Next Steps (ranked by impact)
+
+1. **Enable `debug_level = 3` on one Windows CI run**: Add
+   `debug = true` to the ccache config for a single run. This would log
+   exactly which dependency file doesn't match in the manifest. This is
+   the single most direct diagnostic step.
+   - Modify `setup_ccache.py` to accept `--debug` flag
+   - Or just add `debug = true` to the generated config for one run
+
+2. **Pin ccache version on Windows**: Install ccache 4.11.2 (same as Linux)
+   to test if version is a factor. Also eliminates the risk of future
+   version changes silently invalidating the cache.
+
+3. **Write a Windows `compiler_check` script**: Even if the compiler hash
+   is stable, having parity with the POSIX approach provides consistency
+   and makes it easier to reason about cache key stability across platforms.
+
+4. **Test `base_dir` locally**: While paths appear consistent across
+   runners, setting `base_dir` is cheap and could help with edge cases.
+
+### Finding 8: PR #4419 never fixed math-libs
+
+Checked CI runs on the `users/nicknick/win-ccache-repro` branch. The PR
+author's claimed "98.31% hit rate" was from the **foundation** stage, not
+math-libs. On the same branch, math-libs gfx1151 had **1.50% hit rate** —
+identical to main. The PR successfully fixed:
+- Foundation stage: 98.31% (uses cl.exe / gcc)
+- Compiler-runtime: improved (uses cl.exe for LLVM build)
+
+But math-libs (which uses clr/clang++) was never addressed.
 
 ## Analysis Tooling
 
