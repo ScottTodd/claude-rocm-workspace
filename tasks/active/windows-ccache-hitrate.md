@@ -312,54 +312,145 @@ The GUIDs are NOT from:
 
 They're from TheRock's own CI, every run, on every runner.
 
-### Open questions
+### Open questions (resolved)
 
-1. **What is writing GUID-path entries?** 111 unique GUIDs in 3 days.
-   The `C:\{GUID}\` pattern is characteristic of Azure DevOps Pipelines
-   agents, NOT GitHub Actions (which uses `_work/{repo}/{repo}`).
-   Something outside GitHub Actions may be writing to the cache.
+1. ~~What is writing GUID-path entries?~~ **Resolved:** TheRock's own CI.
+   `B:\` is a volume mount point that resolves to `C:\{GUID}\`. Clang and
+   CMake resolve through it.
 
-2. **Why doesn't the cache self-heal?** Each manifest accumulates entries
-   over time. GUID entries from the poisoner pile up. Even when a valid
-   multi-arch entry exists, it's buried under dozens of GUID entries that
-   each trigger "can't be read" failures. ccache iterates through ALL
-   entries before falling through to preprocessed mode. If the valid entry
-   happens to have the same result key, it might be found eventually, but
-   typically the dependency checksums differ between commits anyway.
+2. ~~Why doesn't the cache self-heal?~~ **Resolved:** Every runner has a
+   different GUID, so every run writes entries with unique absolute paths
+   that no other runner can read.
 
-3. **Are Linux entries also affected?** Linux uses a different runner pool
-   and likely different workspace paths. If Linux runs also write to the
-   same bazelremote server with `therock-v1`, there could be cross-platform
-   entry pollution (though different compiler hashes would produce different
-   manifest keys, keeping them separate).
+3. Linux is unaffected — consistent workspace path `/__w/TheRock/TheRock/`
+   on all runners, no volume mount indirection.
 
-### Proposed fixes (prioritized)
+### Finding 13: base_dir doesn't fix the problem
 
-1. **Find and stop the poisoner**: Identify what's writing GUID-path
-   entries to the `therock-v1` namespace on the dev bazelremote server.
-   This is the root cause — everything else is a workaround.
-   - Check if other repos (forks, internal mirrors) use the same cache
-   - Check if Azure Pipelines or other CI systems share the cluster
-   - Add logging to the bazelremote server to track write sources
+Tested `base_dir` on CI (run 25527972656). Results:
+- `base_dir = C:\8AA8C79D-...\build` (resolved from `B:\build`) — correct
+- `namespace = therock-v2` — clean namespace, no old entries
+- Still 1.5% hit rate
 
-2. **Set `base_dir` in ccache config**: This makes ccache normalize
-   absolute paths to relative before storing in manifests. Even if
-   different runners have different workspace roots, the stored paths
-   would be relative and thus portable. This defends against both the
-   current poisoning AND any future workspace path changes.
-   - `base_dir` only accepts ONE directory, so we'd need it to cover
-     the common prefix of both source and build trees
-   - On current multi-arch CI: source at `C:\home\runner\_work\TheRock\TheRock`,
-     build at `B:\build` — these have no common prefix
-   - Possible approach: symlink one under the other, or move build tree
+The v2 namespace is clean (only 1 foreign GUID: `497E179D` from
+another gfx family's job in the same run). But entries written by
+runner `497E179D` use absolute paths like `C:\497E179D-...\build\...`,
+and `base_dir` on runner `8AA8C79D` only normalizes paths starting
+with `C:\8AA8C79D-...\build`. Different GUIDs = different prefixes =
+`base_dir` can't help.
 
-3. **Bump namespace + namespace per workflow**: Change to `v2` and
-   consider separate namespaces for old CI vs multi-arch CI to prevent
-   cross-pollution. Won't help if the poisoner also picks up the new
-   namespace from `setup_ccache.py`.
+The fundamental issue: `base_dir` normalizes paths relative to the LOCAL
+resolved path, but every runner resolves `B:\build` to a DIFFERENT
+`C:\{GUID}\build`. The stored entries use the writer's resolved GUID,
+not `B:\build`.
 
-4. **Pin ccache version**: Move from dynamic `choco install` to a fixed
-   version in the runner image.
+### Finding 14: subst doesn't reproduce the problem locally
+
+Local test using `subst J: {guid-dir}` showed cache hits across
+"runners" — `subst` is transparent to path resolution (ccache sees
+`J:\build\...` not the underlying path). Real CI uses NTFS volume
+mount points which DO resolve, causing the GUID leak.
+
+### Finding 15: base_dir only affects HASHING, not stored paths
+
+Confirmed via CI test (run 25527972656). Runners with different GUIDs
+(`497E179D` and `8AA8C79D`) both had base_dir set. The manifest key
+hash IS shared (second runner found first runner's manifest). But
+the dependency paths stored in result entries are ABSOLUTE with the
+original runner's GUID:
+
+```
+C:\497E179D-...\build\compiler\amd-llvm\dist\lib\llvm\lib\clang\23\include\__stdarg_va_copy.h
+```
+
+If base_dir rewrote stored paths, we'd see `C:\8AA8C79D-...\...`
+(reconstructed from our base_dir), not `C:\497E179D-...\...`.
+
+From the ccache docs: "ccache converts absolute paths to relative
+paths before hashing" — this is about hash computation only. Stored
+manifest entries retain the original absolute paths. `base_dir` is
+the wrong tool for this problem.
+
+### Revised understanding
+
+The B:\ drive on CI runners is an NTFS volume mount point (not a
+`subst` or symlink). When clang resolves paths (e.g., its resource
+directory for `stdarg.h`), Windows resolves through the mount point
+to the underlying `C:\{GUID}\` path. This resolved path gets:
+1. Embedded in `-DHIP_COMPILER_FLAGS` by CMake
+2. Recorded by ccache as include file paths in manifests
+3. Used by clang for resource directory headers
+
+`base_dir` can't fix this because each runner's resolved path has
+a different GUID prefix.
+
+### Finding 16: ccache issue #1607 confirms base_dir limitation
+
+Found ccache/ccache#1607 — the Conan team has the exact same problem
+(varying path prefixes with identical content). The ccache maintainer
+(jrosdahl) confirms:
+- `base_dir` only rewrites paths for hash computation, not stored paths
+- Manifest result entries store the ORIGINAL absolute paths
+- When verifying, ccache reads files at the STORED path (no remapping)
+- Workaround: use symlinks (or `subst` on Windows) to create stable paths
+- A `CCACHE_REMAP_HEADERS` feature was discussed but doesn't exist yet
+
+### Proposed fix: subst drive in CI workflow
+
+Since `subst` is transparent to path resolution (proven locally), we can
+interpose a `subst` drive between ccache and the `B:\` volume mount:
+
+```yaml
+- name: Stabilize build drive path for ccache
+  shell: cmd
+  run: subst R: B:\build
+
+env:
+  BUILD_DIR: R:\build
+```
+
+All downstream tools (cmake, clang, ccache) see `R:\build\...` paths.
+`subst` doesn't resolve to `C:\{GUID}\...`, so ccache stores `R:\build\...`
+in manifests. Every runner uses the same `R:\build\...` paths regardless
+of GUID. `base_dir` is NOT needed with this approach.
+
+Note: `R:\build` means the build tree is at `R:\build` (subst root is
+`B:\build`, so `R:\build` = `B:\build\build`). Need to adjust either the
+subst target or BUILD_DIR to match. E.g., `subst R: B:\` then
+`BUILD_DIR: R:\build`, or `subst R: B:\build` then `BUILD_DIR: R:\`.
+
+### Experiment results
+
+**Experiment 1: subst only (no resource-dir)**
+- Run 25571517906 / 25571986552, rocRAND subset
+- Result: 25% hit rate (50/197)
+- cl.exe: 92% hits. clr/clang++: 0.8% hits
+- subst fixed command-line paths but clang still resolves its resource
+  directory through the volume mount via `getMainExecutable()`
+
+**Experiment 2: subst + `-resource-dir` override**
+- Run 25574538486, rocRAND subset, attempt 2
+- Result: **83% hit rate** (164/197)
+- cl.exe: 92% hits. clr/clang++: **80.6% hits**
+- Zero "can't be read" entries in ccache log
+- ALL 33 misses are CMake TryCompile probes (randomized directory names,
+  expected to always miss). **100% hit rate on actual source files.**
+
+**Changes that worked:**
+1. `subst D: B:\` — maps stable drive letter over the volume mount
+2. `BUILD_DIR: D:\build` — all tools use the stable path
+3. `-resource-dir` in toolchain CXX_FLAGS_INIT — prevents clang from
+   resolving its resource dir through the mount
+4. `CCACHE_NAMESPACE_VERSION = "v2"` — clean cache, no stale entries
+
+### Remaining work
+
+- [ ] Validate with full math-libs build (not just rocRAND subset)
+- [ ] Validate non-prebuilt run (building clang from source)
+- [ ] Apply same changes to `build_windows_artifacts.yml`
+- [ ] Clean up experimental commits into a proper PR
+- [ ] Consider whether TryCompile misses can be reduced (low priority)
+- [ ] File issue for cross-repo cache pollution (SPIRV-LLVM-Translator etc.)
 
 ### Finding 8: PR #4419 never fixed math-libs
 
