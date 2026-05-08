@@ -421,20 +421,35 @@ subst target or BUILD_DIR to match. E.g., `subst R: B:\` then
 
 ### Experiment results
 
+**Experiment 0: base_dir only (no subst, no resource-dir)**
+- [Run 25527972656](https://github.com/ROCm/TheRock/actions/runs/25527972656), full math-libs
+- Jobs: [75068617048](https://github.com/ROCm/TheRock/actions/runs/25527972656/job/74936470686),
+  [74946855786](https://github.com/ROCm/TheRock/actions/runs/25527972656/job/74946855786)
+- Result: 1.5% hit rate — base_dir doesn't fix stored manifest paths
+
 **Experiment 1: subst only (no resource-dir)**
-- Run 25571517906 / 25571986552, rocRAND subset
+- [Run 25571517906](https://github.com/ROCm/TheRock/actions/runs/25571517906) (attempt 1 + 2),
+  [Run 25571986552](https://github.com/ROCm/TheRock/actions/runs/25571986552), rocRAND subset
+- Jobs: [75068617048](https://github.com/ROCm/TheRock/actions/runs/25571517906/job/75068617048) (attempt 1, 0%),
+  [75071771107](https://github.com/ROCm/TheRock/actions/runs/25571517906/job/75071771107) (attempt 2, 25%),
+  [75070798414](https://github.com/ROCm/TheRock/actions/runs/25571986552/job/75070798414) (25%)
 - Result: 25% hit rate (50/197)
 - cl.exe: 92% hits. clr/clang++: 0.8% hits
 - subst fixed command-line paths but clang still resolves its resource
   directory through the volume mount via `getMainExecutable()`
 
 **Experiment 2: subst + `-resource-dir` override**
-- Run 25574538486, rocRAND subset, attempt 2
+- [Run 25574538486](https://github.com/ROCm/TheRock/actions/runs/25574538486) (prebuilt, rocRAND subset),
+  [Run 25574503612](https://github.com/ROCm/TheRock/actions/runs/25574503612) (non-prebuilt, rocRAND subset)
+- Job: [75081701707](https://github.com/ROCm/TheRock/actions/runs/25574538486/job/75081701707) (attempt 2, 83%)
 - Result: **83% hit rate** (164/197)
 - cl.exe: 92% hits. clr/clang++: **80.6% hits**
 - Zero "can't be read" entries in ccache log
 - ALL 33 misses are CMake TryCompile probes (randomized directory names,
   expected to always miss). **100% hit rate on actual source files.**
+
+**Experiment 3: subst + resource-dir, full math-libs**
+- [Run 25576559806](https://github.com/ROCm/TheRock/actions/runs/25576559806) (full math-libs, in progress)
 
 **Changes that worked:**
 1. `subst D: B:\` — maps stable drive letter over the volume mount
